@@ -14,6 +14,13 @@ tr = pt.datasets.primates()
 ## Install
 
 ```bash
+pip install phytreon                  # from PyPI
+pip install phytreon[interactive]     # + plotly (interactive HTML backend)
+```
+
+Developing locally (from a clone of this repo):
+
+```bash
 pip install -e .                 # core
 pip install -e .[interactive]    # + plotly backend
 pip install -e .[dev]            # + pytest, plotly
