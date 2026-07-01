@@ -15,6 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+">
   <a href="https://github.com/DeweyYihengDu/phytreon/actions/workflows/ci.yml"><img src="https://github.com/DeweyYihengDu/phytreon/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/DeweyYihengDu/phytreon/tags"><img src="https://img.shields.io/github/v/tag/DeweyYihengDu/phytreon?label=release&color=1F9E94" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/pure-Python-1F9E94.svg" alt="Pure Python">
   <img src="https://img.shields.io/badge/backends-matplotlib%20%2B%20plotly-11557c.svg" alt="matplotlib + plotly backends">
   <img src="https://img.shields.io/badge/domain-bioinformatics-00BA38.svg" alt="Bioinformatics">
