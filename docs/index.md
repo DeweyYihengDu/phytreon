@@ -1,11 +1,11 @@
-# phytree
+# phytreon
 
 **Phylogenetic trees and publication figures in Python** — a layered library
 with a fluent figure-builder API and both static (matplotlib) and interactive
 (plotly) backends.
 
 ```python
-import phytree as pt
+import phytreon as pt
 
 tr = pt.datasets.primates()
 (pt.TreeFigure(tr).tip_labels().support_labels()).save("tree.pdf")
@@ -32,7 +32,7 @@ pip install -e .[dev]            # + pytest, plotly
   `.heatmap()`, `.ring()` … onto a tree, then `.save()`
 
 See the [tutorials](tutorials/build_tree.md) and the
-[API reference](api.md). phytree's core is validated in pure Python
+[API reference](api.md). phytreon's core is validated in pure Python
 (`validation/`): the likelihood engine matches an independent naive
 implementation to machine precision, and NJ recovers a tree exactly from its
 own additive distances.

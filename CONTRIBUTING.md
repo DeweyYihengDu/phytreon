@@ -1,6 +1,6 @@
-# Contributing to phytree
+# Contributing to phytreon
 
-Thanks for your interest. phytree is a pure-Python phylogenetics +
+Thanks for your interest. phytreon is a pure-Python phylogenetics +
 visualization library; contributions that keep it dependency-light and well
 tested are very welcome.
 
@@ -13,12 +13,12 @@ pytest -q                  # run the test suite
 
 ## Architecture (where things live)
 
-- `phytree/core/`        — `Tree`/`Node` model and I/O
-- `phytree/layout/`      — topology → display coordinates (subclass `Layout`)
-- `phytree/infer/`       — alignment, distances, ML, parsimony, bootstrap
-- `phytree/comparative/` — ancestral states, stochastic mapping
-- `phytree/plot/`        — TreeFigure builder, elements, matplotlib/plotly backends
-- `phytree/scene.py`     — backend-agnostic drawing primitives
+- `phytreon/core/`        — `Tree`/`Node` model and I/O
+- `phytreon/layout/`      — topology → display coordinates (subclass `Layout`)
+- `phytreon/infer/`       — alignment, distances, ML, parsimony, bootstrap
+- `phytreon/comparative/` — ancestral states, stochastic mapping
+- `phytreon/plot/`        — TreeFigure builder, elements, matplotlib/plotly backends
+- `phytreon/scene.py`     — backend-agnostic drawing primitives
 
 The key invariant: **layout computes coordinates and emits scene primitives;
 backends only render them.** A new element subclasses `plot.figure._Element`

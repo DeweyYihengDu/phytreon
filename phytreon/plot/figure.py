@@ -13,7 +13,7 @@ A figure is assembled by chaining methods on a tree::
 Each method adds one visual element and returns the figure, so calls chain.
 A figure is *lazy*: nothing is computed until a backend asks for the scene.
 Layout computation and rendering are fully decoupled (see
-:mod:`phytree.scene`), which is what lets one figure drive both backends.
+:mod:`phytreon.scene`), which is what lets one figure drive both backends.
 """
 from __future__ import annotations
 
@@ -319,7 +319,7 @@ class TreeFigure:
             self.draw(backend="plotly", **kwargs).write_html(path)
         else:  # pdf/svg/png/jpg -> matplotlib
             fig = self.draw(backend="mpl", **kwargs)
-            extra = getattr(fig, "_phytree_extra_artists", None)
+            extra = getattr(fig, "_phytreon_extra_artists", None)
             fig.savefig(path, bbox_inches="tight", dpi=dpi, bbox_extra_artists=extra)
         return path
 

@@ -3,7 +3,7 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "phytree"
+name = "phytreon"
 dynamic = ["version"]
 description = "Phylogenetic trees and publication figures in Python"
 readme = "README.md"
@@ -29,14 +29,14 @@ interactive = ["plotly>=5.0"]
 dev = ["pytest>=7", "plotly>=5.0"]
 
 [project.urls]
-Homepage = "https://github.com/DeweyYihengDu/phytree"
-Repository = "https://github.com/DeweyYihengDu/phytree"
-Documentation = "https://github.com/DeweyYihengDu/phytree#readme"
-Issues = "https://github.com/DeweyYihengDu/phytree/issues"
-Changelog = "https://github.com/DeweyYihengDu/phytree/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/DeweyYihengDu/phytreon"
+Repository = "https://github.com/DeweyYihengDu/phytreon"
+Documentation = "https://github.com/DeweyYihengDu/phytreon#readme"
+Issues = "https://github.com/DeweyYihengDu/phytreon/issues"
+Changelog = "https://github.com/DeweyYihengDu/phytreon/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
-version = { attr = "phytree.__version__" }
+version = { attr = "phytreon.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["phytree*"]
+include = ["phytreon*"]

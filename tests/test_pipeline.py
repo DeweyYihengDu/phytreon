@@ -2,8 +2,8 @@
 import matplotlib
 matplotlib.use("Agg")
 
-import phytree as pt
-from phytree.infer import align, trim, Alignment
+import phytreon as pt
+from phytreon.infer import align, trim, Alignment
 
 SEQS = [
     ("A1", "ATGGCCATTGTAATGGGCCGCTGAAAGGGTGCCCGATAG"),
@@ -110,7 +110,7 @@ def test_nj_recovers_additive_tree():
 
 
 def test_corrected_distance_inflates():
-    from phytree.infer import distance_matrix_model
+    from phytreon.infer import distance_matrix_model
     aln = pt.align(SEQS, seqtype="nucleotide")
     _, raw = distance_matrix_model(aln, "raw")
     _, jc = distance_matrix_model(aln, "jc69")

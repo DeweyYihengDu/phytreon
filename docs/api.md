@@ -2,24 +2,24 @@
 
 ## Plotting
 
-::: phytree.plot
+::: phytreon.plot
 
 ## Inference
 
-::: phytree.infer
+::: phytreon.infer
 
 ## Comparative methods
 
-::: phytree.comparative
+::: phytreon.comparative
 
 ## Layouts
 
-::: phytree.layout
+::: phytreon.layout
 
 ## Tree operations
 
-::: phytree.treeops
+::: phytreon.treeops
 
 ## Core
 
-::: phytree.core.tree
+::: phytreon.core.tree

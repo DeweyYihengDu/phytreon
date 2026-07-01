@@ -51,7 +51,7 @@ def build_tree(sequences: SeqInput, *,
                 (external), or ``"none"`` (input already aligned).
     align_kw    forwarded to the aligner (``seqtype``, ``match``, ``gap`` ...).
     trim_kw     ``None`` to skip trimming, else forwarded to
-                :func:`phytree.infer.trim.trim` (``max_gap``,
+                :func:`phytreon.infer.trim.trim` (``max_gap``,
                 ``min_occupancy``, ``min_conservation`` ...).
     method      ``"nj"`` | ``"upgma"`` | ``"ml"``.
     bootstrap   number of bootstrap replicates (0 = none; distance methods).

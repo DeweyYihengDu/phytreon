@@ -1,6 +1,6 @@
 """Visual elements -- the drawing vocabulary of a :class:`TreeFigure`.
 
-Every element is a small :class:`~phytree.plot.figure._Element` that reads
+Every element is a small :class:`~phytreon.plot.figure._Element` that reads
 node coordinates from the layout and appends primitives to the scene.
 Elements branch on ``ctx.layout.is_polar`` where a circular tree needs
 different geometry (rotated labels, wedge highlights, arc clade bars).
@@ -463,7 +463,7 @@ def _residue_palette(seqs):
 class _Alignment(_Element):
     """Render a multiple sequence alignment as a residue-coloured track.
 
-    ``alignment`` is a :class:`~phytree.infer.align.Alignment`, a FASTA
+    ``alignment`` is a :class:`~phytreon.infer.align.Alignment`, a FASTA
     path/string, or ``{name: aligned_seq}``.  Drawn as one raster (fast even
     for thousands of columns) aligned to the tip rows, right of the tree.
     """
@@ -668,7 +668,7 @@ def _split_polyline(points, segs):
 
 
 class _PaintedBranches(_Element):
-    """Paint branches by stochastic-map state (run :func:`phytree.stochastic_map` first).
+    """Paint branches by stochastic-map state (run :func:`phytreon.stochastic_map` first).
 
     Each branch is split into segments proportional to the average time spent
     in each state; the child connector is drawn in the node's modal state.
@@ -685,7 +685,7 @@ class _PaintedBranches(_Element):
                              for st, _ in n.data.get("paint_segments", [])})
         if not all_states:
             raise ValueError("no painted-branch data on the tree; "
-                             "call phytree.stochastic_map() first")
+                             "call phytreon.stochastic_map() first")
         scale = build_color_scale("state", all_states, palette=self.palette)
         for node in nodes:
             bp = lay.branch_path(node)
@@ -711,7 +711,7 @@ class _NodePies(_Element):
     """Draw a pie chart at each internal node from a probability dict.
 
     Reads ``node.data[attr]`` (default ``'ace_probs'``, as written by
-    :func:`phytree.ace_ml` / :func:`phytree.stochastic_map`) -- a
+    :func:`phytreon.ace_ml` / :func:`phytreon.stochastic_map`) -- a
     ``{state: prob}`` mapping -- and draws a small pie wedge per state.
     Rectangular/slanted.
     """

@@ -1,4 +1,4 @@
-# phytree validation (pure Python, no external tools)
+# phytreon validation (pure Python, no external tools)
 
 ## 1. Likelihood engine vs independent naive implementation (JC69)
 - engine  : -103.550268

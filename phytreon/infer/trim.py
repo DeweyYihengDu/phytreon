@@ -9,7 +9,7 @@ passes *all* the active ones:
 * ``min_conservation``-- keep columns where the commonest residue reaches
   this fraction (of non-gap residues).
 
-Returns the trimmed :class:`~phytree.infer.align.Alignment`; pass
+Returns the trimmed :class:`~phytreon.infer.align.Alignment`; pass
 ``return_mask=True`` to also get the boolean keep-mask for traceability.
 """
 from __future__ import annotations

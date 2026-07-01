@@ -1,4 +1,4 @@
-"""End-to-end demo: every element of phytree, both backends.
+"""End-to-end demo: every element of phytreon, both backends.
 
 Run from the repo root:  python examples/demo.py
 Outputs land in examples/out/.
@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import phytree as pt
+import phytreon as pt
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 os.makedirs(OUT, exist_ok=True)

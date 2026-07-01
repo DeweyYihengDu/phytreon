@@ -21,7 +21,7 @@ _BIO_FORMATS = {"newick", "nexus", "phyloxml", "nexml", "cdao"}
 # Biopython bridge
 # --------------------------------------------------------------------------
 def from_biopython(bp_tree) -> Tree:
-    """Convert a ``Bio.Phylo`` tree into a phytree :class:`Tree`."""
+    """Convert a ``Bio.Phylo`` tree into a phytreon :class:`Tree`."""
     def convert(clade) -> Node:
         node = Node(
             name=clade.name,

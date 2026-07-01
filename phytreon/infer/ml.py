@@ -1,6 +1,6 @@
 """Maximum-likelihood / parsimony inference via external engines.
 
-Pure-Python ML is impractical, so phytree shells out to the standard tools
+Pure-Python ML is impractical, so phytreon shells out to the standard tools
 when the user wants ML.  Each wrapper is graceful: if the program is not on
 PATH it raises a clear, actionable error rather than failing obscurely.
 """

@@ -3,7 +3,7 @@
 ## Ancestral state reconstruction
 
 ```python
-import phytree as pt
+import phytreon as pt
 tr = pt.datasets.primates()
 trait = {"Human": "urban", "Chimp": "forest", ...}
 

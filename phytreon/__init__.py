@@ -1,8 +1,8 @@
-"""phytree -- phylogenetic trees and publication figures in Python.
+"""phytreon -- phylogenetic trees and publication figures in Python.
 
 Quick start
 -----------
->>> import phytree as pt
+>>> import phytreon as pt
 >>> tr = pt.datasets.primates()
 >>> (pt.TreeFigure(tr)
 ...     .tip_labels()
@@ -10,11 +10,11 @@ Quick start
 
 The package is layered:
 
-* ``phytree.core``        -- ``Tree`` / ``Node`` data model and I/O
-* ``phytree.layout``      -- topology -> display coordinates
-* ``phytree.infer``       -- distance-based inference (NJ / UPGMA), ML, parsimony
-* ``phytree.comparative`` -- ancestral state reconstruction
-* ``phytree.plot``        -- the ``TreeFigure`` builder + matplotlib/plotly backends
+* ``phytreon.core``        -- ``Tree`` / ``Node`` data model and I/O
+* ``phytreon.layout``      -- topology -> display coordinates
+* ``phytreon.infer``       -- distance-based inference (NJ / UPGMA), ML, parsimony
+* ``phytreon.comparative`` -- ancestral state reconstruction
+* ``phytreon.plot``        -- the ``TreeFigure`` builder + matplotlib/plotly backends
 """
 from __future__ import annotations
 

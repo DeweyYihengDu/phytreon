@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 180" width="560" height="180" role="img" aria-labelledby="t d">
-  <title id="t">phytree</title>
-  <desc id="d">A phylogenetic tree mark beside the phytree wordmark.</desc>
+  <title id="t">phytreon</title>
+  <desc id="d">A phylogenetic tree mark beside the phytreon wordmark.</desc>
   <!-- tree mark: a left-to-right cladogram -->
   <g fill="none" stroke="#7f8a90" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
     <!-- root stem -->
@@ -24,7 +24,7 @@
   </g>
   <!-- wordmark -->
   <text x="206" y="100" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif"
-        font-size="74" font-weight="600" fill="#1f9e94" letter-spacing="-1">phytree</text>
+        font-size="74" font-weight="600" fill="#1f9e94" letter-spacing="-1">phytreon</text>
   <text x="210" y="134" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif"
         font-size="20" font-weight="400" fill="#8a929b">phylogenetic trees in Python</text>
 </svg>

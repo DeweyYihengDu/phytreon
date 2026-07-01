@@ -1,12 +1,12 @@
 # Tutorial: annotated trees
 
-phytree uses a fluent builder: start with `TreeFigure(tree)` and chain methods
+phytreon uses a fluent builder: start with `TreeFigure(tree)` and chain methods
 to add elements.
 
 ## Rectangular tree with metadata
 
 ```python
-import phytree as pt
+import phytreon as pt
 tr = pt.datasets.primates()
 tr.join_data(pt.datasets.primates_metadata().reset_index(), on="name")
 apes = tr.get_mrca(["Human", "Gibbon"])

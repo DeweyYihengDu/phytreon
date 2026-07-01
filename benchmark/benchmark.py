@@ -1,4 +1,4 @@
-"""Timing + scaling benchmark for the phytree validated core.
+"""Timing + scaling benchmark for the phytreon validated core.
 
 Times the core operations on the bundled 16S data and on random trees of
 increasing size, and writes benchmark/benchmark_report.md.  The "validated
@@ -12,7 +12,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import matplotlib
 matplotlib.use("Agg")
-import phytree as pt
+import phytreon as pt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(os.path.dirname(HERE), "examples", "data")
@@ -61,7 +61,7 @@ def main():
     if os.path.exists(os.path.join(HERE, "_tmp.png")):
         os.remove(os.path.join(HERE, "_tmp.png"))
 
-    lines = ["# phytree benchmark (timings)", "",
+    lines = ["# phytreon benchmark (timings)", "",
              "| operation | size | time (s) |", "|---|---|---|"]
     for name, size, t in rows:
         lines.append(f"| {name} | {size} | {t:.2f} |")

@@ -10,7 +10,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import matplotlib; matplotlib.use("Agg")
 import pandas as pd
-import phytree as pt
+import phytreon as pt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA, OUT = os.path.join(HERE, "data"), os.path.join(HERE, "out")

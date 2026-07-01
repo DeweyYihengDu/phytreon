@@ -1,7 +1,7 @@
 # Example data sources
 
 Small public **16S rRNA** set ¡ª a "microbial tree of life" sampler used
-by phytree's examples and tests. Downloaded from the NCBI `nucleotide`
+by phytreon's examples and tests. Downloaded from the NCBI `nucleotide`
 database (16S ribosomal RNA records, preferring RefSeq `NR_*` type strains)
 with `examples/data/fetch_example_data.py` (Biopython Entrez).
 

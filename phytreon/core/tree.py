@@ -3,7 +3,7 @@
 A small, dependency-light ``Node`` / ``Tree`` pair that is the single
 representation used by every other sub-package (layout, inference,
 comparative methods, plotting).  Parsing is delegated to Biopython
-(see :mod:`phytree.core.io`) but we immediately convert into our own
+(see :mod:`phytreon.core.io`) but we immediately convert into our own
 nodes so the rest of the library never touches Biopython internals.
 
 Design notes

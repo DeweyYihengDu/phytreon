@@ -1,4 +1,4 @@
-"""Renderers: turn a :class:`~phytree.scene.Scene` into a figure.
+"""Renderers: turn a :class:`~phytreon.scene.Scene` into a figure.
 
 Two backends consume the *same* scene:
 
@@ -156,7 +156,7 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
         extra.append(cax)
         y -= 0.30
 
-    fig._phytree_extra_artists = extra + base_text + al_text
+    fig._phytreon_extra_artists = extra + base_text + al_text
     return fig
 
 

@@ -1,4 +1,4 @@
-# phytree benchmark (timings)
+# phytreon benchmark (timings)
 
 | operation | size | time (s) |
 |---|---|---|

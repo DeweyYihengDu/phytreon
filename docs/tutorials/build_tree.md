@@ -4,7 +4,7 @@ The whole pipeline — **align → trim → infer → bootstrap** — is one cal
 stage configurable.
 
 ```python
-import phytree as pt
+import phytreon as pt
 
 # 1. Quick neighbour-joining tree (JC69-corrected distances, midpoint root)
 tree = pt.build_tree(

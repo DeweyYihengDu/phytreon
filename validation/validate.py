@@ -1,4 +1,4 @@
-"""Pure-Python validation of phytree's core algorithms (no external tools).
+"""Pure-Python validation of phytreon's core algorithms (no external tools).
 
 1. Likelihood engine: cross-check `log_likelihood` (pattern-compressed, rescaled)
    against a deliberately naive, independent re-implementation (per column, no
@@ -14,7 +14,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import phytree as pt
+import phytreon as pt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPORT = os.path.join(HERE, "validation_report.md")
@@ -72,7 +72,7 @@ def patristic_matrix(tree):
 
 
 def main():
-    lines = ["# phytree validation (pure Python, no external tools)", ""]
+    lines = ["# phytreon validation (pure Python, no external tools)", ""]
 
     # 1. likelihood engine vs naive reference
     aln = pt.align(SEQS, seqtype="nucleotide")

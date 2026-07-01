@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="phytree logo" width="460">
+  <img src="assets/logo.svg" alt="phytreon logo" width="460">
 </p>
 
 <p align="center">
@@ -7,20 +7,20 @@
 </p>
 
 <p align="center">
-  phytree combines tree inference, metadata-aware visualization, and
+  phytreon combines tree inference, metadata-aware visualization, and
   static/interactive figure export in a fluent, pure-Python workflow.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+">
-  <a href="https://github.com/DeweyYihengDu/phytree/actions/workflows/ci.yml"><img src="https://github.com/DeweyYihengDu/phytree/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/DeweyYihengDu/phytreon/actions/workflows/ci.yml"><img src="https://github.com/DeweyYihengDu/phytreon/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <img src="https://img.shields.io/badge/pure-Python-1F9E94.svg" alt="Pure Python">
   <img src="https://img.shields.io/badge/backends-matplotlib%20%2B%20plotly-11557c.svg" alt="matplotlib + plotly backends">
   <img src="https://img.shields.io/badge/domain-bioinformatics-00BA38.svg" alt="Bioinformatics">
 </p>
 
-### Why phytree?
+### Why phytreon?
 
 <table>
   <tr>
@@ -41,7 +41,7 @@
 
 <p align="center">
   <i>A circular 16S rRNA tree of common microbes (real NCBI data bundled in <code>examples/</code>),
-  with domain / phylum / length rings — built and drawn entirely in phytree.</i>
+  with domain / phylum / length rings — built and drawn entirely in phytreon.</i>
 </p>
 
 ---
@@ -55,7 +55,7 @@ pip install -e .[dev]            # + pytest, plotly
 ```
 
 ```python
-import phytree as pt
+import phytreon as pt
 
 tr = pt.datasets.primates()                      # a small illustrative toy tree
 meta = pt.datasets.primates_metadata().reset_index()
@@ -111,7 +111,7 @@ Every figure below is produced by a script in [`examples/`](examples/)
 ## From sequences to a tree
 
 <p align="center">
-  <img src="assets/pipeline.png" alt="phytree pipeline from FASTA sequences through align, trim, infer, bootstrap, into a TreeFigure, then exported as pdf, svg, png, or html" width="950">
+  <img src="assets/pipeline.png" alt="phytreon pipeline from FASTA sequences through align, trim, infer, bootstrap, into a TreeFigure, then exported as pdf, svg, png, or html" width="950">
 </p>
 
 One configurable call runs **align → trim → infer → bootstrap**, each stage
@@ -144,7 +144,7 @@ Each step is also usable on its own: `pt.align`, `pt.trim`,
 
 ---
 
-## What phytree includes
+## What phytreon includes
 
 | Area | Capabilities |
 |---|---|
@@ -204,7 +204,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 
 ## Comparison to other Python tools
 
-| | phytree | ete3 | toytree | Bio.Phylo | dendropy |
+| | phytreon | ete3 | toytree | Bio.Phylo | dendropy |
 |---|:---:|:---:|:---:|:---:|:---:|
 | Fluent figure builder | ✅ | ✗ | partial | ✗ | ✗ |
 | Static **and** interactive backend | ✅ mpl + plotly | own GUI / SVG | toyplot | basic mpl | ✗ |
@@ -213,7 +213,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | Comparative (ancestral states / stochastic map) | ✅ | ✗ | ✗ | ✗ | partial |
 | Pure Python, pip-installable | ✅ | ✅ (Qt for GUI) | ✅ | ✅ | ✅ |
 
-phytree's niche is a fluent figure builder plus a self-contained phylogenetics
+phytreon's niche is a fluent figure builder plus a self-contained phylogenetics
 stack, with optional external tools for large-scale alignments or rigorous
 large-scale ML (`aligner="mafft"`, `ml_engine="iqtree"`).
 
@@ -295,7 +295,7 @@ fig.tip_points(color="habitat", palette="dark2")   # hue | set2 | dark2 | tab10
 fig.heatmap(mat, cmap="viridis")                    # name, or ("#fff","#c00") gradient
 ```
 
-See `phytree/plot/palettes.py` (`hue_palette`, `lerp_color`).
+See `phytreon/plot/palettes.py` (`hue_palette`, `lerp_color`).
 </details>
 
 <details>
@@ -325,11 +325,11 @@ See `phytree/plot/palettes.py` (`hue_palette`, `lerp_color`).
 <details>
 <summary><b>Extending</b></summary>
 
-- **New layout**: subclass `phytree.layout.base.Layout`, implement `compute()`
+- **New layout**: subclass `phytreon.layout.base.Layout`, implement `compute()`
   (write `node.x` / `node.y`), `branch_path()`, `child_connector()`, and
-  register it in `phytree/layout/__init__.py::LAYOUTS`. The builder and both
+  register it in `phytreon/layout/__init__.py::LAYOUTS`. The builder and both
   backends pick it up automatically.
-- **New element**: subclass `phytree.plot.figure._Element`, implement
+- **New element**: subclass `phytreon.plot.figure._Element`, implement
   `apply(ctx)` to read coordinates and append `scene` primitives (use
   `ctx.resolve_color(...)` for metadata-driven aesthetics + legends), then add
   it with `TreeFigure.add(...)`.

@@ -12,7 +12,7 @@ Implements the standard ML pipeline for nucleotide data:
 * NNI hill-climbing topology search from a start tree (default NJ).
 
 This is exact ML for small/medium problems.  It is pure Python, so it is
-far slower than RAxML/IQ-TREE -- use those (via :mod:`phytree.infer.ml`)
+far slower than RAxML/IQ-TREE -- use those (via :mod:`phytreon.infer.ml`)
 for large alignments; this engine is for convenience and self-containment.
 """
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """Distance-based tree inference (neighbour-joining / UPGMA).
 
 Thin wrappers over Biopython's ``DistanceTreeConstructor`` that accept a
-plain labels + matrix pair (or an alignment) and return a phytree
-:class:`~phytree.core.tree.Tree`.
+plain labels + matrix pair (or an alignment) and return a phytreon
+:class:`~phytreon.core.tree.Tree`.
 """
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to phytree are documented here. Format loosely follows
+All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.1.0] — 2026-06-24

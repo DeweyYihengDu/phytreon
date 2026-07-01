@@ -1,4 +1,4 @@
-site_name: phytree
+site_name: phytreon
 site_description: phylogenetic trees and publication figures in Python
 theme:
   name: material

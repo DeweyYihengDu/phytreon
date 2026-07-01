@@ -2,7 +2,7 @@
 import matplotlib
 matplotlib.use("Agg")
 
-import phytree as pt
+import phytreon as pt
 
 
 def test_io_roundtrip():
@@ -91,7 +91,7 @@ def test_time_axis_with_geo(tmp_path):
 
 def test_daylight_layout_valid():
     import math
-    from phytree.layout import get_layout
+    from phytreon.layout import get_layout
     tr = pt.datasets.random_tree(30, seed=4)
     get_layout("daylight").apply(tr)
     pts = [(t.x, t.y) for t in tr.leaves()]
@@ -141,7 +141,7 @@ def test_node_pies(tmp_path):
 
 def test_numeric_scale_handles_numpy_ints():
     import numpy as np
-    from phytree.plot.figure import build_color_scale
+    from phytreon.plot.figure import build_color_scale
     sc = build_color_scale("x", [np.int64(1), np.int64(5), np.int64(9)])
     assert sc.continuous          # numpy ints must read as continuous, not categorical
 
