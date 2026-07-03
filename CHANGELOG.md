@@ -3,6 +3,34 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- `build_tree()` silently fell back to UPGMA for any unrecognised `method`
+  value instead of raising; now validates against an explicit whitelist.
+  Removed the unused, dead `model` kwarg.
+- Maximum parsimony scoring assumed a fixed A/C/G/T/U alphabet, so any other
+  alphabet (protein sequences, or a discrete character/trait matrix such as
+  a 0/1 gene presence/absence table) silently scored every tree 0.0. States
+  are now derived per-site from whatever characters actually appear, so
+  parsimony works correctly for nucleotide, amino-acid, and arbitrary
+  discrete character matrices alike.
+- `heatmap()` only matched rows by DataFrame index, despite its docstring
+  promising a `name` column would also work (matching `ring()`/`bar_track()`);
+  now uses the same name-column lookup.
+- The Plotly backend did not shift aligned `Path` primitives (e.g.
+  `clade_label()`'s bracket bar) past the tip labels the way aligned
+  Polygon/Label/Raster already were, causing interactive HTML output to
+  diverge from the matplotlib rendering.
+- CI lint (`pyflakes ... || true`) could never fail the build. Switched to
+  `ruff` (added to the `dev` extra) with lint now enforced.
+
+### Added
+- `read_character_matrix()`: build an `Alignment` directly from a discrete
+  character/trait matrix (CSV/TSV file or DataFrame; taxa as rows, one
+  column per character), ready for `parsimony_tree()` /
+  `build_tree(..., method="parsimony")`.
+
 ## [0.1.1] — 2026-07-01
 
 Renamed the project **phytree → phytreon**; first release published to PyPI.

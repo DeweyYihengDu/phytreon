@@ -1,8 +1,16 @@
 """Maximum-parsimony phylogenetics (pure Python).
 
-Fitch parsimony scoring, vectorised over site patterns using 4-bit state
+Fitch parsimony scoring, vectorised over site patterns using integer state
 masks (numpy bitwise ops -- fast), plus NNI hill-climbing to find the
 minimum-changes topology.  Reuses the NNI machinery from :mod:`ml_native`.
+
+States are derived independently for each site from whatever characters
+actually appear there, so this works for nucleotide sequences, amino-acid
+sequences, and arbitrary discrete character/trait matrices alike (see
+:func:`phytreon.read_character_matrix`) -- not just A/C/G/T. ``-``, ``.``,
+``?`` and ``N`` are always treated as missing/ambiguous: they match
+whichever state a site's neighbours settle on, so missing data never
+forces a spurious change.
 """
 from __future__ import annotations
 
@@ -11,27 +19,46 @@ from typing import Dict, Optional
 from ..core.tree import Tree
 from .align import Alignment
 
-# nucleotide -> 4-bit mask (A,C,G,T); ambiguous/gap -> all states
-_MASK = {"A": 1, "C": 2, "G": 4, "T": 8, "U": 8}
-_ALL = 15
+_MISSING = frozenset({"-", ".", "?", "N"})
+_MAX_STATES = 32                        # bits available in the uint32 mask
+
+
+def _normalize(ch: str) -> str:
+    return "T" if ch == "U" else ch     # RNA U == DNA T for scoring purposes
 
 
 def _encode(aln: Alignment):
-    """Compressed patterns: (ntip, npat) uint8 masks + pattern weights."""
+    """Compressed patterns: (ntip, npat) uint32 state masks + pattern weights.
+
+    Each pattern's state space is derived independently from the symbols
+    observed at that site (excluding ``_MISSING``); missing symbols get the
+    bitwise OR of every state seen at that site, so they are compatible with
+    any resolution.
+    """
     import numpy as np
     from collections import Counter
     ncol = aln.ncol
     counts: Counter = Counter()
     order = []
     for j in range(ncol):
-        col = tuple(s[j].upper() for s in aln.seqs)
+        col = tuple(_normalize(s[j].upper()) for s in aln.seqs)
         if col not in counts:
             order.append(col)
         counts[col] += 1
-    masks = np.zeros((aln.nseq, len(order)), dtype=np.uint8)
+    masks = np.zeros((aln.nseq, len(order)), dtype=np.uint32)
     for p, col in enumerate(order):
+        states = sorted({ch for ch in col if ch not in _MISSING})
+        if not states:
+            masks[:, p] = 1              # no information at this site -> free
+            continue
+        if len(states) > _MAX_STATES:
+            raise ValueError(
+                f"site has {len(states)} distinct states {states!r}; "
+                f"parsimony supports at most {_MAX_STATES} per site")
+        bit = {ch: np.uint32(1) << i for i, ch in enumerate(states)}
+        all_bits = np.uint32((1 << len(states)) - 1)
         for i, ch in enumerate(col):
-            masks[i, p] = _MASK.get(ch, _ALL)
+            masks[i, p] = bit.get(ch, all_bits)
     weights = np.array([counts[c] for c in order], dtype=float)
     return masks, weights
 
@@ -46,7 +73,7 @@ def parsimony_score(tree: Tree, aln: Alignment, data=None) -> float:
     cache: Dict[int, "np.ndarray"] = {}
     for node in tree.traverse("postorder"):
         if node.is_leaf:
-            cache[id(node)] = masks[idx[node.name]].astype(np.uint8)
+            cache[id(node)] = masks[idx[node.name]].astype(np.uint32)
         else:
             acc = cache[id(node.children[0])].copy()
             for c in node.children[1:]:
@@ -54,7 +81,7 @@ def parsimony_score(tree: Tree, aln: Alignment, data=None) -> float:
                 inter = acc & cm
                 empty = inter == 0
                 changes += empty * weights          # a change where sets disjoint
-                acc = np.where(empty, acc | cm, inter).astype(np.uint8)
+                acc = np.where(empty, acc | cm, inter).astype(np.uint32)
             cache[id(node)] = acc
     return float(changes.sum())
 
@@ -104,8 +131,8 @@ def _parsimony_bounds(aln):
     from collections import Counter
     m = g = 0
     for j in range(aln.ncol):
-        col = [("T" if c == "U" else c) for c in
-               (s[j].upper() for s in aln.seqs) if c in "ACGTU"]
+        col = [_normalize(c) for c in (s[j].upper() for s in aln.seqs)
+               if c not in _MISSING]
         if not col:
             continue
         cnt = Counter(col)

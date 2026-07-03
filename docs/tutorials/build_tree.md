@@ -36,6 +36,28 @@ mp = pt.build_tree("seqs.fasta", method="parsimony")
 print(mp.data["parsimony_score"], mp.data["ci"], mp.data["ri"])
 ```
 
+## From a distance or character matrix
+
+A precomputed distance matrix skips alignment entirely:
+
+```python
+import pandas as pd
+df = pd.read_csv("distances.csv", index_col=0)
+tree = pt.neighbor_joining(list(df.index), df.values.tolist())
+```
+
+A discrete character/trait matrix (e.g. a 0/1 gene presence/absence table)
+goes through `read_character_matrix` and into parsimony:
+
+```python
+aln = pt.read_character_matrix("genes.csv", taxa_col="name")
+tree = pt.parsimony_tree(aln, search=True)
+```
+
+Any small set of hashable states per column works; missing values (`NaN`,
+or an explicit `missing=` sentinel) are encoded as ambiguous so they never
+force a false character change.
+
 ## Scaling up
 
 The built-in aligner and ML are pure Python and target small/medium data.

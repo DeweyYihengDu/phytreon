@@ -13,6 +13,7 @@ The package is layered:
 * ``phytreon.core``        -- ``Tree`` / ``Node`` data model and I/O
 * ``phytreon.layout``      -- topology -> display coordinates
 * ``phytreon.infer``       -- distance-based inference (NJ / UPGMA), ML, parsimony
+  (from sequences or a discrete character/trait matrix)
 * ``phytreon.comparative`` -- ancestral state reconstruction
 * ``phytreon.plot``        -- the ``TreeFigure`` builder + matplotlib/plotly backends
 """
@@ -23,8 +24,9 @@ from .core import Tree, Node
 from .plot import TreeFigure
 from .infer import (
     neighbor_joining, upgma, tree_from_alignment, distance_matrix,
-    Alignment, align, read_fasta, trim, bootstrap_support, build_tree, infer_ml,
-    ml_tree, log_likelihood, model_finder, parsimony_tree, parsimony_score,
+    Alignment, align, read_fasta, read_character_matrix, trim, bootstrap_support,
+    build_tree, infer_ml, ml_tree, log_likelihood, model_finder,
+    parsimony_tree, parsimony_score,
 )
 from .comparative import ace_parsimony, ace_ml, ace_continuous, stochastic_map
 from .treeops import (
@@ -40,7 +42,7 @@ __all__ = [
     "Tree", "Node",
     "TreeFigure",
     "neighbor_joining", "upgma", "tree_from_alignment", "distance_matrix",
-    "Alignment", "align", "read_fasta", "trim", "bootstrap_support",
+    "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",
     "parsimony_tree", "parsimony_score", "robinson_foulds",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",

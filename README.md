@@ -151,6 +151,31 @@ Each step is also usable on its own: `pt.align`, `pt.trim`,
 `pt.neighbor_joining`, `pt.bootstrap_support`, `pt.infer_ml`,
 `pt.parsimony_tree`.
 
+### From a distance or character matrix
+
+A precomputed distance matrix (samples × samples) skips alignment entirely:
+
+```python
+import pandas as pd
+
+df = pd.read_csv("distances.csv", index_col=0)     # square matrix, taxa on both axes
+tree = pt.neighbor_joining(list(df.index), df.values.tolist())   # or pt.upgma(...)
+```
+
+A discrete character/trait matrix (samples × characters -- e.g. a 0/1 gene
+presence/absence table) goes through `read_character_matrix` and straight
+into parsimony:
+
+```python
+aln = pt.read_character_matrix("genes.csv", taxa_col="name")   # or a DataFrame
+tree = pt.parsimony_tree(aln, search=True)
+(pt.TreeFigure(tree.ladderize()).tip_labels().support_labels()).save("tree.pdf")
+```
+
+Any small set of hashable states per column works (numbers, strings,
+booleans); missing values (`NaN`, or an explicit `missing=` sentinel) are
+encoded as ambiguous so they never force a false character change.
+
 ---
 
 ## What phytreon includes
@@ -159,7 +184,7 @@ Each step is also usable on its own: `pt.align`, `pt.trim`,
 |---|---|
 | **I/O & data model** | Newick / Nexus / PhyloXML read-write; metadata joins (`Tree.join_data`) |
 | **Layouts** | rectangular, slanted, dendrogram, circular, fan, radial, inward-circular, unrooted (equal-angle / equal-daylight) |
-| **Inference** | NJ, UPGMA (model-corrected distances), ML (JC69/K80/HKY85/GTR, +Γ, NNI, AIC/BIC), parsimony, bootstrap, built-in MSA, trimming |
+| **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML (JC69/K80/HKY85/GTR, +Γ, NNI, AIC/BIC), parsimony (from sequences or a discrete character/trait matrix via `read_character_matrix`), bootstrap, built-in MSA, trimming |
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |

@@ -161,6 +161,60 @@ def test_parsimony_inference():
     assert pt.parsimony_score(good, aln) < pt.parsimony_score(bad, aln)
 
 
+def test_parsimony_discriminates_binary_character_matrix():
+    # Regression: non-nucleotide alphabets (e.g. a 0/1 gene presence/absence
+    # matrix) used to silently score every tree 0.0, since states were
+    # matched against a hardcoded A/C/G/T/U table. Fitch states are now
+    # derived per-site from whatever characters are actually present.
+    from phytreon.infer import Alignment
+    names = ["A1", "A2", "A3", "B1", "B2", "B3"]
+    seqs = ["111", "111", "111", "000", "000", "000"]
+    aln = Alignment(names, seqs)
+    good = pt.Tree.from_newick("((A1,A2),A3,((B1,B2),B3));")
+    bad = pt.Tree.from_newick("((A1,B1),A2,((A3,B2),B3));")
+    good_score = pt.parsimony_score(good, aln)
+    bad_score = pt.parsimony_score(bad, aln)
+    assert good_score > 0.0          # not silently zero
+    assert good_score < bad_score    # discriminates the correct grouping
+
+
+def test_parsimony_missing_data_no_spurious_change():
+    from phytreon.infer import Alignment
+    aln = Alignment(["x1", "x2", "x3", "x4"], ["A", "A", "?", "A"])
+    tree = pt.Tree.from_newick("((x1,x2),(x3,x4));")
+    assert pt.parsimony_score(tree, aln) == 0.0
+
+
+def test_read_character_matrix_from_dataframe():
+    import pandas as pd
+    df = pd.DataFrame({
+        "name": ["A1", "A2", "A3", "B1", "B2", "B3"],
+        "geneA": [1, 1, 1, 0, 0, 0],
+        "geneB": [1, 1, 0, 0, 0, 1],
+        "geneC": [0, 0, 0, 1, 1, 1],
+    })
+    aln = pt.read_character_matrix(df, taxa_col="name")
+    assert aln.nseq == 6 and aln.ncol == 3
+    tree = pt.parsimony_tree(aln, search=True)
+    kids = [frozenset(c.leaf_names()) for c in tree.root.children]
+    assert frozenset({"A1", "A2", "A3"}) in kids
+    assert frozenset({"B1", "B2", "B3"}) in kids
+
+
+def test_read_character_matrix_from_csv_with_missing(tmp_path):
+    import pandas as pd
+    csv = tmp_path / "traits.csv"
+    pd.DataFrame({
+        "name": ["t1", "t2", "t3"],
+        "trait1": [1, 1, None],       # missing value -> ambiguous, not a state
+        "trait2": ["red", "blue", "red"],
+    }).to_csv(csv, index=False)
+    aln = pt.read_character_matrix(str(csv), taxa_col="name")
+    assert aln.nseq == 3 and aln.ncol == 2
+    seq_by_name = dict(zip(aln.names, aln.seqs))
+    assert seq_by_name["t3"][0] == "?"        # missing value encoded as ambiguous
+
+
 def test_gamma_rate_heterogeneity():
     aln = pt.align(SEQS, seqtype="nucleotide")
     tr = pt.midpoint_root(pt.infer.nj_builder(aln))
