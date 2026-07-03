@@ -1,7 +1,9 @@
 """Raw sequences -> tree, the whole configurable pipeline."""
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+matplotlib.use("Agg")
 import phytreon as pt
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")

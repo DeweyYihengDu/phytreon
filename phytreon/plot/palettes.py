@@ -67,19 +67,19 @@ _UN = 4 * _XN / (_XN + 15 * _YN + 3 * _ZN)
 _VN = 9 * _YN / (_XN + 15 * _YN + 3 * _ZN)
 
 
-def _hcl_to_hex(h_deg: float, c: float = 100.0, l: float = 65.0) -> str:
-    if l <= 0:
+def _hcl_to_hex(h_deg: float, c: float = 100.0, lum: float = 65.0) -> str:
+    if lum <= 0:
         return "#000000"
     hr = math.radians(h_deg)
     u = c * math.cos(hr)
     v = c * math.sin(hr)
     # CIELUV -> XYZ
-    if l > 8:
-        Y = _YN * ((l + 16) / 116) ** 3
+    if lum > 8:
+        Y = _YN * ((lum + 16) / 116) ** 3
     else:
-        Y = _YN * l / 903.3
-    up = u / (13 * l) + _UN
-    vp = v / (13 * l) + _VN
+        Y = _YN * lum / 903.3
+    up = u / (13 * lum) + _UN
+    vp = v / (13 * lum) + _VN
     X = Y * 9 * up / (4 * vp)
     Z = Y * (12 - 3 * up - 20 * vp) / (4 * vp)
     # XYZ (0..100) -> linear sRGB
@@ -90,15 +90,15 @@ def _hcl_to_hex(h_deg: float, c: float = 100.0, l: float = 65.0) -> str:
     return _rgb01_to_hex((_linear_to_srgb(r), _linear_to_srgb(g), _linear_to_srgb(b)))
 
 
-def hue_palette(n: int, c: float = 100.0, l: float = 65.0,
+def hue_palette(n: int, c: float = 100.0, lum: float = 65.0,
                 h_start: float = 15.0, h_end: float = 375.0) -> List[str]:
     """n evenly spaced HCL hues around the colour wheel."""
     if n <= 0:
         return []
     if n == 1:
-        return [_hcl_to_hex(h_start, c, l)]
+        return [_hcl_to_hex(h_start, c, lum)]
     step = (h_end - h_start) / n
-    return [_hcl_to_hex((h_start + step * i) % 360, c, l) for i in range(n)]
+    return [_hcl_to_hex((h_start + step * i) % 360, c, lum) for i in range(n)]
 
 
 def categorical_palette(n: int, name: str = "hue") -> List[str]:

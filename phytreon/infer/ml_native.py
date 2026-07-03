@@ -17,9 +17,9 @@ for large alignments; this engine is for convenience and self-containment.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from ..core.tree import Node, Tree
+from ..core.tree import Tree
 from .align import Alignment
 
 _STATES = "ACGT"

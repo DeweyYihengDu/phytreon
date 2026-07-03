@@ -322,7 +322,7 @@ class _Heatmap(_Element):
                  cmap=None, palette: str = "hue", shared_scale: bool = False,
                  colnames: bool = True, colname_size: float = 9.0,
                  cell_gap: float = 0.05):
-        self.data = data
+        self.data = _index_by_name(data)
         self.offset = offset
         self.width = width
         self.cmap = cmap

@@ -36,7 +36,7 @@ from .treeops import (
 __version__ = "0.1.1"
 
 __all__ = [
-    "core", "layout", "infer", "comparative", "plot", "datasets",
+    "core", "layout", "infer", "comparative", "plot", "datasets", "treeops",
     "Tree", "Node",
     "TreeFigure",
     "neighbor_joining", "upgma", "tree_from_alignment", "distance_matrix",

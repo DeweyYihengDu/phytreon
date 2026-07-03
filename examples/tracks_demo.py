@@ -1,7 +1,9 @@
 """Rectangular multi-column tracks + alignment track, on the 16S data."""
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+matplotlib.use("Agg")
 import pandas as pd
 import phytreon as pt
 

@@ -6,9 +6,11 @@ and as a circular tree with metadata rings.
 
 Data prep (run once):  python examples/data/fetch_example_data.py
 """
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+matplotlib.use("Agg")
 import pandas as pd
 import phytreon as pt
 

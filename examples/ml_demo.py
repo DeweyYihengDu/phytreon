@@ -6,9 +6,11 @@ NNI topology search (much slower on this many taxa). For rate heterogeneity add
 ``ml_gamma=4``; to pick a model by AIC use ``pt.model_finder(...)``; for large
 data use ``ml_engine="iqtree"``.
 """
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+matplotlib.use("Agg")
 import pandas as pd
 import phytreon as pt
 

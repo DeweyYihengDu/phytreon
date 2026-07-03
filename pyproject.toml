@@ -26,7 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 interactive = ["plotly>=5.0"]
-dev = ["pytest>=7", "plotly>=5.0"]
+dev = ["pytest>=7", "plotly>=5.0", "ruff"]
 docs = ["mkdocs-material", "mkdocstrings[python]"]
 
 [project.urls]
@@ -41,3 +41,6 @@ version = { attr = "phytreon.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["phytreon*"]
+
+[tool.ruff]
+target-version = "py39"

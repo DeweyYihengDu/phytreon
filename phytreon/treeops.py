@@ -201,7 +201,7 @@ def _far_leaf(adj, src, leaves):
                 dist[v] = dist[u] + w
                 prev[v] = u
                 stack.append(v)
-    far = max(leaves, key=lambda l: dist.get(l, 0.0))
+    far = max(leaves, key=lambda leaf: dist.get(leaf, 0.0))
     return far, dist, prev
 
 
@@ -307,7 +307,7 @@ def cut_tree(tree: Tree, height: Optional[float] = None,
 # helpers
 # --------------------------------------------------------------------------
 def _leaf_names(node: Node) -> List[str]:
-    return [l.name for l in node.get_leaves()]
+    return [leaf.name for leaf in node.get_leaves()]
 
 
 def _child_towards(ancestor: Node, descendant: Node) -> Node:

@@ -19,7 +19,7 @@ Design notes
 """
 from __future__ import annotations
 
-from typing import Callable, Dict, Iterable, Iterator, List, Optional
+from typing import Dict, Iterable, Iterator, List, Optional
 
 
 class Node:

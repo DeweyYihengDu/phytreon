@@ -180,13 +180,15 @@ def _align_profiles(P: _Profile, Q: _Profile, sc: Scoring) -> _Profile:
         for j in range(1, n + 1):
             d = Fim[j - 1] + cs(Pki, Qk[j - 1])
             u = Fim[j] + g
-            l = Fi[j - 1] + g
-            if d >= u and d >= l:
+            lft = Fi[j - 1] + g
+            if d >= u and d >= lft:
                 Fi[j] = d
-            elif u >= l:
-                Fi[j] = u; Ti[j] = 1
+            elif u >= lft:
+                Fi[j] = u
+                Ti[j] = 1
             else:
-                Fi[j] = l; Ti[j] = 2
+                Fi[j] = lft
+                Ti[j] = 2
 
     gapsP = ["-"] * len(P.names)
     gapsQ = ["-"] * len(Q.names)
@@ -195,11 +197,15 @@ def _align_profiles(P: _Profile, Q: _Profile, sc: Scoring) -> _Profile:
     while i > 0 or j > 0:
         t = T[i][j]
         if t == 0:
-            cols.append(P.cols[i - 1] + Q.cols[j - 1]); i -= 1; j -= 1
+            cols.append(P.cols[i - 1] + Q.cols[j - 1])
+            i -= 1
+            j -= 1
         elif t == 1:
-            cols.append(P.cols[i - 1] + gapsQ); i -= 1
+            cols.append(P.cols[i - 1] + gapsQ)
+            i -= 1
         else:
-            cols.append(gapsP + Q.cols[j - 1]); j -= 1
+            cols.append(gapsP + Q.cols[j - 1])
+            j -= 1
     cols.reverse()
     return _Profile(P.names + Q.names, cols)
 

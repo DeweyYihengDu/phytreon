@@ -24,12 +24,14 @@ def _to_records(seqs: SeqInput) -> Union[Records, Alignment]:
     return list(seqs)
 
 
+_METHODS = ("nj", "upgma", "ml", "parsimony", "mp")
+
+
 def build_tree(sequences: SeqInput, *,
                aligner: str = "builtin",
                align_kw: Optional[Dict] = None,
                trim_kw: Optional[Dict] = None,
                method: str = "nj",
-               model: str = "identity",
                dist_model: str = "jc69",
                root: str = "none",
                bootstrap: int = 0,
@@ -53,9 +55,11 @@ def build_tree(sequences: SeqInput, *,
     trim_kw     ``None`` to skip trimming, else forwarded to
                 :func:`phytreon.infer.trim.trim` (``max_gap``,
                 ``min_occupancy``, ``min_conservation`` ...).
-    method      ``"nj"`` | ``"upgma"`` | ``"ml"``.
+    method      ``"nj"`` | ``"upgma"`` | ``"ml"`` | ``"parsimony"``/``"mp"``.
     bootstrap   number of bootstrap replicates (0 = none; distance methods).
     """
+    if method not in _METHODS:
+        raise ValueError(f"unknown method {method!r}; choose one of {_METHODS}")
     data = _to_records(sequences)
 
     # 1. alignment ------------------------------------------------------
@@ -85,7 +89,7 @@ def build_tree(sequences: SeqInput, *,
     elif method in ("parsimony", "mp"):
         from .parsimony import parsimony_tree
         tree = parsimony_tree(aln, search=ml_search)
-    else:
+    else:                                    # method in ("nj", "upgma")
         from .bootstrap import distance_matrix_model
         from .distance import neighbor_joining, upgma
         names, D = distance_matrix_model(aln, dist_model)
@@ -111,8 +115,7 @@ def build_tree(sequences: SeqInput, *,
         elif method == "ml" and ml_engine == "native":
             from .ml_native import ml_tree as _nml
             # replicates skip NNI for tractability (branch+model opt only)
-            builder = lambda a: _nml(a, model=ml_model, gamma=ml_gamma,
-                                     search=False)                   # noqa: E731
+            builder = lambda a: _nml(a, model=ml_model, gamma=ml_gamma, search=False)  # noqa: E731
         else:
             builder = None
         if builder is not None:

@@ -90,7 +90,7 @@ def demo_ancestral():
         "Orangutan": "forest", "Gibbon": "forest",
         "Macaque": "savanna", "Baboon": "savanna",
     }
-    res = pt.ace_ml(tr, trait)
+    pt.ace_ml(tr, trait)
     model = tr.root.data["_ace_model"]
     print("[ok] ACE (Mk-ML) rate=%.3f states=%s" % (model["rate"], model["states"]))
     # colour tips by observed state, internal nodes by reconstructed state

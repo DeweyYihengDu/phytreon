@@ -127,6 +127,17 @@ def test_continuous_scale_makes_colorbar(tmp_path):
     assert (tmp_path / "cb.png").exists()
 
 
+def test_heatmap_accepts_name_column_not_indexed():
+    import pandas as pd
+    tr = pt.datasets.primates()
+    # a 'name' column but NOT set as the index -- heatmap() must still match
+    # rows to tips by that column, the same as ring()/bar_track() already do
+    mat = pd.DataFrame({"name": tr.leaf_names(),
+                        "mass": [62, 45, 160, 75, 8, 11, 25]})
+    ctx = pt.TreeFigure(tr).tip_labels().heatmap(mat)._build()
+    assert len(ctx.scene.polygons) == tr.n_leaves
+
+
 def test_node_pies(tmp_path):
     tr = pt.datasets.primates()
     trait = {n: ("ape" if n in tr.get_mrca(["Human", "Orangutan"]).leaf_names()
@@ -229,3 +240,25 @@ def test_alignment_track_raster(tmp_path):
     assert r.codes.shape[0] == tr.n_leaves and r.codes.shape[1] == aln.ncol
     p.save(str(tmp_path / "aln.png"))
     assert (tmp_path / "aln.png").exists()
+
+
+def test_plotly_shifts_aligned_paths():
+    # clade_label() emits an aligned Path (the bracket bar) that must be
+    # pushed past the tip labels in the plotly backend, exactly like the
+    # aligned Polygon/Label/Raster primitives already are.
+    tr = pt.datasets.primates()
+    apes = tr.get_mrca(["Human", "Gibbon"])
+    fig = pt.TreeFigure(tr).tip_labels().clade_label("Apes", node=apes)
+    ctx = fig._build()
+    aligned = [p for p in ctx.scene.paths if p.align]
+    assert aligned, "expected clade_label() to emit an aligned Path"
+    orig_x = aligned[0].points[0][0]
+
+    plotly_fig = fig.draw(backend="plotly")
+    shifted = False
+    for trace in plotly_fig.data:
+        xs = [x for x in (trace.x or []) if x is not None]
+        if len(xs) >= 2 and len({round(x, 6) for x in xs}) == 1:
+            if abs(xs[0] - orig_x) > 1e-9:
+                shifted = True
+    assert shifted, "aligned Path was not shifted in the plotly backend"

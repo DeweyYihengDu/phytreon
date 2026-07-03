@@ -4,9 +4,11 @@ Demonstrates the elements needed for pathogen-phylogeny figures: lineage-
 coloured branches, shaped tip points, a categorical ring, an outer bar ring,
 tip labels, and several non-overlapping legends.
 """
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+matplotlib.use("Agg")
 import random
 import pandas as pd
 import phytreon as pt

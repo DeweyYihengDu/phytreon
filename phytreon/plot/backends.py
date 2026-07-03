@@ -45,8 +45,8 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
     al_polys = [p for p in scene.polygons if p.align]
     base_paths = [p for p in scene.paths if not p.align]
     al_paths = [p for p in scene.paths if p.align]
-    base_labels = [l for l in scene.labels if not l.align]
-    al_labels = [l for l in scene.labels if l.align]
+    base_labels = [lb for lb in scene.labels if not lb.align]
+    al_labels = [lb for lb in scene.labels if lb.align]
     base_rasters = [r for r in scene.rasters if not r.align]
     al_rasters = [r for r in scene.rasters if r.align]
 
@@ -215,8 +215,8 @@ def _aligned_extent(polys, paths, labels, rasters, max_x):
         xs += [pt[0] for pt in p.points]
     for p in paths:
         xs += [pt[0] for pt in p.points]
-    for l in labels:
-        xs.append(l.x)
+    for lb in labels:
+        xs.append(lb.x)
     for r in rasters:
         xs.append(r.x1)
     if not xs:
@@ -279,7 +279,7 @@ def render_plotly(ctx: RenderContext, title: Optional[str] = None,
     kind = getattr(ctx.layout, "kind", "rect")
     dx_align = 0.0
     if kind == "rect":
-        maxlen = max((len(l.text) for l in scene.labels if l.role == "tiplab"),
+        maxlen = max((len(lb.text) for lb in scene.labels if lb.role == "tiplab"),
                      default=0)
         dx_align = ctx.layout.max_x * min(0.8, 0.03 * maxlen)
 
@@ -317,13 +317,12 @@ def render_plotly(ctx: RenderContext, title: Optional[str] = None,
         ))
 
     # paths -- group all branch segments into one trace with None breaks
-    bx, by = [], []
     colored = {}
     for p in scene.paths:
         key = (p.color, p.width, p.dash)
         colored.setdefault(key, [[], []])
         for x, y in p.points:
-            colored[key][0].append(x)
+            colored[key][0].append(shx(x, p.align))
             colored[key][1].append(y)
         colored[key][0].append(None)
         colored[key][1].append(None)

@@ -132,16 +132,21 @@ class Scene:
         ys: List[float] = []
         for p in self.paths:
             for x, y in p.points:
-                xs.append(x); ys.append(y)
+                xs.append(x)
+                ys.append(y)
         for poly in self.polygons:
             for x, y in poly.points:
-                xs.append(x); ys.append(y)
+                xs.append(x)
+                ys.append(y)
         for m in self.markers:
-            xs.append(m.x); ys.append(m.y)
+            xs.append(m.x)
+            ys.append(m.y)
         for lb in self.labels:
-            xs.append(lb.x); ys.append(lb.y)
+            xs.append(lb.x)
+            ys.append(lb.y)
         for r in self.rasters:
-            xs.extend([r.x0, r.x1]); ys.extend([r.y0, r.y1])
+            xs.extend([r.x0, r.x1])
+            ys.extend([r.y0, r.y1])
         if not xs:
             return (0.0, 0.0, 1.0, 1.0)
         return (min(xs), min(ys), max(xs), max(ys))

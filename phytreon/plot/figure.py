@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional, Tuple
 
-from ..core.tree import Node, Tree
+from ..core.tree import Tree
 from ..layout import get_layout, Layout
 from ..scene import Scene
 

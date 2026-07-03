@@ -3,7 +3,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import phytreon as pt
-from phytreon.infer import align, trim, Alignment
+from phytreon.infer import align, trim
 
 SEQS = [
     ("A1", "ATGGCCATTGTAATGGGCCGCTGAAAGGGTGCCCGATAG"),
@@ -38,6 +38,12 @@ def test_build_tree_recovers_groups():
     kids = [frozenset(c.leaf_names()) for c in tree.root.children]
     assert frozenset({"A1", "A2", "A3"}) in kids
     assert frozenset({"B1", "B2", "B3"}) in kids
+
+
+def test_build_tree_rejects_unknown_method():
+    import pytest
+    with pytest.raises(ValueError, match="unknown method"):
+        pt.build_tree(SEQS, method="bad")
 
 
 def test_bootstrap_support_range_and_signal():
@@ -98,7 +104,7 @@ def test_nj_recovers_additive_tree():
     true_tree = pt.datasets.random_tree(10, seed=3)
     depth = {n: n.depth(use_lengths=True) for n in true_tree.traverse()}
     leaves = true_tree.leaves()
-    names = [l.name for l in leaves]
+    names = [leaf.name for leaf in leaves]
     D = [[0.0] * len(leaves) for _ in leaves]
     for i, a in enumerate(leaves):
         for j in range(i + 1, len(leaves)):

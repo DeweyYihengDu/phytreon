@@ -13,7 +13,7 @@ in the plotting layer needs to change.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from ..core.tree import Node, Tree
 
