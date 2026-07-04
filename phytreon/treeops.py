@@ -172,8 +172,9 @@ def robinson_foulds(t1: Tree, t2: Tree, normalized: bool = False) -> float:
     rf = len(b1 ^ b2)
     if normalized:
         n = t1.n_leaves
-        denom = 2 * (n - 3) or 1
-        return rf / denom
+        if n < 4:
+            return 0.0          # no non-trivial bipartitions possible below 4 taxa
+        return rf / (2 * (n - 3))
     return float(rf)
 
 

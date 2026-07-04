@@ -14,7 +14,9 @@ from ..core.tree import Tree
 from .align import Alignment
 
 
-_TRANSITION = {frozenset("AG"), frozenset("CT"), frozenset("AU"), frozenset("CU")}
+# purine<->purine (A<->G) and pyrimidine<->pyrimidine (C<->T, or C<->U in RNA)
+# transitions; A<->U/A<->T etc. are purine<->pyrimidine transversions.
+_TRANSITION = {frozenset("AG"), frozenset("CT"), frozenset("CU")}
 
 
 def distance_matrix_model(aln: Alignment, model: str = "jc69"

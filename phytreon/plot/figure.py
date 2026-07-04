@@ -58,6 +58,13 @@ def _isnan(v) -> bool:
         return False
 
 
+def is_numeric(v) -> bool:
+    """True for real numbers, including numpy int64/float64 (which fail
+    ``isinstance(v, (int, float))``); False for bool (a Number subclass)."""
+    import numbers
+    return isinstance(v, numbers.Number) and not isinstance(v, bool)
+
+
 def build_color_scale(title: str, values, cmap=None,
                       palette: str = "hue") -> ColorScale:
     """Build a colour scale (categorical or continuous) from raw values.
@@ -68,15 +75,10 @@ def build_color_scale(title: str, values, cmap=None,
     * ``cmap`` -- continuous colour spec: ``None`` for the default blue
       gradient, a ``(low, high)`` hex pair, or a matplotlib colormap name.
     """
-    import numbers
     from .palettes import categorical_palette, continuous_mapper
 
-    def _isnum(v):
-        # numbers.Number catches numpy int64/float64 (which fail isinstance int)
-        return isinstance(v, numbers.Number) and not isinstance(v, bool)
-
     present = [v for v in values if v is not None and not _isnan(v)]
-    numeric = len(present) > 0 and all(_isnum(v) for v in present)
+    numeric = len(present) > 0 and all(is_numeric(v) for v in present)
     if numeric:
         vmin, vmax = min(present), max(present)
         mapping = continuous_mapper(vmin, vmax, cmap)

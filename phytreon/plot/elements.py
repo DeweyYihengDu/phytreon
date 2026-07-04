@@ -15,7 +15,7 @@ from typing import Optional
 
 from ..core.tree import Node
 from ..scene import Label, Marker, Path, Polygon, Raster
-from .figure import _Element, RenderContext, build_color_scale
+from .figure import _Element, RenderContext, build_color_scale, is_numeric
 
 
 # --------------------------------------------------------------------------
@@ -199,13 +199,13 @@ class _Points(_Element):
 
 def _resolve_size(spec, nodes):
     if isinstance(spec, str) and any(spec in n.data for n in nodes):
-        vals = [n.data.get(spec) for n in nodes if isinstance(n.data.get(spec), (int, float))]
+        vals = [n.data.get(spec) for n in nodes if is_numeric(n.data.get(spec))]
         lo, hi = (min(vals), max(vals)) if vals else (0, 1)
         rng = (hi - lo) or 1.0
 
         def f(n, _lo=lo, _rng=rng):
             v = n.data.get(spec)
-            if not isinstance(v, (int, float)):
+            if not is_numeric(v):
                 return 6.0
             return 4.0 + 12.0 * (v - _lo) / _rng
         return f, True

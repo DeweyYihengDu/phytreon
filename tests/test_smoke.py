@@ -19,6 +19,19 @@ def test_mrca():
     assert set(node.leaf_names()) == {"Human", "Chimp"}
 
 
+def test_mrca_rejects_missing_taxon():
+    # Regression: get_mrca(["Human", "NotExisting"]) used to silently return
+    # the MRCA of whichever names *were* found (i.e. just "Human"'s own leaf
+    # node), giving no indication that "NotExisting" isn't in the tree.
+    import pytest
+    tr = pt.datasets.primates()
+    with pytest.raises(ValueError, match="NotExisting"):
+        tr.get_mrca(["Human", "NotExisting"])
+    # strict=False keeps the old lenient behaviour for callers that want it
+    node = tr.get_mrca(["Human", "NotExisting"], strict=False)
+    assert node.name == "Human"
+
+
 def test_layouts_render_both_backends(tmp_path):
     tr = pt.datasets.primates()
     for layout in ("rectangular", "circular"):
@@ -46,6 +59,15 @@ def test_ace_parsimony_clean_clade():
     assert res["score"] == 1            # single clade-defining change
 
 
+def test_ace_parsimony_polytomy_counts_all_steps():
+    # Regression: a 3-way polytomy with 3 disjoint states used to score 1
+    # (binary-Fitch all-children intersection), but correctly needs 2 state
+    # changes to explain 3 distinct states from one ancestor.
+    tr = pt.Tree.from_newick("(A:1,B:1,C:1);")
+    res = pt.ace_parsimony(tr, {"A": "x", "B": "y", "C": "z"})
+    assert res["score"] == 2
+
+
 def test_ace_ml_recovers_clade():
     tr = pt.datasets.primates()
     clade = set(tr.get_mrca(["Human", "Orangutan"]).leaf_names())
@@ -68,6 +90,18 @@ def test_stochastic_map_paints_and_matches_ace(tmp_path):
     p = pt.TreeFigure(tr).painted_branches().tip_labels()
     p.save(str(tmp_path / "painted.png"))
     assert (tmp_path / "painted.png").exists()
+
+
+def test_stochastic_map_records_all_ard_rates():
+    # Regression: only params[0] was recorded as "rate", losing information
+    # for SYM/ARD models which fit more than one rate parameter.
+    tr = pt.datasets.primates()
+    clade = set(tr.get_mrca(["Human", "Orangutan"]).leaf_names())
+    trait = {n: ("ape" if n in clade else "other") for n in tr.leaf_names()}
+    pt.stochastic_map(tr, trait, n=50, model="ARD", seed=0)
+    info = tr.data["stochastic_map"]
+    assert info["model"] == "ARD"
+    assert len(info["rates"]) == 2          # 2 states -> 2 asymmetric ARD rates
 
 
 def test_continuous_ace_bounds():
@@ -157,6 +191,19 @@ def test_numeric_scale_handles_numpy_ints():
     assert sc.continuous          # numpy ints must read as continuous, not categorical
 
 
+def test_point_size_handles_numpy_ints():
+    # Regression: _resolve_size() used isinstance(v, (int, float)), which is
+    # False for numpy.int64/float64 (the dtype pandas/numpy normally produce),
+    # silently falling back to a constant marker size.
+    import numpy as np
+    tr = pt.datasets.primates()
+    for tip, v in zip(tr.leaves(), [10, 20, 30, 40, 50, 60, 70]):
+        tip.data["mass"] = np.int64(v)
+    ctx = pt.TreeFigure(tr).tip_points(size="mass")._build()
+    sizes = {m.size for m in ctx.scene.markers}
+    assert len(sizes) > 1          # sizes must vary, not all fall back to 6.0
+
+
 def test_metadata_rings(tmp_path):
     import pandas as pd
     tr = pt.datasets.primates()
@@ -209,6 +256,14 @@ def test_shape_and_bar_ring(tmp_path):
     assert "city" in titles                        # shape legend present
     p.save(str(tmp_path / "bar.png"))
     assert (tmp_path / "bar.png").exists()
+
+    # regression: the plotly backend must render the actual marker shapes,
+    # not just the legend swatches
+    plotly_fig = p.draw(backend="plotly")
+    real_marker_traces = [t for t in plotly_fig.data
+                          if t.mode == "markers" and t.x and len(t.x) > 1]
+    symbols = {s for t in real_marker_traces for s in (t.marker.symbol or [])}
+    assert len(symbols) == 3
 
 
 def test_rectangular_tracks_stack(tmp_path):

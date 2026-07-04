@@ -24,6 +24,35 @@ All notable changes to phytreon are documented here. Format loosely follows
   diverge from the matplotlib rendering.
 - CI lint (`pyflakes ... || true`) could never fail the build. Switched to
   `ruff` (added to the `dev` extra) with lint now enforced.
+- `Tree.get_mrca()` silently computed the MRCA of whichever requested taxa
+  *were* found, so a typo'd or missing name (e.g. `get_mrca(["Human",
+  "NotExisting"])`) returned a misleadingly small clade instead of an error.
+  Now raises `ValueError` listing the missing taxa by default (`strict=True`);
+  pass `strict=False` for the old lenient behaviour.
+- K2P distance treated `A<->U` as a transition; it is a purine<->pyrimidine
+  transversion (only `A<->G` and `C<->T`/`C<->U` are transitions), so K2P
+  distances on RNA data were biased.
+- The Plotly backend rendered every point as a circle regardless of a
+  `shape=` mapping -- the marker→symbol table existed but was only wired up
+  for legend swatches, not the actual marker trace.
+- `ace_parsimony()` computed the Fitch state set for internal nodes as the
+  intersection of *all* children at once, undercounting steps at polytomies
+  (3+ children, as produced by `collapse_low_support()`): 3 children with 3
+  disjoint states scored 1 instead of the correct 2. Now combines children
+  sequentially.
+- `robinson_foulds(normalized=True)` divided by `2*(n-3)`, which is `-2` (not
+  0) for `n=2`, so `or 1` didn't guard it and small trees could return a
+  negative distance. Now returns `0.0` for `n<4`.
+- `Alignment(names, seqs)` accepted mismatched-length sequences, a
+  names/seqs count mismatch, or duplicate names without error; each now
+  raises `ValueError` in `__post_init__`.
+- `stochastic_map()` recorded only `params[0]` as `"rate"`, discarding the
+  other fitted rates for `SYM`/`ARD` models (which have more than one).  Now
+  records `"model"` and the full `"rates"` list.
+- `_resolve_size()` used `isinstance(v, (int, float))`, which is `False` for
+  `numpy.int64`/`float64` (the dtype pandas normally produces), so a `size=`
+  mapping from a DataFrame column silently fell back to a constant size.
+  Now shares the `numbers.Number`-based check already used for colour scales.
 
 ### Added
 - `read_character_matrix()`: build an `Alignment` directly from a discrete

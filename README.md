@@ -248,8 +248,12 @@ writing one translator — nothing in the phylogenetic logic changes.
 | Pure Python, pip-installable | ✅ | ✅ (Qt for GUI) | ✅ | ✅ | ✅ |
 
 phytreon's niche is a fluent figure builder plus a self-contained phylogenetics
-stack, with optional external tools for large-scale alignments or rigorous
-large-scale ML (`aligner="mafft"`, `ml_engine="iqtree"`).
+stack. The built-in aligner and native ML engine are designed for small to
+medium examples, teaching, prototyping, and reproducible pure-Python
+workflows — not as a replacement for MAFFT/MUSCLE or IQ-TREE/RAxML/FastTree
+on large production alignments. Plug those in when you need them
+(`aligner="mafft"`, `ml_engine="iqtree"`), then use phytreon for tree
+manipulation, metadata integration, and visualization.
 
 ---
 

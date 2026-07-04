@@ -76,7 +76,6 @@ def stochastic_map(tree: Tree, trait: Dict[str, str], n: int = 200,
 
     D = down(params)
     Q = build_Q(params)
-    rate = float(params[0])
     P = {id(n): expm(Q * max(n.length or 0.0, 1e-6))
          for n in tree.traverse() if not n.is_root}
     rng = np.random.default_rng(seed)
@@ -130,5 +129,8 @@ def stochastic_map(tree: Tree, trait: Dict[str, str], n: int = 200,
         tot = d.sum() or 1.0
         node.data["paint_segments"] = [(states[i], float(d[i] / tot))
                                        for i in range(k) if d[i] > 0]
-    tree.data["stochastic_map"] = {"rate": rate, "states": states, "n": n}
+    tree.data["stochastic_map"] = {
+        "model": model, "rates": [float(x) for x in params],
+        "states": states, "n": n,
+    }
     return tree

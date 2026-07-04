@@ -15,6 +15,27 @@ SEQS = [
 ]
 
 
+def test_alignment_rejects_mismatched_lengths():
+    import pytest
+    from phytreon.infer import Alignment
+    with pytest.raises(ValueError, match="same length"):
+        Alignment(["A", "B"], ["ACGT", "ACG"])
+
+
+def test_alignment_rejects_duplicate_names():
+    import pytest
+    from phytreon.infer import Alignment
+    with pytest.raises(ValueError, match="unique"):
+        Alignment(["A", "A"], ["ACGT", "ACGA"])
+
+
+def test_alignment_rejects_names_seqs_count_mismatch():
+    import pytest
+    from phytreon.infer import Alignment
+    with pytest.raises(ValueError, match="same length"):
+        Alignment(["A", "B", "C"], ["ACGT", "ACGT"])
+
+
 def test_builtin_align_rectangular():
     aln = align([(n, s) for n, s in SEQS], seqtype="nucleotide")
     assert aln.nseq == 6
@@ -123,6 +144,18 @@ def test_corrected_distance_inflates():
     assert jc[0][3] >= raw[0][3] - 1e-12       # JC correction >= raw distance
 
 
+def test_k2p_purine_pyrimidine_is_transversion_not_transition():
+    # Regression: A<->U (and by extension A<->T) is a purine<->pyrimidine
+    # transversion, not a transition; only A<->G and C<->T/U are transitions.
+    import math
+    from phytreon.infer import Alignment, distance_matrix_model
+    aln = Alignment(["x", "y"], ["AAAGCCCCCC", "UUAGCCCCCC"])
+    _, D = distance_matrix_model(aln, "k2p")
+    p_ts, p_tv = 0 / 10, 2 / 10
+    expected = -0.5 * math.log((1 - 2 * p_ts - p_tv) * math.sqrt(1 - 2 * p_tv))
+    assert abs(D[0][1] - expected) < 1e-9
+
+
 def test_nj_no_negative_branches():
     tree = pt.build_tree(SEQS, method="nj")
     assert all((n.length or 0.0) >= 0.0 for n in tree.traverse())
@@ -139,6 +172,16 @@ def test_robinson_foulds():
     b = pt.Tree.from_newick("((A,C),B,(D,E));")
     assert pt.robinson_foulds(a, a) == 0.0
     assert pt.robinson_foulds(a, b) > 0.0
+
+
+def test_robinson_foulds_normalized_small_n_not_negative():
+    # Regression: 2*(n-3) is -2 for n=2 (truthy, so `or 1` didn't help),
+    # giving a nonsensical negative normalized RF.
+    t1 = pt.Tree.from_newick("(A,B);")
+    t2 = pt.Tree.from_newick("(A,B);")
+    assert pt.robinson_foulds(t1, t2, normalized=True) == 0.0
+    t3 = pt.Tree.from_newick("(A,B,C);")
+    assert pt.robinson_foulds(t3, t3, normalized=True) == 0.0
 
 
 def test_ml_bootstrap_support():

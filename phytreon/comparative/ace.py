@@ -41,12 +41,18 @@ def ace_parsimony(tree: Tree, trait: Dict[str, str]) -> Dict[str, object]:
             node.data["_pset"] = {s} if s is not None else set(full)
         else:
             sets = [c.data["_pset"] for c in node.children]
-            inter = set.intersection(*sets) if sets else set(full)
-            if inter:
-                node.data["_pset"] = inter
-            else:
-                node.data["_pset"] = set.union(*sets)
-                score += 1
+            # sequential Fitch combine (correct for polytomies, not just
+            # binary nodes): one +1 for every child whose state set fails
+            # to intersect the running accumulator, not one +1 per node.
+            acc = sets[0] if sets else set(full)
+            for s in sets[1:]:
+                inter = acc & s
+                if inter:
+                    acc = inter
+                else:
+                    acc = acc | s
+                    score += 1
+            node.data["_pset"] = acc
 
     # up-pass: resolve, preferring the parent's chosen state
     for node in tree.traverse("preorder"):

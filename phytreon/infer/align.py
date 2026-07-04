@@ -27,6 +27,19 @@ class Alignment:
     names: List[str]
     seqs: List[str]                       # aligned, all equal length
 
+    def __post_init__(self):
+        if len(self.names) != len(self.seqs):
+            raise ValueError(
+                f"names and seqs must have the same length "
+                f"({len(self.names)} != {len(self.seqs)})")
+        lengths = {len(s) for s in self.seqs}
+        if len(lengths) > 1:
+            raise ValueError(f"all aligned sequences must have the same "
+                             f"length; got lengths {sorted(lengths)}")
+        if len(set(self.names)) != len(self.names):
+            dupes = sorted({n for n in self.names if self.names.count(n) > 1})
+            raise ValueError(f"sequence names must be unique; duplicates: {dupes}")
+
     @property
     def nseq(self) -> int:
         return len(self.names)
@@ -291,8 +304,11 @@ def align_external(records: List[Record], tool: str = "mafft",
         )
     with tempfile.TemporaryDirectory() as tmp:
         infile = os.path.join(tmp, "in.fasta")
-        Alignment([n for n, _ in records],
-                  [s.replace("-", "") for _, s in records]).to_fasta(infile)
+        # write the raw (possibly unequal-length) unaligned records directly;
+        # Alignment is reserved for already-aligned, equal-length sequences.
+        with open(infile, "w") as f:
+            for n, s in records:
+                f.write(f">{n}\n{s.replace('-', '')}\n")
         if tool == "mafft":
             cmd = [exe, *(extra_args or ["--auto"]), infile]
             out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout

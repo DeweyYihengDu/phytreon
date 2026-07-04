@@ -264,6 +264,9 @@ def _set_limits(ax, scene, max_x, right_pad):
 # plotly
 # --------------------------------------------------------------------------
 _DASH_PLOTLY = {None: "solid", "dash": "dash", "dot": "dot"}
+_MARKER_PLOTLY = {"o": "circle", "s": "square", "^": "triangle-up",
+                  "D": "diamond", "v": "triangle-down", "P": "cross",
+                  "X": "x", "*": "star", "<": "triangle-left", ">": "triangle-right"}
 
 
 def render_plotly(ctx: RenderContext, title: Optional[str] = None,
@@ -340,6 +343,8 @@ def render_plotly(ctx: RenderContext, title: Optional[str] = None,
             mode="markers", showlegend=False,
             marker=dict(size=[m.size for m in scene.markers],
                         color=[m.color for m in scene.markers],
+                        symbol=[_MARKER_PLOTLY.get(m.marker, "circle")
+                                for m in scene.markers],
                         line=dict(width=0.5,
                                   color=[m.edgecolor or m.color for m in scene.markers])),
             text=[m.label or "" for m in scene.markers],
@@ -357,13 +362,10 @@ def render_plotly(ctx: RenderContext, title: Optional[str] = None,
         )
 
     # legends -> dummy traces so plotly draws a clickable legend
-    _mk2plotly = {"o": "circle", "s": "square", "^": "triangle-up",
-                  "D": "diamond", "v": "triangle-down", "P": "cross",
-                  "X": "x", "*": "star", "<": "triangle-left", ">": "triangle-right"}
     for lt, entries in scene.legends:
         for e in entries:
             label, color = e[0], e[1]
-            sym = _mk2plotly.get(e[2], "circle") if len(e) > 2 else "circle"
+            sym = _MARKER_PLOTLY.get(e[2], "circle") if len(e) > 2 else "circle"
             fig.add_trace(go.Scatter(
                 x=[None], y=[None], mode="markers", name=str(label),
                 legendgroup=lt, legendgrouptitle_text=lt,

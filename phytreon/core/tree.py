@@ -179,18 +179,29 @@ class Tree:
                 return n
         return None
 
-    def get_mrca(self, names: Iterable[str]) -> Optional[Node]:
-        """Most recent common ancestor of the named tips."""
+    def get_mrca(self, names: Iterable[str], strict: bool = True) -> Optional[Node]:
+        """Most recent common ancestor of the named tips.
+
+        ``strict=True`` (default) raises ``ValueError`` if any requested
+        name is not a leaf of this tree, rather than silently computing the
+        MRCA of whichever names *were* found (which can return a misleadingly
+        small clade -- e.g. a single leaf -- if only one name matched).
+        """
         targets = set(names)
+        found_names = set()
         # path from each target tip up to the root
         paths = []
         for leaf in self.leaves():
             if leaf.name in targets:
+                found_names.add(leaf.name)
                 p, node = [], leaf
                 while node is not None:
                     p.append(node)
                     node = node.parent
                 paths.append(p)
+        missing = targets - found_names
+        if missing and strict:
+            raise ValueError(f"taxa not found in tree: {sorted(missing)}")
         if not paths:
             return None
         common = set(paths[0])
