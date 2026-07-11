@@ -29,6 +29,33 @@ for row in pt.model_finder("seqs.fasta"):
     print(row)
 ```
 
+### Protein sequences
+
+Amino acid alignments use the same `build_tree(..., method="ml")` call, with
+one of the empirical protein models (`"JTT"` / `"WAG"` / `"LG"`) passed as
+`ml_model`. There is no automatic alphabet detection: `ml_model`'s default
+stays `"HKY85"`, so a protein alignment with no explicit `ml_model` (or a
+nucleotide model passed to protein data) raises a `ValueError` instead of
+silently producing a meaningless result.
+
+```python
+ml = pt.build_tree("proteins.fasta", method="ml", ml_model="LG", bootstrap=100)
+print(ml.data["logL"], ml.data["AIC"])
+
+# model_finder ranks JTT/WAG/LG (instead of the nucleotide set) once it
+# detects the alignment is protein:
+for row in pt.model_finder("proteins.fasta"):
+    print(row)
+```
+
+Distance-based methods (`method="nj"`/`"upgma"`) work on protein data too;
+`dist_model`'s default (`"jc69"`) falls back to raw p-distance on protein
+data unless you opt in to the protein-specific correction, `"poisson"`:
+
+```python
+nj = pt.build_tree("proteins.fasta", method="nj", dist_model="poisson")
+```
+
 ## Parsimony
 
 ```python
