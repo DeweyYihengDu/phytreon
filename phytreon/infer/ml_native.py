@@ -1,15 +1,30 @@
 """Pure-Python maximum-likelihood phylogenetics (no external engine).
 
-Implements the standard ML pipeline for nucleotide data:
+Implements the standard ML pipeline for nucleotide *and* protein data, as
+two parallel implementations sharing one optimisation/search layer:
 
 * Felsenstein's pruning likelihood, vectorised over compressed site
-  patterns (numpy), with rescaling to avoid underflow.
-* Time-reversible substitution models: JC69, K80, HKY85, GTR (with
-  empirical base frequencies; ti/tv and GTR exchangeabilities estimated
-  by ML).  Eigendecomposition gives a fast P(t)=exp(Qt).
-* ML branch-length optimisation (Brent per edge) and model-parameter
-  optimisation, alternated to convergence.
-* NNI hill-climbing topology search from a start tree (default NJ).
+  patterns (numpy), with rescaling to avoid underflow. The nucleotide
+  (4-state) and protein (20-state) likelihood kernels are separate
+  functions -- ``_site_logliks`` / ``_encode`` / ``_build_Q`` are exactly
+  the original nucleotide-only code, untouched; ``_site_logliks_aa`` /
+  ``_encode_aa`` / ``_build_Q_aa`` are their protein counterparts. Only
+  ``_log_likelihood`` (the bridge the shared optimiser calls) knows both
+  exist and picks one.
+* Nucleotide: time-reversible JC69, K80, HKY85, GTR (empirical base
+  frequencies; ti/tv and GTR exchangeabilities estimated by ML).
+* Protein: empirical exchangeability matrices JTT, WAG, LG (see
+  :mod:`phytreon.infer.aa_models`) with each model's own published
+  equilibrium frequencies -- exchangeabilities are fixed constants (fit
+  once, off-line, to large reference datasets), not re-estimated per
+  alignment, matching how RAxML/IQ-TREE treat these models by default.
+* Eigendecomposition gives a fast P(t)=exp(Qt) for either state space.
+* ML branch-length optimisation (Brent per edge), model-parameter
+  optimisation, and NNI hill-climbing topology search
+  (``_optimize_branches`` / ``_optimize_model`` / ``_nni_search``) are
+  untouched by the protein addition: they only ever call
+  ``_log_likelihood``, never reference a state count, and are exactly the
+  pre-existing nucleotide-only code.
 
 This is exact ML for small/medium problems.  It is pure Python, so it is
 far slower than RAxML/IQ-TREE -- use those (via :mod:`phytreon.infer.ml`)
@@ -21,14 +36,16 @@ from typing import Dict, List, Optional
 
 from ..core.tree import Tree
 from .align import Alignment
+from .aa_models import AA_MODELS, AA_STATES
 
 _STATES = "ACGT"
 _S2I = {c: i for i, c in enumerate(_STATES)}
 _S2I["U"] = 3
+_AA_S2I = {c: i for i, c in enumerate(AA_STATES)}
 
 
 # --------------------------------------------------------------------------
-# data: compress alignment to unique site patterns
+# data: compress alignment to unique site patterns -- nucleotide (original)
 # --------------------------------------------------------------------------
 def _encode(aln: Alignment):
     import numpy as np
@@ -66,7 +83,65 @@ def _empirical_freqs(states):
 
 
 # --------------------------------------------------------------------------
-# substitution models -> normalised Q and its eigendecomposition
+# data: compress alignment to unique site patterns -- protein (parallel)
+# --------------------------------------------------------------------------
+def _encode_aa(aln: Alignment):
+    import numpy as np
+    names = list(aln.names)
+    ncol = aln.ncol
+    patterns: Dict[tuple, int] = {}
+    order: List[tuple] = []
+    for j in range(ncol):
+        col = tuple(s[j].upper() for s in aln.seqs)
+        if col not in patterns:
+            patterns[col] = 0
+            order.append(col)
+        patterns[col] += 1
+    npat = len(order)
+    states = np.full((len(names), npat), -1, dtype=np.int8)
+    for p, col in enumerate(order):
+        for i, ch in enumerate(col):
+            states[i, p] = _AA_S2I.get(ch, -1)
+    weights = np.array([patterns[c] for c in order], dtype=float)
+    freqs = _empirical_freqs_aa(states)
+    return names, states, weights, freqs
+
+
+def _empirical_freqs_aa(states):
+    import numpy as np
+    counts = np.zeros(20)
+    for s in range(20):
+        counts[s] = (states == s).sum()
+    if counts.sum() == 0:
+        return np.full(20, 1.0 / 20)
+    f = counts / counts.sum()
+    f = np.clip(f, 1e-6, None)
+    return f / f.sum()
+
+
+def _alphabet_mismatch(aln: Alignment, want_protein: bool) -> Optional[str]:
+    """None if ``aln`` looks like the alphabet a chosen model expects,
+    else an actionable error message.
+
+    Without this check, a model built for the wrong alphabet doesn't
+    error -- it silently miscodes most sites as missing (a handful of
+    amino acid letters, A/C/G/T, coincide with nucleotide codes and get
+    scored as if they meant something they don't) and returns a
+    plausible-looking but scientifically meaningless likelihood.
+    """
+    from .align import guess_type
+    detected = guess_type(aln.seqs)
+    if want_protein and detected != "protein":
+        return ("expected protein data, but this alignment looks like "
+                f"{detected}. Pass a nucleotide model (JC69/K80/HKY85/GTR) instead.")
+    if not want_protein and detected != "nucleotide":
+        return ("expected nucleotide data, but this alignment looks like "
+                f"{detected}. Pass a protein model (JTT/WAG/LG) instead.")
+    return None
+
+
+# --------------------------------------------------------------------------
+# substitution models -> normalised Q -- nucleotide (original)
 # --------------------------------------------------------------------------
 def _exchange_matrix(model: str, params) -> "list":
     import numpy as np
@@ -95,6 +170,23 @@ def _build_Q(model, params, pi):
     R = _exchange_matrix(model, params)
     Q = R * pi[None, :]
     for i in range(4):
+        Q[i, i] = -Q[i].sum()
+    scale = -(pi * np.diag(Q)).sum()
+    return Q / scale
+
+
+# --------------------------------------------------------------------------
+# substitution model -> normalised Q -- protein (parallel)
+# --------------------------------------------------------------------------
+def _build_Q_aa(name, pi):
+    """JTT/WAG/LG: the exchangeability matrix is a fixed empirical constant
+    (no free params to estimate), looked up directly rather than built from
+    a parameter vector the way nucleotide models are."""
+    import numpy as np
+    R, _ = AA_MODELS[name]
+    R = np.array(R, dtype=float)
+    Q = R * pi[None, :]
+    for i in range(20):
         Q[i, i] = -Q[i].sum()
     scale = -(pi * np.diag(Q)).sum()
     return Q / scale
@@ -152,12 +244,32 @@ class _Model:
         return {"JC69": 0, "K80": 1, "HKY85": 1, "GTR": 5}[_canon(self.name)]
 
 
+class _ModelAA(_Model):
+    """Protein variant of :class:`_Model`. JTT/WAG/LG have no free rate
+    parameters (their exchangeabilities are fixed empirical constants), so
+    only ``_decompose`` (which Q-builder to call) and ``nparams`` differ;
+    everything else (``P(t)``, gamma rate categories, ``set_params``) is
+    inherited unchanged."""
+
+    def _decompose(self):
+        import numpy as np
+        Q = _build_Q_aa(self.name, self.pi)
+        vals, vecs = np.linalg.eig(Q)
+        self.vals = vals.real
+        self.vecs = vecs.real
+        self.vinv = np.linalg.inv(self.vecs)
+
+    @property
+    def nparams(self):
+        return 0   # JTT/WAG/LG exchangeabilities are fixed, not estimated
+
+
 def _canon(name):
     return {"JC": "JC69", "K2P": "K80", "HKY": "HKY85"}.get(name, name)
 
 
 # --------------------------------------------------------------------------
-# likelihood (Felsenstein pruning, vectorised over patterns, rescaled)
+# likelihood kernel -- nucleotide (original, unchanged)
 # --------------------------------------------------------------------------
 def _site_logliks(tree: Tree, model: _Model, names, states, rate=1.0):
     """Per-pattern log site-likelihoods at one relative rate (Felsenstein)."""
@@ -195,20 +307,66 @@ def _site_logliks(tree: Tree, model: _Model, names, states, rate=1.0):
     return np.log(site) + cache_s[id(root)]
 
 
-def _log_likelihood(tree: Tree, model: _Model, names, states, weights) -> float:
+# --------------------------------------------------------------------------
+# likelihood kernel -- protein (parallel duplicate, 20 states)
+# --------------------------------------------------------------------------
+def _site_logliks_aa(tree: Tree, model: _ModelAA, names, states, rate=1.0):
+    """Per-pattern log site-likelihoods at one relative rate (Felsenstein).
+    Identical algorithm to :func:`_site_logliks`, sized for 20 states."""
     import numpy as np
+    idx = {n: i for i, n in enumerate(names)}
+    npat = states.shape[1]
+    cache_L: Dict[int, "np.ndarray"] = {}
+    cache_s: Dict[int, "np.ndarray"] = {}
+
+    for node in tree.traverse("postorder"):
+        if node.is_leaf:
+            L = np.ones((npat, 20))
+            srow = states[idx[node.name]]
+            known = srow >= 0
+            L[known] = 0.0
+            L[known, srow[known]] = 1.0
+            cache_L[id(node)] = L
+            cache_s[id(node)] = np.zeros(npat)
+        else:
+            L = np.ones((npat, 20))
+            scal = np.zeros(npat)
+            for c in node.children:
+                P = model.P(max(c.length or 0.0, 1e-9) * rate)
+                L = L * (cache_L[id(c)] @ P.T)
+                scal = scal + cache_s[id(c)]
+            m = L.max(axis=1)
+            m[m <= 0] = 1.0
+            L = L / m[:, None]
+            scal = scal + np.log(m)
+            cache_L[id(node)] = L
+            cache_s[id(node)] = scal
+
+    root = tree.root
+    site = (cache_L[id(root)] * model.pi[None, :]).sum(axis=1)
+    return np.log(site) + cache_s[id(root)]
+
+
+def _log_likelihood(tree: Tree, model: _Model, names, states, weights) -> float:
+    """The one place that knows both kernels exist: picks
+    :func:`_site_logliks` or :func:`_site_logliks_aa` by model type, then
+    everything downstream (optimisation, NNI search) is oblivious to which."""
+    import numpy as np
+    site_fn = _site_logliks_aa if isinstance(model, _ModelAA) else _site_logliks
     rates, wts = model.rate_categories()
     if len(rates) == 1:
-        return float((weights * _site_logliks(tree, model, names, states)).sum())
+        return float((weights * site_fn(tree, model, names, states)).sum())
     # average site likelihood over discrete-gamma rate categories
     from scipy.special import logsumexp
-    stacked = np.stack([_site_logliks(tree, model, names, states, r) + np.log(w)
+    stacked = np.stack([site_fn(tree, model, names, states, r) + np.log(w)
                         for r, w in zip(rates, wts)])
     return float((weights * logsumexp(stacked, axis=0)).sum())
 
 
 # --------------------------------------------------------------------------
-# optimisation
+# optimisation (unchanged -- never referenced a state count; only ever
+# calls _log_likelihood, so the nucleotide/protein split above is invisible
+# from here down)
 # --------------------------------------------------------------------------
 def _optimize_branches(tree, model, data, rounds=3) -> float:
     from scipy.optimize import minimize_scalar
@@ -290,7 +448,7 @@ def _nni_search(tree, model, data, max_sweeps=20) -> float:
 
 
 # --------------------------------------------------------------------------
-# public entry point
+# model construction -- nucleotide (original, unchanged)
 # --------------------------------------------------------------------------
 def _new_model(name, freqs, gamma):
     import numpy as np
@@ -299,12 +457,28 @@ def _new_model(name, freqs, gamma):
     return _Model(name, pi, init, ncat=max(1, gamma), shape=0.5)
 
 
+# --------------------------------------------------------------------------
+# model construction -- protein (parallel)
+# --------------------------------------------------------------------------
+def _new_model_aa(name, gamma):
+    import numpy as np
+    _, pi = AA_MODELS[name]           # each model's own published frequencies
+    return _ModelAA(name, np.array(pi), [], ncat=max(1, gamma), shape=0.5)
+
+
+# --------------------------------------------------------------------------
+# public entry points -- each dispatches nucleotide vs. protein once, up
+# front, then defers to the (otherwise identical) shared optimisation loop
+# --------------------------------------------------------------------------
 def ml_tree(alignment: Alignment, model: str = "HKY85", search: bool = True,
             gamma: int = 0, start: Optional[Tree] = None, max_sweeps: int = 20) -> Tree:
     """Maximum-likelihood tree (pure Python).
 
-    ``model`` is one of ``JC69`` / ``K80`` / ``HKY85`` / ``GTR``.  ``gamma`` is
-    the number of discrete +G rate categories (0 = off; 4 is typical) -- this
+    ``model`` is a nucleotide model (``JC69`` / ``K80`` / ``HKY85`` / ``GTR``)
+    for DNA/RNA, or a protein model (``JTT`` / ``WAG`` / ``LG``) for amino
+    acid sequences -- the state space (4 or 20) follows from the model
+    name, so pass one matching your alignment's alphabet. ``gamma`` is the
+    number of discrete +G rate categories (0 = off; 4 is typical) -- this
     models among-site rate variation and usually fits real data much better.
     With ``search=True`` the topology is refined by NNI hill-climbing from the
     start tree (NJ by default).  Result carries ``tree.data['logL']``,
@@ -313,11 +487,16 @@ def ml_tree(alignment: Alignment, model: str = "HKY85", search: bool = True,
     from .bootstrap import nj_builder
     from ..treeops import midpoint_root
 
-    data = _encode(alignment)
+    name = _canon(model)
+    is_aa = name in AA_MODELS
+    err = _alphabet_mismatch(alignment, is_aa)
+    if err:
+        raise ValueError(f"model {model!r} {err}")
+
+    data = _encode_aa(alignment) if is_aa else _encode(alignment)
     names, states, weights, freqs = data
     tree = start or midpoint_root(nj_builder(alignment))
-    name = _canon(model)
-    mdl = _new_model(name, freqs, gamma)
+    mdl = _new_model_aa(name, gamma) if is_aa else _new_model(name, freqs, gamma)
 
     prev = -1e18
     trajectory = []
@@ -353,17 +532,25 @@ def ml_tree(alignment: Alignment, model: str = "HKY85", search: bool = True,
     return tree
 
 
-def model_finder(alignment: Alignment, models=("JC69", "K80", "HKY85", "GTR"),
+def model_finder(alignment: Alignment, models=None,
                  gammas=(0, 4), start: Optional[Tree] = None):
     """Rank substitution models by AIC on a fixed (NJ) tree -- a lightweight
-    ModelFinder.  Returns a list of dicts sorted by AIC (best first)."""
+    ModelFinder.  Returns a list of dicts sorted by AIC (best first).
+
+    ``models`` defaults to the nucleotide set (JC69/K80/HKY85/GTR) or the
+    protein set (JTT/WAG/LG) depending on the alignment's alphabet; pass an
+    explicit tuple to override.
+    """
+    from .align import guess_type
     from .bootstrap import nj_builder
     from ..treeops import midpoint_root
+    if models is None:
+        models = ("JTT", "WAG", "LG") if guess_type(alignment.seqs) == "protein" else (
+            "JC69", "K80", "HKY85", "GTR")
     base = start or midpoint_root(nj_builder(alignment))
     rows = []
     for m in models:
         for g in gammas:
-            t = base  # branch lengths re-optimised per model inside ml_tree
             from copy import deepcopy
             t = deepcopy(base)
             t = ml_tree(alignment, model=m, gamma=g, search=False, start=t)
@@ -377,10 +564,17 @@ def model_finder(alignment: Alignment, models=("JC69", "K80", "HKY85", "GTR"),
 def log_likelihood(tree: Tree, alignment: Alignment, model: str = "HKY85",
                    params=None, gamma: int = 0, shape: float = 0.5) -> float:
     """Felsenstein log-likelihood of ``tree`` for ``alignment`` under a model
-    (optionally with ``gamma`` discrete-rate categories)."""
-    names, states, weights, freqs = _encode(alignment)
+    (nucleotide JC69/K80/HKY85/GTR, or protein JTT/WAG/LG; optionally with
+    ``gamma`` discrete-rate categories)."""
     name = _canon(model)
-    mdl = _new_model(name, freqs, gamma)
+    is_aa = name in AA_MODELS
+    err = _alphabet_mismatch(alignment, is_aa)
+    if err:
+        raise ValueError(f"model {model!r} {err}")
+
+    data = _encode_aa(alignment) if is_aa else _encode(alignment)
+    names, states, weights, freqs = data
+    mdl = _new_model_aa(name, gamma) if is_aa else _new_model(name, freqs, gamma)
     if params is not None:
         mdl.set_params(params)
     if gamma > 1:
