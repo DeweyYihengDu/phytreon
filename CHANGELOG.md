@@ -59,6 +59,21 @@ All notable changes to phytreon are documented here. Format loosely follows
   character/trait matrix (CSV/TSV file or DataFrame; taxa as rows, one
   column per character), ready for `parsimony_tree()` /
   `build_tree(..., method="parsimony")`.
+- Protein (amino acid) support for the native ML engine, purely additive
+  alongside the existing nucleotide-only code path: pass `ml_model="JTT"`
+  / `"WAG"` / `"LG"` to `ml_tree()`/`build_tree(..., method="ml")` for
+  empirical protein substitution models (each with its own published
+  equilibrium frequencies), and `model_finder()` now ranks JTT/WAG/LG
+  instead of the nucleotide model set when it detects protein data. A new
+  alphabet-mismatch guard raises `ValueError` if a nucleotide model is
+  used on protein data or vice versa, rather than silently miscoding
+  amino acid letters that happen to coincide with nucleotide codes.
+  `distance_matrix_model()` gains an explicit opt-in `dist_model="poisson"`
+  (the protein analogue of the Jukes-Cantor correction). None of this
+  changes any existing nucleotide default: `ml_model` still defaults to
+  `"HKY85"` and `dist_model` still defaults to `"jc69"` (which still falls
+  back to raw p-distance on non-nucleotide data unless you opt in to
+  `"poisson"`).
 
 ## [0.1.1] — 2026-07-01
 
