@@ -12,6 +12,7 @@ from .bootstrap import (bootstrap_support, p_distance_matrix, distance_matrix_mo
                         nj_builder, upgma_builder)
 from .ml import infer_ml, infer_iqtree, infer_fasttree
 from .ml_native import ml_tree, log_likelihood, model_finder
+from .aa_models import AA_MODELS, AA_STATES
 from .parsimony import parsimony_tree, parsimony_score
 from .pipeline import build_tree
 
@@ -22,6 +23,7 @@ __all__ = [
     "bootstrap_support", "p_distance_matrix", "nj_builder", "upgma_builder",
     "infer_ml", "infer_iqtree", "infer_fasttree",
     "ml_tree", "log_likelihood", "model_finder",
+    "AA_MODELS", "AA_STATES",
     "parsimony_tree", "parsimony_score",
     "distance_matrix_model",
     "build_tree",

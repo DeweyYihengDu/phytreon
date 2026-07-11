@@ -24,18 +24,22 @@ def distance_matrix_model(aln: Alignment, model: str = "jc69"
     """Pairwise evolutionary distances with a substitution-model correction.
 
     ``model``:
-      * ``"raw"``  -- uncorrected p-distance,
-      * ``"jc69"`` -- Jukes-Cantor: d = -3/4 ln(1 - 4p/3),
-      * ``"k2p"``  -- Kimura 2-parameter (transition/transversion separated).
+      * ``"raw"``     -- uncorrected p-distance,
+      * ``"jc69"``    -- Jukes-Cantor: d = -3/4 ln(1 - 4p/3),
+      * ``"k2p"``     -- Kimura 2-parameter (transition/transversion separated),
+      * ``"poisson"`` -- Poisson correction (protein analogue of JC69):
+        d = -ln(1 - p).
 
-    Corrections need nucleotide data; non-nucleotide alignments fall back to
-    raw p-distance.  Gapped positions are ignored pairwise.
+    ``"jc69"``/``"k2p"`` need nucleotide data; on non-nucleotide alignments
+    they fall back to raw p-distance (unchanged).  ``"poisson"`` is an
+    explicit opt-in for protein data and is applied as requested.  Gapped
+    positions are ignored pairwise.
     """
     import math
     n = aln.nseq
     seqs = [s.upper() for s in aln.seqs]
     nucleotide = set("".join(seqs[:2])[:500]) <= set("ACGTUN-.")
-    if not nucleotide and model != "raw":
+    if not nucleotide and model not in ("raw", "poisson"):
         model = "raw"
     D = [[0.0] * n for _ in range(n)]
     for a in range(n):
@@ -62,6 +66,9 @@ def distance_matrix_model(aln: Alignment, model: str = "jc69"
             elif model == "jc69":
                 p = diff / comp
                 d = -0.75 * math.log(1 - 4 * p / 3) if p < 0.74 else 3.0
+            elif model == "poisson":
+                p = diff / comp
+                d = -math.log(1 - p) if p < 0.9999 else 5.0     # saturated
             else:
                 d = diff / comp
             D[a][b] = D[b][a] = d

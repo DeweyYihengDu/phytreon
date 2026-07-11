@@ -57,6 +57,11 @@ def build_tree(sequences: SeqInput, *,
                 ``min_occupancy``, ``min_conservation`` ...).
     method      ``"nj"`` | ``"upgma"`` | ``"ml"`` | ``"parsimony"``/``"mp"``.
     bootstrap   number of bootstrap replicates (0 = none; distance methods).
+
+    Protein sequences work the same way -- pass ``ml_model="JTT"``/``"WAG"``/
+    ``"LG"`` for ``method="ml"`` (:func:`phytreon.infer.ml_native.ml_tree`
+    validates the model matches the data's alphabet); ``dist_model="poisson"``
+    for ``method="nj"``/``"upgma"``.
     """
     if method not in _METHODS:
         raise ValueError(f"unknown method {method!r}; choose one of {_METHODS}")
