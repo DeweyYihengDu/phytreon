@@ -395,6 +395,7 @@ def _optimize_branches(tree, model, data, rounds=3) -> float:
 
 
 def _optimize_model(tree, model, data) -> float:
+    import numpy as np
     from scipy.optimize import minimize
     names, states, weights, _ = data
     np_ = model.nparams
@@ -408,12 +409,18 @@ def _optimize_model(tree, model, data) -> float:
     def neg(x):
         if any(v <= 0 for v in x):
             return 1e18
-        if np_:
-            model.set_params(x[:np_])
-        if use_gamma:
-            model.set_shape(x[np_])
-            model._decompose() if not np_ else None
-        return -_log_likelihood(tree, model, names, states, weights)
+        try:
+            if np_:
+                model.set_params(x[:np_])
+            if use_gamma:
+                model.set_shape(x[np_])
+                model._decompose() if not np_ else None
+            return -_log_likelihood(tree, model, names, states, weights)
+        except np.linalg.LinAlgError:
+            # Nelder-Mead can propose a parameter combination whose Q has a
+            # (near-)degenerate eigendecomposition -- reject it like an
+            # invalid region rather than letting the optimizer crash.
+            return 1e18
 
     res = minimize(neg, x0, method="Nelder-Mead",
                    options={"xatol": 1e-3, "fatol": 1e-3, "maxiter": 300})
