@@ -136,15 +136,24 @@ tree = pt.build_tree(
     root="midpoint",
     bootstrap=200,                      # bipartition support
 )
-# distances are JC69-corrected by default (dist_model="jc69"|"k2p"|"raw");
+# distances are JC69-corrected by default (dist_model="jc69"|"k2p"|"poisson"|"raw");
 # negative NJ branch lengths are clamped to 0.
 
 # maximum likelihood (pure Python), HKY85 + Γ4 rate variation + NNI:
 ml = pt.build_tree("seqs.fasta", method="ml", ml_model="HKY85", ml_gamma=4,
                    bootstrap=100)               # bootstrap works for nj/ml/parsimony
 print(ml.data["logL"], ml.data["AIC"], ml.data["gamma_shape"])
-pt.model_finder("seqs.fasta")                   # rank JC/K80/HKY/GTR ±G by AIC
+pt.model_finder("seqs.fasta")                   # rank JC/K80/HKY/GTR (or JTT/WAG/LG) ±G by AIC
 # large datasets -> external engines: build_tree(..., method="ml", ml_engine="iqtree")
+
+# protein sequences work the same way -- pass amino acid sequences and an
+# explicit protein model (ml_model's default stays "HKY85"; there is no
+# "auto" alphabet detection, so a nucleotide/protein mismatch raises
+# instead of silently miscoding the data):
+prot = pt.build_tree("proteins.fasta", method="ml", ml_model="LG", bootstrap=100)
+# dist_model's default stays "jc69", which falls back to raw p-distance on
+# protein data unless you opt in to the protein-specific correction:
+prot_nj = pt.build_tree("proteins.fasta", method="nj", dist_model="poisson")
 ```
 
 Each step is also usable on its own: `pt.align`, `pt.trim`,
@@ -184,7 +193,7 @@ encoded as ambiguous so they never force a false character change.
 |---|---|
 | **I/O & data model** | Newick / Nexus / PhyloXML read-write; metadata joins (`Tree.join_data`) |
 | **Layouts** | rectangular, slanted, dendrogram, circular, fan, radial, inward-circular, unrooted (equal-angle / equal-daylight) |
-| **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML (JC69/K80/HKY85/GTR, +Γ, NNI, AIC/BIC), parsimony (from sequences or a discrete character/trait matrix via `read_character_matrix`), bootstrap, built-in MSA, trimming |
+| **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML for nucleotide (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data, +Γ, NNI, AIC/BIC, `model_finder`, parsimony (from sequences or a discrete character/trait matrix via `read_character_matrix`), bootstrap, built-in MSA, trimming |
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |
