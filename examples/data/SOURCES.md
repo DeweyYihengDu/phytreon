@@ -1,6 +1,6 @@
 # Example data sources
 
-Small public **16S rRNA** set ¡ª a "microbial tree of life" sampler used
+Small public **16S rRNA** set ï¿½ï¿½ a "microbial tree of life" sampler used
 by phytreon's examples and tests. Downloaded from the NCBI `nucleotide`
 database (16S ribosomal RNA records, preferring RefSeq `NR_*` type strains)
 with `examples/data/fetch_example_data.py` (Biopython Entrez).
@@ -32,3 +32,20 @@ download need not byte-match the snapshot shipped here; the cached
 | `Halobacterium_salinarum` | *Halobacterium salinarum* | Archaea | Euryarchaeota | NR_025555.1 | 1434 |
 | `Saccharolobus_solfataricus` | *Saccharolobus solfataricus* | Archaea | Thermoproteota | NR_119198.1 | 1436 |
 | `Pyrococcus_furiosus` | *Pyrococcus furiosus* | Archaea | Euryarchaeota | NR_113294.1 | 1321 |
+
+## Single-cell CRISPR lineage-tracing sample
+
+`lineage_alleletable.txt` (raw allele table) and `lineage_reference_tree.nwk`
+(published reconstruction, topology only) are one real sample -- **3432_NT_T1**,
+226 cells, 10 CRISPR integration barcodes -- from the **KP-Tracer** mouse lung
+adenocarcinoma lineage-tracing study (Yang, Jones, Chan, et al. 2022,
+*Lineage tracing reveals the phylodynamics, plasticity, and paths of tumor
+evolution*, Cell 185:1905-1923, doi:10.1016/j.cell.2022.04.015), redistributed
+by the **Cassiopeia** package (Jones, Khodaverdian, Quinn, et al. 2020,
+*Inference of single-cell phylogenies from lineage tracing data using
+Cassiopeia*, Genome Biology 21:92; `github.com/YosefLab/Cassiopeia`, MIT
+license).
+
+Downloaded with `examples/data/fetch_lineage_data.py`, which also strips the
+reference tree's custom ete3 per-node annotation format down to a plain
+Newick topology (see that script and `examples/lineage_demo.py` for details).

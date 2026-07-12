@@ -33,7 +33,9 @@ pip install -e .[dev]            # + pytest, plotly
   inward-circular, unrooted (equal-angle / equal-daylight)
 - **infer** — NJ/UPGMA (model-corrected distances), native ML for nucleotide
   (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data +Γ, NNI,
-  AIC/`model_finder`, parsimony, bootstrap, built-in MSA, trimming
+  AIC/`model_finder`, parsimony (reversible Fitch, or irreversible
+  Camin-Sokal for single-cell CRISPR lineage tracing), bootstrap, built-in
+  MSA, trimming
 - **comparative** — ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian),
   stochastic mapping (`stochastic_map`)
 - **plot** — the `TreeFigure` builder: chain `.tip_labels()`, `.tip_points()`,

@@ -6,6 +6,12 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- `Tree.ladderize()` recomputed each node's subtree size from scratch inside
+  its own sort comparator, so every level of nesting re-triggered a full
+  recursive re-descent through everything beneath it -- exponential blowup
+  on deep/unbalanced trees (harmless at the small scale previously
+  exercised; non-terminating after 50+ minutes on a real 226-taxon,
+  depth-37 tree). Now computes every node's size once and sorts from that.
 - `build_tree()` silently fell back to UPGMA for any unrecognised `method`
   value instead of raising; now validates against an explicit whitelist.
   Removed the unused, dead `model` kwarg.
@@ -74,6 +80,22 @@ All notable changes to phytreon are documented here. Format loosely follows
   `"HKY85"` and `dist_model` still defaults to `"jc69"` (which still falls
   back to raw p-distance on non-nucleotide data unless you opt in to
   `"poisson"`).
+- Single-cell CRISPR lineage-tracing tree reconstruction
+  (`phytreon/infer/lineage.py`), purely additive alongside the existing
+  reversible Fitch parsimony: `read_allele_table()` turns a Cassiopeia-style
+  allele table into an `Alignment` (reusing `read_character_matrix()`,
+  handling allele dropout and near-saturated sites correctly);
+  `sankoff_score()`/`camin_sokal_score()` add a general Sankoff parsimony
+  engine plus the irreversible preset appropriate for CRISPR scars (a
+  derived state can arise independently more than once, but never reverts
+  or converts directly to a different derived state); `lineage_tree()` is
+  the NNI hill-climbing search, also reachable via
+  `build_tree(..., method="parsimony", parsimony_model="camin_sokal")`.
+  Validated against a real published dataset in `examples/lineage_demo.py`
+  (Robinson-Foulds distance to Cassiopeia's own reconstruction of the same
+  226-cell sample, reported honestly rather than gated against a threshold).
+- `prune_to_taxa()` (`phytreon/treeops.py`): restrict a tree to a leaf
+  subset, collapsing now-redundant unary nodes.
 
 ## [0.1.1] — 2026-07-01
 

@@ -20,6 +20,7 @@ nav:
       - Sequences to a tree: tutorials/build_tree.md
       - Annotated trees: tutorials/annotate.md
       - Comparative methods: tutorials/comparative.md
+      - Single-cell lineage tracing: tutorials/lineage_tracing.md
   - API reference: api.md
 
 markdown_extensions:
