@@ -49,3 +49,18 @@ license).
 Downloaded with `examples/data/fetch_lineage_data.py`, which also strips the
 reference tree's custom ete3 per-node annotation format down to a plain
 Newick topology (see that script and `examples/lineage_demo.py` for details).
+
+## Single-cell somatic-mutation sample
+
+`mutation_genotypes.csv` (18 genes, 58 cells) is Hou, Y. et al. 2012,
+*Single-cell exome sequencing and monoclonal evolution of a JAK2-negative
+myeloproliferative neoplasm*, Cell 148:873-885 -- a real clonal-evolution
+cancer dataset, redistributed as `dataHou18.csv`/`dataHou18.geneNames` by
+the **SCITE** package (Jahn, Kuipers & Beerenwinkel 2016, *Tree inference
+for single-cell data*, Genome Biology 17:86; `github.com/cbg-ethz/SCITE`,
+GPL3 license).
+
+Downloaded and reshaped with `examples/data/fetch_mutation_data.py`, which
+also collapses SCITE's separate heterozygous/homozygous mutation codes into
+a single "mutated" state (a documented simplification -- see that script's
+docstring and `examples/mutation_lineage_demo.py`).
