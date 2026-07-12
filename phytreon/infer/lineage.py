@@ -31,7 +31,7 @@ anything here:
 from __future__ import annotations
 
 import re
-from typing import Dict, Optional, Sequence, Tuple, Union
+from typing import Dict, Optional, Sequence, Union
 
 from ..core.tree import Tree
 from .align import Alignment
