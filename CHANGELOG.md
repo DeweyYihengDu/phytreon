@@ -104,6 +104,25 @@ All notable changes to phytreon are documented here. Format loosely follows
   226-cell sample, reported honestly rather than gated against a threshold).
 - `prune_to_taxa()` (`phytreon/treeops.py`): restrict a tree to a leaf
   subset, collapsing now-redundant unary nodes.
+- `read_mutation_matrix()` (`phytreon/infer/lineage.py`): generalizes
+  lineage-tracing reconstruction beyond CRISPR allele tables to any
+  single-gene or multi-gene somatic-mutation/genotype matrix -- the same
+  irreversible-mutation model applies (a mutated gene doesn't spontaneously
+  revert to wild-type), so it feeds directly into the existing
+  `camin_sokal_score()`/`lineage_tree()` with no changes needed there. The
+  "phantom ancestral row" correctness fix from `read_allele_table()`
+  (guarantees wild-type always codes as `"0"`, even at a gene mutated in
+  100% of profiled cells) is now a shared helper both readers use.
+- `expression_dendrogram()`/`expression_distance_matrix()`
+  (`phytreon/infer/expression.py`): hierarchical-clustering dendrograms of
+  transcriptional similarity for one gene or a small combination of genes,
+  reusing the existing alphabet-agnostic `neighbor_joining()`/`upgma()`
+  with a new distance metric for continuous expression data
+  (`scipy.spatial.distance.pdist`, no new dependency). **Explicitly not
+  phylogenetic** -- expression similarity reflects cell state, not
+  ancestry -- so it's named/documented distinctly from `lineage_tree()`,
+  and the result carries `tree.data["tree_type"] =
+  "expression_similarity_dendrogram"` as a machine-readable flag.
 
 ## [0.1.1] — 2026-07-01
 

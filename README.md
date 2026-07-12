@@ -185,14 +185,26 @@ Any small set of hashable states per column works (numbers, strings,
 booleans); missing values (`NaN`, or an explicit `missing=` sentinel) are
 encoded as ambiguous so they never force a false character change.
 
-Single-cell CRISPR lineage-tracing data (a Cassiopeia-style allele table)
-works the same way, but with an irreversible ("Camin-Sokal") parsimony model
-appropriate for indel scars that can never revert:
+Single-cell CRISPR lineage-tracing data (a Cassiopeia-style allele table) --
+or any somatic-mutation genotype matrix, via `read_mutation_matrix` -- works
+the same way, but with an irreversible ("Camin-Sokal") parsimony model
+appropriate for scars/mutations that can never revert:
 
 ```python
 aln = pt.read_allele_table("alleletable.txt")      # cellBC/intBC/r1/r2/r3
 tree = pt.lineage_tree(aln, search=True)            # or build_tree(..., parsimony_model="camin_sokal")
 print(tree.data["camin_sokal_score"], tree.data["excess_origins"])
+```
+
+Gene *expression* data is a different question -- similarity reflects cell
+state, not ancestry, so it gets a distinctly-named, non-phylogenetic
+dendrogram instead of a tree:
+
+```python
+import pandas as pd
+
+expr = pd.read_csv("expression.csv", index_col=0)   # cells x genes
+tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 ```
 
 ---
@@ -203,7 +215,7 @@ print(tree.data["camin_sokal_score"], tree.data["excess_origins"])
 |---|---|
 | **I/O & data model** | Newick / Nexus / PhyloXML read-write; metadata joins (`Tree.join_data`) |
 | **Layouts** | rectangular, slanted, dendrogram, circular, fan, radial, inward-circular, unrooted (equal-angle / equal-daylight) |
-| **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML for nucleotide (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data, +Γ, NNI, AIC/BIC, `model_finder`, parsimony (from sequences, a discrete character/trait matrix via `read_character_matrix`, or single-cell CRISPR lineage-tracing data via `read_allele_table` + irreversible Camin-Sokal parsimony), bootstrap, built-in MSA, trimming |
+| **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML for nucleotide (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data, +Γ, NNI, AIC/BIC, `model_finder`, parsimony (from sequences, a discrete character/trait matrix via `read_character_matrix`, or single-cell lineage-tracing data via `read_allele_table`/`read_mutation_matrix` + irreversible Camin-Sokal parsimony), expression-similarity dendrograms (`expression_dendrogram` -- explicitly not phylogenetic), bootstrap, built-in MSA, trimming |
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |

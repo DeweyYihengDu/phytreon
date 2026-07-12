@@ -33,6 +33,26 @@ happen to be edited in nearly every profiled cell (the true ancestral/uncut
 state is still guaranteed to recode as character `"0"`, even though it's
 never actually observed at that site).
 
+## Beyond CRISPR: any irreversible mutation signal
+
+A somatic mutation follows the exact same logic as a CRISPR scar: a mutated
+gene doesn't spontaneously revert to wild-type, so cells sharing a mutation
+are evidence of common descent. `read_mutation_matrix` covers this general
+case -- a single gene, or a handful of genes -- without the CRISPR-specific
+allele-table format:
+
+```python
+import pandas as pd
+
+genotypes = pd.DataFrame({"TP53": ["R175H", "R175H", "R175H", "WT", "WT", "WT"]},
+                         index=["A1", "A2", "A3", "B1", "B2", "B3"])
+aln = pt.read_mutation_matrix(genotypes)        # wild_type="WT" by default
+tree = pt.lineage_tree(aln, search=True)
+```
+
+Same guarantees as `read_allele_table`: the wild-type state always lands on
+code `"0"`, even for a gene mutated in every profiled cell.
+
 ## Through the one-call pipeline
 
 `build_tree(..., method="parsimony")` also accepts lineage data -- pass
