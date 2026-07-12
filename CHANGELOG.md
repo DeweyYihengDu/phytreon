@@ -123,6 +123,20 @@ All notable changes to phytreon are documented here. Format loosely follows
   ancestry -- so it's named/documented distinctly from `lineage_tree()`,
   and the result carries `tree.data["tree_type"] =
   "expression_similarity_dendrogram"` as a machine-readable flag.
+- `reconstruct_ancestral_mutations()` (`phytreon/infer/lineage.py`): traces
+  back *which* mutation/scar arose on *which* branch under the same
+  Camin-Sokal model `camin_sokal_score()` minimizes, writing
+  `node.data["mutations_acquired"]` for every node -- the piece that turns
+  a `lineage_tree()` topology into an actual reconstructed process rather
+  than just a set of relationships. `sankoff_score()`'s postorder DP loop
+  is now a shared `_sankoff_dp()` helper (zero behavior change there) so
+  both functions reuse the identical computation.
+- Real-data validation for the general (non-CRISPR) lineage-tracing path:
+  `examples/mutation_lineage_demo.py` reconstructs a clonal cell tree from
+  Hou et al. 2012's real single-cell exome-sequencing mutation calls (Cell
+  148:873-885, 18 genes/58 cells, via the SCITE package), reporting
+  reconstruction cost and ancestral mutation acquisitions on real, noisy
+  data.
 
 ## [0.1.1] — 2026-07-01
 

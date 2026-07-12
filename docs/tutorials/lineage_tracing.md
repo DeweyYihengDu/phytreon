@@ -53,6 +53,28 @@ tree = pt.lineage_tree(aln, search=True)
 Same guarantees as `read_allele_table`: the wild-type state always lands on
 code `"0"`, even for a gene mutated in every profiled cell.
 
+## Which mutation arose on which branch
+
+A tree and a total cost tell you cells are related, but not *how the
+lineage unfolded*. `reconstruct_ancestral_mutations` traces that back under
+the same Camin-Sokal model, writing `node.data["mutations_acquired"]` --
+the site/gene names that transitioned from ancestral to derived on that
+node's incoming branch -- for every node in the tree:
+
+```python
+pt.reconstruct_ancestral_mutations(tree, aln, site_names=list(genotypes.columns))
+for node in tree.traverse():
+    if node.data["mutations_acquired"]:
+        print(node.name or "(clade)", "->", node.data["mutations_acquired"])
+```
+
+`site_names` labels the alignment's columns in order (defaults to
+`"site0"`, `"site1"`, ... if omitted) -- pass the same gene/site list you
+used to build `aln`. Ties among equally-optimal reconstructions are broken
+toward matching the parent's state, so an already-derived site doesn't get
+reported as spuriously re-arising partway down a clade that simply
+inherited it.
+
 ## Through the one-call pipeline
 
 `build_tree(..., method="parsimony")` also accepts lineage data -- pass
