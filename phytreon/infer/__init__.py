@@ -14,6 +14,7 @@ from .ml import infer_ml, infer_iqtree, infer_fasttree
 from .ml_native import ml_tree, log_likelihood, model_finder
 from .aa_models import AA_MODELS, AA_STATES
 from .parsimony import parsimony_tree, parsimony_score
+from .lineage import read_allele_table, sankoff_score, camin_sokal_score, lineage_tree
 from .pipeline import build_tree
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "ml_tree", "log_likelihood", "model_finder",
     "AA_MODELS", "AA_STATES",
     "parsimony_tree", "parsimony_score",
+    "read_allele_table", "sankoff_score", "camin_sokal_score", "lineage_tree",
     "distance_matrix_model",
     "build_tree",
 ]

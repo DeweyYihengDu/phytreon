@@ -27,12 +27,13 @@ from .infer import (
     Alignment, align, read_fasta, read_character_matrix, trim, bootstrap_support,
     build_tree, infer_ml, ml_tree, log_likelihood, model_finder,
     parsimony_tree, parsimony_score,
+    read_allele_table, sankoff_score, camin_sokal_score, lineage_tree,
 )
 from .comparative import ace_parsimony, ace_ml, ace_continuous, stochastic_map
 from .treeops import (
     rotate, flip, swap_children, ladderize, collapse_low_support,
     scale_clade, cut_tree, midpoint_root, group_clade, group_otu,
-    robinson_foulds,
+    robinson_foulds, prune_to_taxa,
 )
 
 __version__ = "0.1.1"
@@ -45,7 +46,9 @@ __all__ = [
     "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",
     "parsimony_tree", "parsimony_score", "robinson_foulds",
+    "read_allele_table", "sankoff_score", "camin_sokal_score", "lineage_tree",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
     "rotate", "flip", "swap_children", "ladderize", "collapse_low_support",
     "scale_clade", "cut_tree", "midpoint_root", "group_clade", "group_otu",
+    "prune_to_taxa",
 ]

@@ -40,6 +40,7 @@ def build_tree(sequences: SeqInput, *,
                ml_gamma: int = 0,
                ml_search: bool = True,
                ml_tool: str = "iqtree",
+               parsimony_model: str = "fitch",
                seed: Optional[int] = None,
                return_alignment: bool = False
                ) -> Union[Tree, Tuple[Tree, Alignment]]:
@@ -62,6 +63,13 @@ def build_tree(sequences: SeqInput, *,
     ``"LG"`` for ``method="ml"`` (:func:`phytreon.infer.ml_native.ml_tree`
     validates the model matches the data's alphabet); ``dist_model="poisson"``
     for ``method="nj"``/``"upgma"``.
+
+    Single-cell CRISPR lineage-tracing character matrices (see
+    :func:`phytreon.infer.lineage.read_allele_table`) work through
+    ``method="parsimony"`` too -- pass ``parsimony_model="camin_sokal"`` for
+    the irreversible model (:func:`phytreon.infer.lineage.lineage_tree`)
+    instead of the default reversible Fitch parsimony
+    (:func:`phytreon.infer.parsimony.parsimony_tree`).
     """
     if method not in _METHODS:
         raise ValueError(f"unknown method {method!r}; choose one of {_METHODS}")
@@ -92,8 +100,12 @@ def build_tree(sequences: SeqInput, *,
             from .ml import infer_ml
             tree = infer_ml(aln, tool=ml_engine)
     elif method in ("parsimony", "mp"):
-        from .parsimony import parsimony_tree
-        tree = parsimony_tree(aln, search=ml_search)
+        if parsimony_model == "camin_sokal":
+            from .lineage import lineage_tree
+            tree = lineage_tree(aln, search=ml_search)
+        else:
+            from .parsimony import parsimony_tree
+            tree = parsimony_tree(aln, search=ml_search)
     else:                                    # method in ("nj", "upgma")
         from .bootstrap import distance_matrix_model
         from .distance import neighbor_joining, upgma
@@ -114,6 +126,9 @@ def build_tree(sequences: SeqInput, *,
             builder = lambda a: nj_builder(a, dist_model)            # noqa: E731
         elif method == "upgma":
             builder = lambda a: upgma_builder(a, dist_model)         # noqa: E731
+        elif method in ("parsimony", "mp") and parsimony_model == "camin_sokal":
+            from .lineage import lineage_tree
+            builder = lambda a: lineage_tree(a, search=ml_search)  # noqa: E731
         elif method in ("parsimony", "mp"):
             from .parsimony import parsimony_tree
             builder = lambda a: parsimony_tree(a, search=ml_search)  # noqa: E731
