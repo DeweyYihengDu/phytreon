@@ -77,6 +77,16 @@ def write(tree: Tree, path: Optional[str] = None, fmt: str = "newick") -> Option
 # Lightweight self-contained Newick parser / writer
 # --------------------------------------------------------------------------
 _TOKEN = re.compile(r"\s*([(),;])\s*|\s*([^(),;]+)\s*")
+_NEEDS_QUOTE = re.compile(r"[()\[\]{}/\\,;:=*'\s]")
+
+
+def _quote_label(label: str) -> str:
+    """Newick-quote ``label`` if it contains reserved punctuation or
+    whitespace (``()[]{}/\\,;:=*'`` or any space); an embedded single quote
+    is escaped by doubling it, per the standard Newick quoting convention."""
+    if not _NEEDS_QUOTE.search(label):
+        return label
+    return "'" + label.replace("'", "''") + "'"
 
 
 def parse_newick(newick: str) -> Tree:
@@ -112,10 +122,29 @@ def parse_newick(newick: str) -> Tree:
     def _parse_label(node: Node) -> None:
         nonlocal pos
         # optional name/support
-        start = pos
-        while pos < n and s[pos] not in "():,;[":
+        if pos < n and s[pos] == "'":
+            # quoted label: reserved characters inside are literal; an
+            # embedded '' is an escaped literal single quote
             pos += 1
-        label = s[start:pos].strip().strip("'\"")
+            buf = []
+            while pos < n:
+                if s[pos] == "'":
+                    if pos + 1 < n and s[pos + 1] == "'":
+                        buf.append("'")
+                        pos += 2
+                        continue
+                    pos += 1
+                    break
+                buf.append(s[pos])
+                pos += 1
+            label = "".join(buf)
+            while pos < n and s[pos] not in "():,;[":  # trailing whitespace
+                pos += 1
+        else:
+            start = pos
+            while pos < n and s[pos] not in "():,;[":
+                pos += 1
+            label = s[start:pos].strip().strip("'\"")
         if label:
             if node.is_leaf:
                 node.name = label
@@ -157,14 +186,14 @@ def to_newick(tree: Tree, with_support: bool = True) -> str:
     """Serialise a :class:`Tree` back to a Newick string."""
     def fmt(node: Node) -> str:
         if node.is_leaf:
-            label = node.name or ""
+            label = _quote_label(node.name) if node.name else ""
         else:
             inner = ",".join(fmt(c) for c in node.children)
             sup = ""
             if with_support and node.support is not None:
                 sup = _num(node.support)
             elif node.name:
-                sup = node.name
+                sup = _quote_label(node.name)
             label = f"({inner}){sup}"
         if node.length is not None:
             label += f":{_num(node.length)}"

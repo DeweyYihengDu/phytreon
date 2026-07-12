@@ -6,6 +6,14 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- The native Newick writer/parser (`to_newick()`/`parse_newick()`, used by
+  `Tree.write()`/`Tree.from_newick()` whenever no file path is given) never
+  quoted or unquoted taxon names containing reserved Newick punctuation
+  (`()[]{}/\,;:=*'` or whitespace). A name like `"weird(name),here"` wrote
+  out unquoted and silently split into three unrelated leaves on
+  read-back -- no error, just a corrupted tree. Now quotes such names on
+  write (doubling any embedded `'`) and correctly parses quoted labels,
+  including embedded reserved characters, back out again.
 - `Tree.ladderize()` recomputed each node's subtree size from scratch inside
   its own sort comparator, so every level of nesting re-triggered a full
   recursive re-descent through everything beneath it -- exponential blowup

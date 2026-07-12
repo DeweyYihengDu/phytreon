@@ -13,6 +13,27 @@ def test_io_roundtrip():
     assert sorted(tr2.leaf_names()) == sorted(tr.leaf_names())
 
 
+def test_newick_quotes_special_characters_in_names():
+    # Regression: names containing reserved Newick punctuation (parens,
+    # commas, colons, semicolons) were written completely unquoted, so a
+    # single taxon like "weird(name),here" silently split into three
+    # separate leaves on round-trip, with no error raised at all.
+    names = ["Homo sapiens", "weird(name),here", "quote'inside",
+            "colon:test", "plain_name", "semi;colon"]
+    root = pt.Node()
+    for nm in names:
+        root.add_child(pt.Node(name=nm, length=1.0))
+    tr = pt.Tree(root=root)
+    tr2 = pt.Tree.from_newick(tr.write())
+    assert sorted(tr2.leaf_names()) == sorted(names)
+
+
+def test_newick_leaves_simple_names_unquoted():
+    tr = pt.datasets.primates()
+    nwk = tr.write()
+    assert "'" not in nwk
+
+
 def test_mrca():
     tr = pt.datasets.primates()
     node = tr.get_mrca(["Human", "Chimp"])
