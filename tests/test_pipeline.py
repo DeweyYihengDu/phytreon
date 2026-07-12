@@ -95,6 +95,36 @@ def test_rotate_reverses_order():
     assert set(before) == set(after)
 
 
+def test_ladderize_orders_by_subtree_size():
+    tr = pt.Tree.from_newick("((A:1,(B:1,C:1):1):1,(D:1,E:1,F:1):1);")
+    tr.ladderize(ascending=True)
+    assert [len(c.get_leaves()) for c in tr.root.children[0].children] == [1, 2]
+    tr2 = pt.Tree.from_newick("((A:1,(B:1,C:1):1):1,(D:1,E:1,F:1):1);")
+    tr2.ladderize(ascending=False)
+    assert [len(c.get_leaves()) for c in tr2.root.children[0].children] == [2, 1]
+
+
+def test_ladderize_fast_on_deep_unbalanced_tree():
+    # a "caterpillar" tree (each internal node has one leaf child and one
+    # deep-subtree child) is exactly the shape a naive size()-recomputing
+    # ladderize blows up exponentially on; this must stay near-instant.
+    import time
+    from phytreon.core.tree import Node, Tree as _Tree
+    root = Node(name="root")
+    cur = root
+    for i in range(120):
+        leaf = Node(name=f"L{i}", length=1.0)
+        nxt = Node(name=f"N{i}", length=1.0)
+        cur.add_child(leaf)
+        cur.add_child(nxt)
+        cur = nxt
+    cur.add_child(Node(name="Lend", length=1.0))
+    deep_tree = _Tree(root=root)
+    t0 = time.time()
+    deep_tree.ladderize()
+    assert time.time() - t0 < 5.0
+
+
 def test_collapse_low_support():
     tr = pt.datasets.primates()      # internal supports 85..100
     n_before = sum(1 for n in tr.traverse() if not n.is_leaf)

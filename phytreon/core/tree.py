@@ -213,13 +213,17 @@ class Tree:
     # -- shape -----------------------------------------------------------
     def ladderize(self, ascending: bool = True) -> "Tree":
         """Order children by subtree size for a tidy 'laddered' look."""
+        sizes: Dict[Node, int] = {}
+
         def size(node: Node) -> int:
-            if node.is_leaf:
-                return 1
-            s = sum(size(c) for c in node.children)
-            node.children.sort(key=size, reverse=not ascending)
+            s = 1 if node.is_leaf else sum(size(c) for c in node.children)
+            sizes[node] = s
             return s
+
         size(self.root)
+        for node in self.traverse():
+            if not node.is_leaf:
+                node.children.sort(key=lambda c: sizes[c], reverse=not ascending)
         return self
 
     @property
