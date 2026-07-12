@@ -15,7 +15,7 @@ from .ml_native import ml_tree, log_likelihood, model_finder
 from .aa_models import AA_MODELS, AA_STATES
 from .parsimony import parsimony_tree, parsimony_score
 from .lineage import (read_allele_table, read_mutation_matrix, sankoff_score,
-                      camin_sokal_score, lineage_tree)
+                      camin_sokal_score, lineage_tree, reconstruct_ancestral_mutations)
 from .expression import expression_distance_matrix, expression_dendrogram
 from .pipeline import build_tree
 
@@ -29,6 +29,7 @@ __all__ = [
     "AA_MODELS", "AA_STATES",
     "parsimony_tree", "parsimony_score",
     "read_allele_table", "read_mutation_matrix", "sankoff_score", "camin_sokal_score", "lineage_tree",
+    "reconstruct_ancestral_mutations",
     "expression_distance_matrix", "expression_dendrogram",
     "distance_matrix_model",
     "build_tree",
