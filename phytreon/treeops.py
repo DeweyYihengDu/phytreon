@@ -12,7 +12,7 @@ All functions mutate the tree in place and return it (or the cluster map for
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from .core.tree import Node, Tree
 
@@ -176,6 +176,51 @@ def robinson_foulds(t1: Tree, t2: Tree, normalized: bool = False) -> float:
             return 0.0          # no non-trivial bipartitions possible below 4 taxa
         return rf / (2 * (n - 3))
     return float(rf)
+
+
+# --------------------------------------------------------------------------
+# restrict to a leaf subset
+# --------------------------------------------------------------------------
+def prune_to_taxa(tree: Tree, taxa: Iterable[str], *, strict: bool = True) -> Tree:
+    """Restrict ``tree`` to only the given leaf names, returning a new tree
+    (the input is left unchanged).
+
+    Subtrees with no kept leaves are dropped entirely; internal nodes left
+    with a single surviving child are collapsed away (their branch length is
+    added onto that child), so the result is a clean, minimal tree over
+    exactly ``taxa`` rather than one padded with unary "pass-through" nodes.
+    ``strict=True`` (default) raises ``ValueError`` listing any requested
+    name that isn't a leaf of ``tree`` (mirrors :meth:`Tree.get_mrca`); pass
+    ``strict=False`` to silently keep only whichever names are present.
+    """
+    keep = set(taxa)
+    missing = keep - set(tree.leaf_names())
+    if missing and strict:
+        raise ValueError(f"taxa not found in tree: {sorted(missing)}")
+    keep -= missing
+
+    def build(node: Node) -> Optional[Node]:
+        if node.is_leaf:
+            return _copy_node(node) if node.name in keep else None
+        kids = [k for k in (build(c) for c in node.children) if k is not None]
+        if not kids:
+            return None
+        if len(kids) == 1:
+            kids[0].length = (kids[0].length or 0.0) + (node.length or 0.0)
+            return kids[0]
+        new = _copy_node(node)
+        for k in kids:
+            new.add_child(k)
+        return new
+
+    new_root = build(tree.root) or Node()
+    return Tree(root=new_root, name=tree.name)
+
+
+def _copy_node(node: Node) -> Node:
+    new = Node(name=node.name, length=node.length, support=node.support, comment=node.comment)
+    new.data = dict(node.data)
+    return new
 
 
 # --------------------------------------------------------------------------
