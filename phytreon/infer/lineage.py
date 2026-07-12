@@ -1,4 +1,4 @@
-"""Single-cell CRISPR lineage-tracing tree reconstruction.
+"""Single-cell lineage-tracing tree reconstruction.
 
 Cas9-based lineage tracing (GESTALT, Cassiopeia-style "allele table"
 experiments, etc.) engineers cells to accumulate small indel "scars" at a
@@ -10,23 +10,37 @@ never revert to unedited, and can't spontaneously become a *different* edit
 either (Cas9 cannot recut a site whose target sequence the first edit
 already destroyed).
 
-This is a parallel addition alongside the existing (reversible) Fitch
-parsimony in :mod:`phytreon.infer.parsimony`, which is not touched by
+The same irreversible-model reasoning applies to any naturally occurring
+somatic mutation, not just engineered CRISPR scars: a mutated gene doesn't
+spontaneously revert to wild-type, so cells sharing a somatic mutation are
+evidence of common descent exactly the same way. :func:`read_mutation_matrix`
+covers that general case (single gene or a handful of genes, genotype/variant
+calls rather than CRISPR indels); :func:`read_allele_table` is the
+CRISPR-specific convenience on top of the same underlying model.
+
+This whole module is a parallel addition alongside the existing (reversible)
+Fitch parsimony in :mod:`phytreon.infer.parsimony`, which is not touched by
 anything here:
 
-* :func:`read_allele_table` turns a raw Cassiopeia-style allele table into
-  an :class:`~phytreon.infer.align.Alignment`, reusing the existing
+* :func:`read_allele_table` / :func:`read_mutation_matrix` turn raw
+  lineage-barcode or genotype data into an
+  :class:`~phytreon.infer.align.Alignment`, reusing the existing
   :func:`phytreon.infer.matrix.read_character_matrix` for the actual
   state-recoding rather than reimplementing it.
 * :func:`sankoff_score` is a general Sankoff (cost-matrix) parsimony engine;
   :func:`camin_sokal_score` is the irreversible ("Camin-Sokal") preset
-  appropriate for lineage-barcode data -- multiple *independent* origins of
-  the same derived state are allowed (the identical indel outcome can recur
-  by chance), reversion is not.
+  appropriate for lineage-barcode/mutation data -- multiple *independent*
+  origins of the same derived state are allowed (the identical indel or
+  mutation outcome can recur by chance), reversion is not.
 * :func:`lineage_tree` is the NNI hill-climbing search minimizing
   :func:`camin_sokal_score`, mirroring
   :func:`phytreon.infer.parsimony.parsimony_tree`'s structure and reusing
   the same shared NNI machinery (:mod:`phytreon.infer._search`).
+
+Gene *expression* data (as opposed to genotype/mutation data) does not fit
+this model -- expression similarity reflects cell state, not ancestry -- see
+:mod:`phytreon.infer.expression` for that separate, explicitly
+non-phylogenetic use case instead.
 """
 from __future__ import annotations
 
@@ -93,9 +107,6 @@ def read_allele_table(source: Union[str, "object"], *, cell_col: str = "cellBC",
         df = df.groupby(key, as_index=False).first()
 
     cells = sorted(df[cell_col].astype(str).unique())
-    if _ANCESTRAL_ROW in cells:
-        raise ValueError(f"reserved cell name {_ANCESTRAL_ROW!r} collides with real data; "
-                         "rename that cell before calling read_allele_table")
     intbcs = sorted(df[intbc_col].astype(str).unique())
     all_sites = [f"{intbc}:{site}" for intbc in intbcs for site in site_cols]
 
@@ -109,12 +120,56 @@ def read_allele_table(source: Union[str, "object"], *, cell_col: str = "cellBC",
     wide = long_df.pivot(index="cell", columns="site", values="state")
     wide = wide.reindex(index=cells, columns=all_sites)   # dropout -> NaN, not omitted
 
-    # phantom all-ancestral row: guarantees "" (-> code "0") is present in
-    # every column even where no real cell happens to carry the ancestral
-    # state (see docstring)
-    wide.loc[_ANCESTRAL_ROW] = _ANCESTRAL_LABEL
+    return _read_matrix_with_guaranteed_ancestral(wide)
 
-    aln = read_character_matrix(wide)
+
+def read_mutation_matrix(source: Union[str, "object"], *, taxa_col: Optional[str] = None,
+                         wild_type: object = "WT",
+                         missing: Optional[object] = None) -> Alignment:
+    """Build an :class:`Alignment` from a general single-cell somatic
+    mutation/genotype matrix (cells as rows, one column per gene or locus;
+    path or an existing :class:`pandas.DataFrame`).
+
+    Each value is either ``wild_type`` (the reference/unmutated state,
+    default ``"WT"``) or a specific mutation/variant call (any value --
+    e.g. an amino-acid change, a VCF-style allele notation, or just a
+    clone/genotype label); ``NaN``, or an explicit ``missing`` sentinel, is
+    treated as missing data. This is :func:`read_allele_table` generalized
+    beyond CRISPR allele tables: same irreversible-mutation model, same
+    guarantee that the wild-type state lands on code ``"0"`` at every gene
+    even if that gene happens to be mutated in every profiled cell, just
+    without the CRISPR-specific ``[position:size TYPE]`` bracket parsing --
+    column values are used as given.
+    """
+    import pandas as pd
+
+    df = source.copy() if isinstance(source, pd.DataFrame) else \
+        pd.read_csv(source, sep="\t" if str(source).lower().endswith((".tsv", ".tab")) else ",",
+                   index_col=0 if taxa_col is None else None)
+    if taxa_col is not None:
+        df = df.set_index(taxa_col)
+    df.index = [str(n) for n in df.index]
+    df = df.replace(wild_type, _ANCESTRAL_LABEL)
+
+    return _read_matrix_with_guaranteed_ancestral(df, missing=missing)
+
+
+def _read_matrix_with_guaranteed_ancestral(wide: "object", missing: Optional[object] = None) -> Alignment:
+    """``wide`` is taxa-as-index, one column per character, with the
+    ancestral state already recoded to :data:`_ANCESTRAL_LABEL`. Guarantees
+    the ancestral state lands on code ``"0"`` at *every* column -- including
+    one that happens to be "saturated" (no real taxon shows the ancestral
+    value; confirmed to occur in real CRISPR allele-table data) -- by adding
+    a phantom all-ancestral row before handing off to
+    :func:`~phytreon.infer.matrix.read_character_matrix` (which otherwise
+    assigns codes purely by whichever values are actually present), then
+    dropping that phantom row again."""
+    if _ANCESTRAL_ROW in wide.index:
+        raise ValueError(f"reserved taxon name {_ANCESTRAL_ROW!r} collides with real data; "
+                         "rename that taxon before calling this function")
+    wide = wide.copy()
+    wide.loc[_ANCESTRAL_ROW] = _ANCESTRAL_LABEL
+    aln = read_character_matrix(wide, missing=missing)
     keep = [i for i, n in enumerate(aln.names) if n != _ANCESTRAL_ROW]
     return Alignment([aln.names[i] for i in keep], [aln.seqs[i] for i in keep])
 
@@ -220,14 +275,17 @@ def sankoff_score(tree: Tree, aln: Alignment, cost_matrix, *,
 
 def camin_sokal_score(tree: Tree, aln: Alignment, data=None) -> float:
     """Irreversible ("Camin-Sokal") parsimony cost: the minimum number of
-    independent scar-acquisition events needed to explain the observed
-    lineage-barcode states, given that state ``"0"`` (ancestral/uncut) can
-    only transition to a derived state -- never revert, never interconvert
+    independent mutation/scar-acquisition events needed to explain the
+    observed states, given that state ``"0"`` (ancestral/wild-type) can only
+    transition to a derived state -- never revert, never interconvert
     directly with a different derived state -- and the tree's root is fixed
     ancestral at every site (see :func:`sankoff_score`'s ``root_state``).
+    Works equally for CRISPR lineage-barcode data or any other irreversible
+    somatic-mutation signal (single gene or a combination of genes).
 
     Assumes ``aln`` encodes its ancestral state as character ``"0"`` at
-    every site, which :func:`read_allele_table` guarantees.
+    every site, which :func:`read_allele_table`/:func:`read_mutation_matrix`
+    guarantee.
     """
     if data is None:
         data = _encode_lineage(aln)

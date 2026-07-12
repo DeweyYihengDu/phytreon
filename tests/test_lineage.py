@@ -17,7 +17,7 @@ from phytreon.core.tree import Node, Tree
 from phytreon.infer.align import Alignment
 from phytreon.infer.parsimony import parsimony_score
 from phytreon.infer.lineage import (
-    read_allele_table, sankoff_score, camin_sokal_score, lineage_tree,
+    read_allele_table, read_mutation_matrix, sankoff_score, camin_sokal_score, lineage_tree,
 )
 
 
@@ -83,6 +83,43 @@ def test_read_allele_table_duplicate_rows_disagreeing_raises():
     ])
     with pytest.raises(ValueError, match="disagree"):
         read_allele_table(df, site_cols=("r1",))
+
+
+# --------------------------------------------------------------------------
+# read_mutation_matrix: general (non-CRISPR) somatic mutation/genotype data
+# --------------------------------------------------------------------------
+def test_read_mutation_matrix_basic_recoding():
+    df = pd.DataFrame({"TP53": ["R175H", "R175H", "R175H", "WT", "WT", "WT"]},
+                      index=["A1", "A2", "A3", "B1", "B2", "B3"])
+    aln = read_mutation_matrix(df)
+    by_name = dict(zip(aln.names, aln.seqs))
+    assert by_name["A1"] == by_name["A2"] == by_name["A3"] != by_name["B1"]
+    assert by_name["B1"] == by_name["B2"] == by_name["B3"] == "0"
+
+
+def test_read_mutation_matrix_saturated_gene_keeps_wild_type_at_zero():
+    # every cell is mutated at this gene -- "WT" never actually appears --
+    # the fix must still recode wild-type (were it present) as "0", not let
+    # one of the two real mutation calls squat on that code.
+    df = pd.DataFrame({"BRAF": ["V600E", "V600E", "V600K"]}, index=["c1", "c2", "c3"])
+    aln = read_mutation_matrix(df)
+    assert "0" not in [s[0] for s in aln.seqs]
+
+
+def test_read_mutation_matrix_missing_data():
+    df = pd.DataFrame({"g1": ["WT", None, "mutA"]}, index=["x", "y", "z"])
+    aln = read_mutation_matrix(df)
+    assert dict(zip(aln.names, aln.seqs))["y"] == "?"
+
+
+def test_read_mutation_matrix_recovers_clade_via_camin_sokal():
+    df = pd.DataFrame({"TP53": ["R175H", "R175H", "R175H", "WT", "WT", "WT"]},
+                      index=["A1", "A2", "A3", "B1", "B2", "B3"])
+    aln = read_mutation_matrix(df)
+    tree = lineage_tree(aln, search=True)
+    leaf_sets = [frozenset(n.leaf_names()) for n in tree.traverse() if not n.is_leaf]
+    assert frozenset({"A1", "A2", "A3"}) in leaf_sets
+    assert tree.data["camin_sokal_score"] == 1.0     # single shared origin
 
 
 # --------------------------------------------------------------------------
