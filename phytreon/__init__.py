@@ -27,7 +27,8 @@ from .infer import (
     Alignment, align, read_fasta, read_character_matrix, trim, bootstrap_support,
     build_tree, infer_ml, ml_tree, log_likelihood, model_finder,
     parsimony_tree, parsimony_score,
-    read_allele_table, sankoff_score, camin_sokal_score, lineage_tree,
+    read_allele_table, read_mutation_matrix, sankoff_score, camin_sokal_score, lineage_tree,
+    expression_distance_matrix, expression_dendrogram,
 )
 from .comparative import ace_parsimony, ace_ml, ace_continuous, stochastic_map
 from .treeops import (
@@ -46,7 +47,8 @@ __all__ = [
     "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",
     "parsimony_tree", "parsimony_score", "robinson_foulds",
-    "read_allele_table", "sankoff_score", "camin_sokal_score", "lineage_tree",
+    "read_allele_table", "read_mutation_matrix", "sankoff_score", "camin_sokal_score", "lineage_tree",
+    "expression_distance_matrix", "expression_dendrogram",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
     "rotate", "flip", "swap_children", "ladderize", "collapse_low_support",
     "scale_clade", "cut_tree", "midpoint_root", "group_clade", "group_otu",
