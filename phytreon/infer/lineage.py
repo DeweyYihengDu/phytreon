@@ -45,6 +45,7 @@ non-phylogenetic use case instead.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Dict, Optional, Sequence, Union
 
 from ..core.tree import Tree
@@ -184,18 +185,23 @@ def _encode_lineage(aln: Alignment):
     states that particular site happens to have (assignment doesn't need to
     be consistent site-to-site: :func:`camin_sokal_score`'s cost matrix
     treats every non-ancestral state symmetrically). Missing (``"?"``)
-    encoded as ``-1``."""
+    encoded as ``-1``. The last element, ``col_to_pattern``, maps each real
+    alignment column (site index 0..ncol-1) to which compressed pattern it
+    landed in -- needed to report real site/gene identity back out of the
+    pattern-compressed representation (see
+    :func:`reconstruct_ancestral_mutations`)."""
     import numpy as np
     names = list(aln.names)
     ncol = aln.ncol
     patterns: Dict[tuple, int] = {}
     order = []
+    col_to_pattern = []
     for j in range(ncol):
         col = tuple(s[j] for s in aln.seqs)
         if col not in patterns:
-            patterns[col] = 0
+            patterns[col] = len(order)
             order.append(col)
-        patterns[col] += 1
+        col_to_pattern.append(patterns[col])
     npat = len(order)
 
     max_k = 1
@@ -210,8 +216,9 @@ def _encode_lineage(aln: Alignment):
         for i, ch in enumerate(col):
             if ch != _MISSING:
                 states[i, p] = smap[ch]
-    weights = np.array([patterns[c] for c in order], dtype=float)
-    return names, states, weights, max_k
+    counts = Counter(col_to_pattern)
+    weights = np.array([counts[p] for p in range(npat)], dtype=float)
+    return names, states, weights, max_k, col_to_pattern
 
 
 def _camin_sokal_cost(k: int):
@@ -228,27 +235,13 @@ def _camin_sokal_cost(k: int):
 # --------------------------------------------------------------------------
 # Sankoff parsimony (general engine) + the Camin-Sokal preset
 # --------------------------------------------------------------------------
-def sankoff_score(tree: Tree, aln: Alignment, cost_matrix, *,
-                  root_state: Optional[int] = 0, data=None) -> float:
-    """Sankoff parsimony cost of ``tree`` for ``aln`` under an arbitrary
-    ``(k, k)`` ``cost_matrix`` (state slots as encoded by
-    :func:`_encode_lineage` -- slot 0 is the ancestral state).
-
-    ``root_state`` fixes the tree's root to a specific state slot rather
-    than optimizing over every possible root state, which is the right
-    choice whenever the true ancestral state is known a priori -- as it is
-    here: the clonal progenitor cell predates all CRISPR editing, so the
-    root is always ancestral (slot 0, the default). Pass ``root_state=None``
-    to instead optimize freely over the root state (standard unrooted
-    Sankoff parsimony).
-    """
+def _sankoff_dp(tree: Tree, cost_matrix, data) -> Dict[int, "object"]:
+    """Postorder Sankoff DP pass shared by :func:`sankoff_score` and
+    :func:`reconstruct_ancestral_mutations`: ``{id(node): (npat, k) array}``,
+    the cost of the subtree rooted at that node for each site pattern, given
+    each possible state at that node."""
     import numpy as np
-    if data is None:
-        data = _encode_lineage(aln)
-    names, states, weights, k = data
-    if cost_matrix.shape != (k, k):
-        raise ValueError(f"cost_matrix must be {(k, k)} to match the encoded "
-                         f"data (got {cost_matrix.shape})")
+    names, states, weights, k, _ = data
     idx = {n: i for i, n in enumerate(names)}
     npat = states.shape[1]
     state_range = np.arange(k)
@@ -267,7 +260,30 @@ def sankoff_score(tree: Tree, aln: Alignment, cost_matrix, *,
                 combined = cost_matrix[None, :, :] + child_dp[:, None, :]
                 dp = dp + combined.min(axis=2)
             cache[id(node)] = dp
+    return cache
 
+
+def sankoff_score(tree: Tree, aln: Alignment, cost_matrix, *,
+                  root_state: Optional[int] = 0, data=None) -> float:
+    """Sankoff parsimony cost of ``tree`` for ``aln`` under an arbitrary
+    ``(k, k)`` ``cost_matrix`` (state slots as encoded by
+    :func:`_encode_lineage` -- slot 0 is the ancestral state).
+
+    ``root_state`` fixes the tree's root to a specific state slot rather
+    than optimizing over every possible root state, which is the right
+    choice whenever the true ancestral state is known a priori -- as it is
+    here: the clonal progenitor cell predates all CRISPR editing, so the
+    root is always ancestral (slot 0, the default). Pass ``root_state=None``
+    to instead optimize freely over the root state (standard unrooted
+    Sankoff parsimony).
+    """
+    if data is None:
+        data = _encode_lineage(aln)
+    _, _, weights, k, _ = data
+    if cost_matrix.shape != (k, k):
+        raise ValueError(f"cost_matrix must be {(k, k)} to match the encoded "
+                         f"data (got {cost_matrix.shape})")
+    cache = _sankoff_dp(tree, cost_matrix, data)
     root_dp = cache[id(tree.root)]
     col = root_dp.min(axis=1) if root_state is None else root_dp[:, root_state]
     return float((weights * col).sum())
@@ -289,7 +305,7 @@ def camin_sokal_score(tree: Tree, aln: Alignment, data=None) -> float:
     """
     if data is None:
         data = _encode_lineage(aln)
-    _, _, _, k = data
+    _, _, _, k, _ = data
     return sankoff_score(tree, aln, _camin_sokal_cost(k), root_state=0, data=data)
 
 
@@ -297,12 +313,72 @@ def _min_possible_score(data) -> float:
     """Lower bound: every distinct non-ancestral state needs >=1 origin,
     regardless of topology (assumes best case -- each occurrence forms one
     monophyletic clade)."""
-    _, states, weights, _ = data
+    _, states, weights, _, _ = data
     total = 0.0
     for p in range(states.shape[1]):
         col = states[:, p]
         total += len({s for s in col.tolist() if s > 0}) * weights[p]
     return total
+
+
+# --------------------------------------------------------------------------
+# ancestral traceback: which mutation arose on which branch
+# --------------------------------------------------------------------------
+def reconstruct_ancestral_mutations(tree: Tree, aln: Alignment, *,
+                                    site_names: Optional[Sequence[str]] = None,
+                                    data=None) -> Tree:
+    """Trace back *which* mutation(s)/scar(s) arose on *which* branch, under
+    the same Camin-Sokal model :func:`camin_sokal_score` minimizes -- the
+    piece that turns a :func:`lineage_tree` topology into an actual
+    reconstructed process, not just "these cells are related".
+
+    For every node, ``node.data["mutations_acquired"]`` lists the site
+    names (from ``site_names``, defaulting to ``"site0"``, ``"site1"``,
+    ... if not given) that transitioned from ancestral to derived on that
+    node's incoming branch (an empty list at the root, and at any branch
+    with no new mutation). Ties among equally-optimal reconstructions are
+    broken toward matching the parent's state (the standard Sankoff
+    traceback convention), so an already-derived site isn't reported as
+    spuriously re-arising partway down a clade that simply inherited it.
+    """
+    import numpy as np
+    if data is None:
+        data = _encode_lineage(aln)
+    names, states, weights, k, col_to_pattern = data
+    ncol = aln.ncol
+    if site_names is None:
+        site_names = [f"site{i}" for i in range(ncol)]
+    if len(site_names) != ncol:
+        raise ValueError(f"site_names must have length {ncol} (one per alignment "
+                         f"column), got {len(site_names)}")
+
+    cost = _camin_sokal_cost(k)
+    cache = _sankoff_dp(tree, cost, data)
+    npat = states.shape[1]
+
+    assigned: Dict[int, "np.ndarray"] = {}   # id(node) -> chosen state per pattern
+
+    for node in tree.traverse("preorder"):
+        if node.is_root:
+            assigned[id(node)] = np.zeros(npat, dtype=np.int64)   # fixed ancestral
+            node.data["mutations_acquired"] = []
+            continue
+
+        parent_state = assigned[id(node.parent)]
+        dp = cache[id(node)]
+        total_cost = cost[parent_state, :] + dp                  # (npat, k)
+        best_cost = total_cost.min(axis=1)
+        match_parent_cost = total_cost[np.arange(npat), parent_state]
+        chosen = np.where(np.isclose(match_parent_cost, best_cost),
+                          parent_state, total_cost.argmin(axis=1))
+        assigned[id(node)] = chosen
+
+        node.data["mutations_acquired"] = [
+            site_names[j] for j in range(ncol)
+            if parent_state[col_to_pattern[j]] == 0 and chosen[col_to_pattern[j]] != 0
+        ]
+
+    return tree
 
 
 # --------------------------------------------------------------------------
@@ -325,7 +401,7 @@ def lineage_tree(aln: Alignment, start: Optional[Tree] = None,
     from ._search import internal_edges, nni_neighbors
 
     data = _encode_lineage(aln)
-    _, _, _, k = data
+    _, _, _, k, _ = data
     cost = _camin_sokal_cost(k)
     tree = start or midpoint_root(nj_builder(aln, model="raw"))
     best = sankoff_score(tree, aln, cost, root_state=0, data=data)

@@ -18,6 +18,7 @@ from phytreon.infer.align import Alignment
 from phytreon.infer.parsimony import parsimony_score
 from phytreon.infer.lineage import (
     read_allele_table, read_mutation_matrix, sankoff_score, camin_sokal_score, lineage_tree,
+    reconstruct_ancestral_mutations,
 )
 
 
@@ -192,3 +193,56 @@ def test_lineage_tree_on_real_data_subset():
     tree = lineage_tree(aln, search=False)
     assert set(tree.leaf_names()) == set(aln.names)
     assert tree.data["camin_sokal_score"] >= tree.data["min_possible_score"] >= 0
+
+
+# --------------------------------------------------------------------------
+# reconstruct_ancestral_mutations: which mutation arose on which branch
+# --------------------------------------------------------------------------
+def test_ancestral_mutations_land_on_the_two_clade_stems_not_the_leaves():
+    aln = Alignment(
+        names=["A1", "A2", "A3", "B1", "B2", "B3"],
+        seqs=["1", "1", "1", "2", "2", "2"],
+    )
+    tree = lineage_tree(aln, search=True)
+    reconstruct_ancestral_mutations(tree, aln, site_names=["TP53"])
+
+    by_leafset = {frozenset(n.leaf_names()) if not n.is_leaf else frozenset({n.name}): n
+                 for n in tree.traverse()}
+    a_stem = by_leafset[frozenset({"A1", "A2", "A3"})]
+    b_stem = by_leafset[frozenset({"B1", "B2", "B3"})]
+    assert a_stem.data["mutations_acquired"] == ["TP53"]
+    assert b_stem.data["mutations_acquired"] == ["TP53"]
+    # no leaf independently "re-acquires" what its stem already carries
+    for leaf in tree.leaves():
+        assert leaf.data["mutations_acquired"] == []
+    assert tree.root.data["mutations_acquired"] == []
+
+
+def test_ancestral_mutations_forced_reversion_shows_two_independent_origins():
+    # same worked example as test_camin_sokal_forbids_reversion_fitch_does_not:
+    # leaf1 and leaf3 must each independently acquire the mutation (score=2),
+    # since a shared origin at X would require leaf2 to revert (forbidden).
+    tree = _three_taxon_tree()
+    aln = Alignment(["leaf1", "leaf2", "leaf3"], ["1", "0", "1"])
+    reconstruct_ancestral_mutations(tree, aln, site_names=["geneA"])
+
+    nodes = {n.name: n for n in tree.traverse()}
+    assert nodes["leaf1"].data["mutations_acquired"] == ["geneA"]
+    assert nodes["leaf3"].data["mutations_acquired"] == ["geneA"]
+    assert nodes["leaf2"].data["mutations_acquired"] == []
+    assert nodes["X"].data["mutations_acquired"] == []
+
+
+def test_ancestral_mutations_default_site_names():
+    tree = _three_taxon_tree()
+    aln = Alignment(["leaf1", "leaf2", "leaf3"], ["1", "0", "1"])
+    reconstruct_ancestral_mutations(tree, aln)
+    nodes = {n.name: n for n in tree.traverse()}
+    assert nodes["leaf1"].data["mutations_acquired"] == ["site0"]
+
+
+def test_ancestral_mutations_rejects_wrong_length_site_names():
+    tree = _three_taxon_tree()
+    aln = Alignment(["leaf1", "leaf2", "leaf3"], ["1", "0", "1"])
+    with pytest.raises(ValueError, match="site_names"):
+        reconstruct_ancestral_mutations(tree, aln, site_names=["a", "b"])
