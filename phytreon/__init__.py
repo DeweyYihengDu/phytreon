@@ -49,6 +49,7 @@ __all__ = [
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",
     "parsimony_tree", "parsimony_score", "robinson_foulds",
     "read_allele_table", "read_mutation_matrix", "sankoff_score", "camin_sokal_score", "lineage_tree",
+    "reconstruct_ancestral_mutations",
     "expression_distance_matrix", "expression_dendrogram",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
     "rotate", "flip", "swap_children", "ladderize", "collapse_low_support",
