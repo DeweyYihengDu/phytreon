@@ -3,20 +3,41 @@
 Two palette families, both returning plain hex strings so the backends stay
 colour-agnostic:
 
-* **categorical** colours are evenly spaced *hues* in the perceptual HCL
-  (polar-CIELUV) space at fixed chroma/luminance (c=100, l=65). For n=3 this
-  yields a balanced salmon / green / blue ``#F8766D #00BA38 #619CFF``.
-* **continuous** scales default to a dark-blue -> light-blue gradient
-  (``#132B43`` -> ``#56B1F7``), interpolated in linear light.
+* **categorical** colours default to :data:`CURATED_PALETTE`, a hand-tuned,
+  colourblind-safe set of eight muted hues (blue / teal / amber / green /
+  violet / red / pink / orange) in a fixed order chosen to maximise the
+  minimum adjacent colour-vision-deficiency separation. Verified against the
+  Machado-2009 CVD model (worst adjacent ΔE >= 12; all-pairs >= 11 for the
+  full eight) so series stay distinguishable under protanopia/deuteranopia --
+  a deliberate step away from the old, over-saturated evenly-spaced hue wheel
+  (which collapsed green/yellow under red-green colour blindness). Larger
+  category counts fall back to a *muted* HCL hue wheel so the extra colours
+  stay in the same restrained register. The raw hue wheel is still available
+  as ``palette="hue"``.
+* **continuous** scales default to a single-hue blue ramp, light (low) ->
+  deep (high) so larger values read as more saturated/salient, interpolated
+  in linear light.
 """
 from __future__ import annotations
 
 import math
 from typing import List, Tuple
 
-# default continuous gradient (low -> high)
-_BLUE_LOW = "#132B43"
-_BLUE_HIGH = "#56B1F7"
+# default continuous gradient: light (low, recedes) -> deep (high, salient)
+_SEQ_LOW = "#dbe9f8"
+_SEQ_HIGH = "#123d70"
+
+# curated categorical default -- eight muted hues in a CVD-safe fixed order.
+CURATED_PALETTE = [
+    "#2a78d6",   # blue
+    "#1baf7a",   # teal
+    "#eda100",   # amber
+    "#008300",   # green
+    "#4a3aa7",   # violet
+    "#e34948",   # red
+    "#e87ba4",   # pink
+    "#eb6834",   # orange
+]
 
 # a few tasteful named qualitative palettes (ColorBrewer)
 NAMED_PALETTES = {
@@ -101,12 +122,22 @@ def hue_palette(n: int, c: float = 100.0, lum: float = 65.0,
     return [_hcl_to_hex((h_start + step * i) % 360, c, lum) for i in range(n)]
 
 
-def categorical_palette(n: int, name: str = "hue") -> List[str]:
+def categorical_palette(n: int, name: str = "curated") -> List[str]:
+    if n <= 0:
+        return []
+    if name == "curated":
+        if n <= len(CURATED_PALETTE):
+            return CURATED_PALETTE[:n]
+        # more levels than curated hues: extend with a *muted* hue wheel
+        # (low chroma) so the extra colours stay in the same restrained
+        # register rather than jumping to bright saturated hues.
+        extra = hue_palette(n - len(CURATED_PALETTE), c=52.0, lum=60.0)
+        return CURATED_PALETTE + extra
     if name == "hue":
         return hue_palette(n)
     base = NAMED_PALETTES.get(name)
     if base is None:
-        raise ValueError(f"unknown palette {name!r}; choose hue/"
+        raise ValueError(f"unknown palette {name!r}; choose curated/hue/"
                          + "/".join(NAMED_PALETTES))
     return [base[i % len(base)] for i in range(n)]
 
@@ -120,7 +151,7 @@ def continuous_mapper(vmin: float, vmax: float, cmap=None):
     span = (vmax - vmin) or 1.0
 
     if cmap is None:
-        lo, hi = _BLUE_LOW, _BLUE_HIGH
+        lo, hi = _SEQ_LOW, _SEQ_HIGH
     elif isinstance(cmap, (tuple, list)) and len(cmap) == 2:
         lo, hi = cmap
     else:

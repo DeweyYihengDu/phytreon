@@ -44,7 +44,7 @@ p = (pt.TreeFigure(tr, layout="circular", extent=350)
      .tip_points(shape="city", size=5, color="#333333")
      .ring(meta, columns=["serotype"], geom="tile", width=0.07, offset=0.03)
      .ring(meta, columns=["AMR_score"], geom="bar",
-           width=0.28, offset=0.03, fill="#9c7a4d")
+           width=0.28, offset=0.03)
      .tip_labels(size=4)
      .titled("Annotated circular tree (lineage / city / serotype / AMR)"))
 p.save(os.path.join(OUT, "showcase_circular.png"))

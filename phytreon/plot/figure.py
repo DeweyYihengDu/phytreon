@@ -66,12 +66,12 @@ def is_numeric(v) -> bool:
 
 
 def build_color_scale(title: str, values, cmap=None,
-                      palette: str = "hue") -> ColorScale:
+                      palette: str = "curated") -> ColorScale:
     """Build a colour scale (categorical or continuous) from raw values.
 
-    * ``palette`` -- name of the qualitative palette (default ``"hue"`` =
-      the evenly spaced HCL hue wheel; also ``"set2"``, ``"dark2"``,
-      ``"tab10"``).
+    * ``palette`` -- name of the qualitative palette (default ``"curated"`` =
+      the eight-hue colourblind-safe default; also ``"hue"`` for the raw HCL
+      hue wheel, ``"set2"``, ``"dark2"``, ``"tab10"``).
     * ``cmap`` -- continuous colour spec: ``None`` for the default blue
       gradient, a ``(low, high)`` hex pair, or a matplotlib colormap name.
     """
@@ -153,7 +153,7 @@ class RenderContext:
         return (lambda n: spec), None        # literal marker
 
     def resolve_color(self, spec, nodes, default: str = "black",
-                      palette: str = "hue", cmap=None):
+                      palette: str = "curated", cmap=None):
         """Return ``(func, scale)``.
 
         ``func(node) -> color``.  ``scale`` is a :class:`ColorScale` if the

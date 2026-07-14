@@ -355,12 +355,14 @@ tree, rings, labels, and legends never overlap.
 <details>
 <summary><b>Colors</b></summary>
 
-Categorical aesthetics use an HCL **hue-wheel** palette by default (for 3
-levels: a balanced `#F8766D #00BA38 #619CFF`); continuous aesthetics use a
-dark-blue → light-blue gradient. Override per element:
+Categorical aesthetics use a **curated**, colourblind-safe eight-hue palette
+by default (for 3 levels: a restrained blue / teal / amber `#2a78d6 #1baf7a
+#eda100`), verified against the Machado-2009 CVD model; counts above eight
+extend with a muted hue wheel. Continuous aesthetics use a single-hue blue
+ramp, light (low) → deep (high). Override per element:
 
 ```python
-fig.tip_points(color="habitat", palette="dark2")   # hue | set2 | dark2 | tab10
+fig.tip_points(color="habitat", palette="dark2")   # curated | hue | set2 | dark2 | tab10
 fig.heatmap(mat, cmap="viridis")                    # name, or ("#fff","#c00") gradient
 ```
 

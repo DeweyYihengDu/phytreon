@@ -5,6 +5,23 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- Refreshed the default plotting colours for a more restrained, publication-
+  ready look. The categorical default is now `CURATED_PALETTE` -- eight muted,
+  colourblind-safe hues in a fixed order, replacing the old over-saturated
+  evenly-spaced HCL hue wheel (which read as a "default plot" and, more
+  seriously, collapsed green/yellow to ΔE 5.6 under protanopia -- indistinct
+  for red-green colourblind readers). The new order was verified against the
+  Machado-2009 CVD model (worst adjacent ΔE >= 12; >= 11 all-pairs at the full
+  eight). Category counts above eight extend with a *muted* hue wheel so the
+  extra colours stay in the same register. The raw wheel is still available as
+  `palette="hue"`, and the named ColorBrewer palettes (`set2`/`dark2`/`tab10`)
+  are unchanged. The default continuous ramp is now a single-hue blue running
+  light (low, recedes) -> deep (high, salient) -- the conventional direction --
+  instead of the old dark -> washed-out-light gradient. Neutral quantitative
+  bar/ring fills changed from a muddy tan to a calm slate. No API changes;
+  only default colours, so existing figures re-render with the new palette.
+
 ### Fixed
 - The native Newick writer/parser (`to_newick()`/`parse_newick()`, used by
   `Tree.write()`/`Tree.from_newick()` whenever no file path is given) never

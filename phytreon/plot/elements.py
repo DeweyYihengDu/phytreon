@@ -163,7 +163,7 @@ class _NodeLabels(_Element):
 class _Points(_Element):
     def __init__(self, which: str = "tip", color="black", size=6.0,
                  marker: str = "o", shape=None, edgecolor: Optional[str] = None,
-                 palette: str = "hue", cmap=None):
+                 palette: str = "curated", cmap=None):
         self.which = which                 # tip | node | all
         self.color = color
         self.size = size
@@ -319,7 +319,7 @@ class _Heatmap(_Element):
     """
 
     def __init__(self, data, offset: float = 0.0, width: float = 0.4,
-                 cmap=None, palette: str = "hue", shared_scale: bool = False,
+                 cmap=None, palette: str = "curated", shared_scale: bool = False,
                  colnames: bool = True, colname_size: float = 9.0,
                  cell_gap: float = 0.05):
         self.data = _index_by_name(data)
@@ -397,7 +397,7 @@ class _BarTrack(_Element):
     """
 
     def __init__(self, data, column, width: float = 0.4, offset: float = 0.04,
-                 fill: str = "#4c78a8", bar_height: float = 0.8, colname=True,
+                 fill: str = "#5b7897", bar_height: float = 0.8, colname=True,
                  colname_size: float = 9.0):
         self.data = _index_by_name(data)
         self.column = column
@@ -537,7 +537,7 @@ class _Ring(_Element):
 
     def __init__(self, data, columns=None, geom: str = "tile", width: float = 0.12,
                  gap: float = 0.02, offset: float = 0.04, pad_angle: float = 0.0,
-                 cmap=None, palette: str = "hue", fill: str = "#9c7a4d",
+                 cmap=None, palette: str = "curated", fill: str = "#5b7897",
                  bar_pad: float = 0.25, colnames: bool = True,
                  colname_size: float = 8.0):
         self.data = _index_by_name(data)
@@ -674,7 +674,7 @@ class _PaintedBranches(_Element):
     in each state; the child connector is drawn in the node's modal state.
     """
 
-    def __init__(self, palette: str = "hue", size: float = 2.0):
+    def __init__(self, palette: str = "curated", size: float = 2.0):
         self.palette = palette
         self.size = size
 
@@ -717,7 +717,7 @@ class _NodePies(_Element):
     """
 
     def __init__(self, attr: str = "ace_probs", radius: float = 0.4,
-                 palette: str = "hue", tips: bool = False):
+                 palette: str = "curated", tips: bool = False):
         self.attr = attr
         self.radius = radius            # in tip-row units
         self.palette = palette
