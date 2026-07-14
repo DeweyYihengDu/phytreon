@@ -39,7 +39,7 @@ meta = pd.DataFrame({
 }).set_index("name")
 tr.join_data(meta.reset_index(), on="name")     # so tip points can map city/serotype
 
-p = (pt.TreeFigure(tr, layout="circular", extent=350)
+p = (pt.TreeFigure(tr, layout="circular_slanted", extent=350)
      .branches(color="lineage", size=1.1)
      .tip_points(shape="city", size=5, color="#333333")
      .ring(meta, columns=["serotype"], geom="tile", width=0.07, offset=0.03)

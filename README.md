@@ -96,9 +96,9 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <sub>16S tree of life, tips colored by domain, bootstrap support (200 reps) — <code>tree_of_life_demo.py</code></sub>
     </td>
     <td width="50%">
-      <img src="assets/gallery/annotated_circular.png" alt="Annotated circular tree with lineage-colored branches, shaped tips, and rings"><br>
+      <img src="assets/gallery/annotated_circular.png" alt="Annotated circular tree with straight diagonal lineage-colored branches, shaped tips, and rings"><br>
       <b>Annotated circular</b><br>
-      <sub>Lineage-colored branches, shaped tips, tile + bar rings, three legends — <code>showcase_circular.py</code></sub>
+      <sub>Slanted (starburst) branches coloured by lineage, shaped tips, tile + bar rings, three legends — <code>showcase_circular.py</code></sub>
     </td>
   </tr>
   <tr>
