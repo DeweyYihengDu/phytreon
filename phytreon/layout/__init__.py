@@ -1,7 +1,7 @@
 """Layout engines: topology -> display coordinates."""
 from .base import Layout
 from .rectangular import RectangularLayout, SlantedLayout, DendrogramLayout
-from .circular import CircularLayout, InwardCircularLayout
+from .circular import CircularLayout, CircularSlantedLayout, InwardCircularLayout
 from .unrooted import EqualAngleLayout, DaylightLayout
 
 #: registry used by ``TreeFigure(layout=...)``
@@ -15,6 +15,9 @@ LAYOUTS = {
     "circular": CircularLayout,
     "fan": CircularLayout,
     "radial": CircularLayout,
+    "circular_slanted": CircularSlantedLayout,
+    "slanted_circular": CircularSlantedLayout,
+    "fan_slanted": CircularSlantedLayout,
     "inward_circular": InwardCircularLayout,
     "inward": InwardCircularLayout,
     "unrooted": DaylightLayout,
@@ -33,5 +36,5 @@ def get_layout(name: str, **kwargs) -> Layout:
 
 
 __all__ = ["Layout", "RectangularLayout", "SlantedLayout", "DendrogramLayout",
-           "CircularLayout", "InwardCircularLayout", "EqualAngleLayout",
-           "DaylightLayout", "LAYOUTS", "get_layout"]
+           "CircularLayout", "CircularSlantedLayout", "InwardCircularLayout",
+           "EqualAngleLayout", "DaylightLayout", "LAYOUTS", "get_layout"]

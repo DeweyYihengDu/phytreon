@@ -214,7 +214,7 @@ tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 | Area | Capabilities |
 |---|---|
 | **I/O & data model** | Newick / Nexus / PhyloXML read-write; metadata joins (`Tree.join_data`) |
-| **Layouts** | rectangular, slanted, dendrogram, circular, fan, radial, inward-circular, unrooted (equal-angle / equal-daylight) |
+| **Layouts** | rectangular, slanted, dendrogram, circular, fan, radial, circular-slanted (straight diagonal edges), inward-circular, unrooted (equal-angle / equal-daylight) |
 | **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML for nucleotide (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data, +Γ, NNI, AIC/BIC, `model_finder`, parsimony (from sequences, a discrete character/trait matrix via `read_character_matrix`, or single-cell lineage-tracing data via `read_allele_table`/`read_mutation_matrix` + irreversible Camin-Sokal parsimony), expression-similarity dendrograms (`expression_dendrogram` -- explicitly not phylogenetic), bootstrap, built-in MSA, trimming |
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
@@ -243,8 +243,8 @@ fluently — every method returns the figure, so calls chain.
 
 Continuous columns get a colorbar, categorical ones a legend; tracks, labels,
 and legends are placed so nothing overlaps. Layouts: `rectangular`, `slanted`,
-`dendrogram`, `circular`, `fan`, `radial`, `inward_circular`,
-`unrooted` / `daylight` (equal-daylight), `equal_angle`.
+`dendrogram`, `circular`, `fan`, `radial`, `circular_slanted`,
+`inward_circular`, `unrooted` / `daylight` (equal-daylight), `equal_angle`.
 
 ---
 

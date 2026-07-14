@@ -160,13 +160,30 @@ def test_daylight_layout_valid():
 
 def test_new_layouts_render(tmp_path):
     tr = pt.datasets.random_tree(15, seed=2)
-    for layout in ("daylight", "dendrogram", "inward_circular", "slanted"):
+    for layout in ("daylight", "dendrogram", "inward_circular", "slanted",
+                   "circular_slanted"):
         p = pt.TreeFigure(tr, layout=layout).tip_labels()
         ctx = p._build()
         assert ctx.scene.paths              # branches were emitted
         out = tmp_path / f"{layout}.png"
         p.save(str(out))
         assert out.exists() and out.stat().st_size > 1000
+
+
+def test_circular_slanted_draws_straight_edges_no_arcs():
+    # the polar counterpart of the slanted layout: every edge is a single
+    # straight 2-point line parent->child, and there is no arc connector.
+    from phytreon.layout import get_layout
+    tr = pt.datasets.random_tree(12, seed=1)
+    lay = get_layout("circular_slanted").apply(tr)
+    for node in tr.traverse():
+        if node.is_root:
+            continue
+        bp = lay.branch_path(node)
+        assert len(bp) == 2                         # straight line, not a spoke
+        assert bp[0] == (node.parent.x, node.parent.y)
+        assert bp[1] == (node.x, node.y)
+        assert lay.child_connector(node) == []      # no arc
 
 
 def test_continuous_scale_makes_colorbar(tmp_path):

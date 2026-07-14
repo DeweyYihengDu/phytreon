@@ -5,6 +5,13 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- New `layout="circular_slanted"` (aliases `slanted_circular` / `fan_slanted`)
+  -- the polar counterpart of the `slanted` layout. Each edge is a single
+  straight diagonal line drawn directly from parent to child, instead of the
+  ordinary circular tree's radial-spoke-plus-arc elbow, giving a cleaner
+  "starburst" look that reads better on many circular trees.
+
 ### Changed
 - Refreshed the default plotting colours for a more restrained, publication-
   ready look. The categorical default is now `CURATED_PALETTE` -- eight muted,

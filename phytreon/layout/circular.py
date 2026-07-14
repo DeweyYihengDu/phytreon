@@ -71,6 +71,34 @@ class CircularLayout(Layout):
         return [self._polar_to_xy(r, a0 + (a1 - a0) * i / (n - 1)) for i in range(n)]
 
 
+class CircularSlantedLayout(CircularLayout):
+    """Circular tree with straight, diagonal edges
+    (``layout="circular_slanted"``) -- the polar counterpart of
+    :class:`~phytreon.layout.rectangular.SlantedLayout`.
+
+    Same node coordinates as the ordinary circular layout, but each edge is
+    a single straight line drawn directly from the parent node to the child
+    node, with no radial-spoke-plus-arc elbow. Branches fan out from every
+    fork, giving the cleaner "starburst" look that reads better than the
+    right-angle style on many circular trees.
+
+    Like any slanted/triangular tree this trades a little metric fidelity
+    for looks: a straight chord between two polar points dips nearer the
+    centre mid-edge, so the radius partway along a branch no longer equals
+    the cumulative distance. Best for cladogram-style trees, or wherever the
+    branching pattern matters more than reading exact radial distance off
+    the middle of an edge (tip radii are still exact).
+    """
+
+    def branch_path(self, node: Node) -> List[XY]:
+        if node.is_root:
+            return []
+        return [(node.parent.x, node.parent.y), (node.x, node.y)]
+
+    def child_connector(self, node: Node) -> List[XY]:
+        return []
+
+
 class InwardCircularLayout(CircularLayout):
     """Circular tree drawn inward (``layout="inward_circular"``): the root
     sits on the outer rim and the tips point toward the centre."""

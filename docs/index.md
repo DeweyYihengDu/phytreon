@@ -30,7 +30,8 @@ pip install -e .[dev]            # + pytest, plotly
 
 - **core** — `Tree`/`Node` model, Newick/Nexus/PhyloXML I/O, metadata join
 - **layout** — rectangular, slanted, dendrogram, circular, fan, radial,
-  inward-circular, unrooted (equal-angle / equal-daylight)
+  circular-slanted (straight diagonal edges), inward-circular, unrooted
+  (equal-angle / equal-daylight)
 - **infer** — NJ/UPGMA (model-corrected distances), native ML for nucleotide
   (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data +Γ, NNI,
   AIC/`model_finder`, parsimony (reversible Fitch, or irreversible

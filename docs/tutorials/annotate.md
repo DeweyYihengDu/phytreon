@@ -43,3 +43,8 @@ apes = tr.get_mrca(["Human", "Gibbon"])
 
 Continuous columns get a colorbar; categorical columns get a legend.
 Tracks, labels and legends are placed so nothing overlaps.
+
+For a cleaner, more organic look, swap `layout="circular"` for
+`layout="circular_slanted"`: every branch becomes a single straight diagonal
+line from parent to child (a "starburst" fan) instead of the right-angle
+radial-spoke-plus-arc elbow.
