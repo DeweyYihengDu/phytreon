@@ -3,7 +3,7 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.0] — 2026-07-15
 
 ### Added
 - New `layout="circular_slanted"` (aliases `slanted_circular` / `fan_slanted`)
@@ -30,6 +30,12 @@ All notable changes to phytreon are documented here. Format loosely follows
   only default colours, so existing figures re-render with the new palette.
 
 ### Fixed
+- Stacked continuous colorbars overlapped: with two or more continuous
+  heatmap/ring columns, each colorbar's title was drawn as a rotated
+  side-label, so adjacent titles ran together (e.g. "lifespanbody_mass")
+  and clipped off the top edge. Titles are now horizontal labels placed
+  above each bar (matching the categorical legend titles), with headroom so
+  the first never clips.
 - The native Newick writer/parser (`to_newick()`/`parse_newick()`, used by
   `Tree.write()`/`Tree.from_newick()` whenever no file path is given) never
   quoted or unquoted taxon names containing reserved Newick punctuation

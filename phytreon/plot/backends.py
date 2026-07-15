@@ -142,19 +142,26 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
         y -= 0.065 * (len(entries) + 2)
 
     # -- continuous colorbars (stacked below the legends) ----------------
+    # Each title is a horizontal label *above* its bar (like the categorical
+    # legend titles), not a rotated side-label -- rotated side-labels on
+    # adjacent colorbars overlapped into each other (e.g. "lifespanbody_mass")
+    # and clipped off the top edge. ``cb_y`` starts with headroom so the
+    # first title never clips.
     from matplotlib.colors import LinearSegmentedColormap, Normalize
     from matplotlib.cm import ScalarMappable
+    cb_y = min(y, 0.92)
     for title, vmin, vmax, stops in scene.colorbars:
         cmap = LinearSegmentedColormap.from_list(title or "cb", list(stops))
         sm = ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap)
-        cax = ax.inset_axes([legend_x + 0.01, max(y - 0.22, 0.0), 0.02, 0.2],
+        top = max(cb_y - 0.20, 0.04)
+        cax = ax.inset_axes([legend_x + 0.01, top, 0.02, 0.18],
                             transform=ax.transAxes)
         cb = fig.colorbar(sm, cax=cax)
         cb.outline.set_visible(False)
         cb.ax.tick_params(labelsize=7, length=2)
-        cb.set_label(title, fontsize=9)
+        cax.set_title(title, fontsize=9, loc="left", pad=3)
         extra.append(cax)
-        y -= 0.30
+        cb_y -= 0.34
 
     fig._phytreon_extra_artists = extra + base_text + al_text
     return fig
