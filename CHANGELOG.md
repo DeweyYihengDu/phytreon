@@ -3,6 +3,16 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] — 2026-07-15
+
+### Changed
+- SVG export (`TreeFigure.save("...svg")`) now keeps every label as a real
+  `<text>` element instead of outlining glyphs to vector paths (sets
+  matplotlib's `svg.fonttype="none"` for `.svg` only). The figure stays fully
+  editable after importing into PowerPoint (Insert → Picture → Convert to
+  Shape), Illustrator, or Inkscape -- labels can be recoloured, moved, and
+  re-typed. PDF/PNG/HTML output is unchanged.
+
 ## [0.2.0] — 2026-07-15
 
 ### Added

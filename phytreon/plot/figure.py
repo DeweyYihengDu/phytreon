@@ -313,16 +313,30 @@ class TreeFigure:
     def save(self, path: str, dpi: int = 300, **kwargs) -> str:
         """Save to ``path``; backend chosen from the file extension.
 
-        ``dpi`` controls raster resolution; remaining kwargs (e.g. ``figsize``)
-        are forwarded to the renderer.
+        Supports ``.png`` / ``.jpg`` (raster), ``.pdf`` / ``.svg`` (vector),
+        and ``.html`` (interactive plotly). ``dpi`` controls raster
+        resolution; remaining kwargs (e.g. ``figsize``) are forwarded to the
+        renderer.
+
+        SVG output keeps every label as a real ``<text>`` element (rather than
+        outlined vector paths), so the figure stays fully editable after
+        importing it into PowerPoint (Insert → Picture, then Graphics Format →
+        Convert to Shape), Illustrator, Inkscape, etc. -- you can recolour,
+        move, and re-type the text.
         """
         ext = path.lower().rsplit(".", 1)[-1]
         if ext == "html":
             self.draw(backend="plotly", **kwargs).write_html(path)
         else:  # pdf/svg/png/jpg -> matplotlib
+            import matplotlib as mpl
             fig = self.draw(backend="mpl", **kwargs)
             extra = getattr(fig, "_phytreon_extra_artists", None)
-            fig.savefig(path, bbox_inches="tight", dpi=dpi, bbox_extra_artists=extra)
+            # for SVG, emit editable <text> (not glyph outlines) so labels
+            # remain real, re-typeable text in PowerPoint / vector editors
+            rc = {"svg.fonttype": "none"} if ext == "svg" else {}
+            with mpl.rc_context(rc):
+                fig.savefig(path, bbox_inches="tight", dpi=dpi,
+                            bbox_extra_artists=extra)
         return path
 
     def show(self, backend: str = "mpl", **kwargs):

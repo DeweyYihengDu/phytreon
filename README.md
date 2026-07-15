@@ -75,6 +75,7 @@ tr.join_data(meta, on="name")                    # attach metadata to tips
     .tip_labels()
     .support_labels()                            # node support values
 ).save("tree.pdf")                               # PDF/SVG/PNG -> matplotlib
+ # .save("tree.svg")                             # SVG: editable text -> drop into PowerPoint
  # .save("tree.html")                            # HTML        -> plotly (zoom/hover)
 ```
 

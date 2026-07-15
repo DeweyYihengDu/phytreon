@@ -65,6 +65,20 @@ def test_layouts_render_both_backends(tmp_path):
     assert (tmp_path / "circular.html").exists()
 
 
+def test_svg_export_keeps_editable_text(tmp_path):
+    # SVG must emit real <text> elements (svg.fonttype="none"), not outlined
+    # glyph paths -- so labels stay editable after importing into PowerPoint
+    # or a vector editor.
+    import re
+    tr = pt.datasets.primates()
+    out = tmp_path / "tree.svg"
+    pt.TreeFigure(tr).tip_labels().save(str(out))
+    svg = out.read_text(encoding="utf-8")
+    texts = re.findall(r"<text[^>]*>(.*?)</text>", svg, re.S)
+    assert texts, "SVG has no <text> elements -- labels were outlined to paths"
+    assert "Human" in " ".join(texts)     # a real tip label is editable text
+
+
 def test_neighbor_joining():
     names = ["A", "B", "C", "D"]
     d = [[0, 5, 9, 9], [5, 0, 10, 10], [9, 10, 0, 8], [9, 10, 8, 0]]
