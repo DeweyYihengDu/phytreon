@@ -3,6 +3,18 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.2] — 2026-07-17
+
+### Fixed
+- `TreeFigure.branches(color=, size=)` now replaces the tree's skeleton layer
+  instead of stacking a second one on top of it. `TreeFigure(tree)` already
+  draws a default skeleton (`skeleton=True`), so calling `.branches(size=...)`
+  again to change branch width globally used to draw a second, differently
+  sized line directly over the first -- e.g. requesting a thinner line left a
+  visible fringe of the original, thicker default line peeking out from
+  underneath. `.branches(...)` is now guaranteed to be a single, clean, global
+  override of branch color/width.
+
 ## [0.2.1] — 2026-07-15
 
 ### Changed

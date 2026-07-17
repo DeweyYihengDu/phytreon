@@ -230,7 +230,7 @@ fluently — every method returns the figure, so calls chain.
 
 | Method | Draws |
 |---|---|
-| `.branches(color=, size=)` | the tree skeleton (e.g. color by lineage) |
+| `.branches(color=, size=)` | the tree skeleton (`size=` sets line width globally; e.g. color by lineage) |
 | `.tip_labels()` / `.node_labels()` / `.support_labels()` | text labels |
 | `.tip_points()` / `.node_points()` / `.points()` | markers (color / size / shape mapping) |
 | `.highlight(node=)` / `.clade_label(...)` | shade / bracket a clade |

@@ -79,6 +79,19 @@ def test_svg_export_keeps_editable_text(tmp_path):
     assert "Human" in " ".join(texts)     # a real tip label is editable text
 
 
+def test_branches_size_is_a_single_global_override():
+    # __init__(skeleton=True) already draws one branches layer; calling
+    # .branches(size=...) again must replace it, not stack a second layer
+    # on top (a second, differently-sized layer would leave a fringe of the
+    # first layer's colour/width showing through).
+    from phytreon.plot.elements import _Branches
+    tr = pt.datasets.primates()
+    p = pt.TreeFigure(tr).branches(size=0.3, color="red")
+    layers = [e for e in p._elements if isinstance(e, _Branches)]
+    assert len(layers) == 1
+    assert layers[0].size == 0.3 and layers[0].color == "red"
+
+
 def test_neighbor_joining():
     names = ["A", "B", "C", "D"]
     d = [[0, 5, 9, 9], [5, 0, 10, 10], [9, 10, 0, 8], [9, 10, 8, 0]]

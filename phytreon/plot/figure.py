@@ -214,7 +214,15 @@ class TreeFigure:
 
     # -- composition methods (each returns self so calls chain) ----------
     def branches(self, color="black", size: float = 1.0) -> "TreeFigure":
+        """Draw (or restyle) the tree skeleton. ``size`` is a single width
+        applied to every branch in the tree -- there is no per-branch/data
+        variation. A figure only ever has one skeleton layer: calling this
+        again (e.g. to override the ``skeleton=True`` default added by
+        ``__init__``) replaces it in place rather than drawing a second,
+        overlapping set of lines.
+        """
         from .elements import _Branches
+        self._elements = [e for e in self._elements if not isinstance(e, _Branches)]
         return self.add(_Branches(color=color, size=size))
 
     def tip_labels(self, **kwargs) -> "TreeFigure":
