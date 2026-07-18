@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from . import core, layout, infer, comparative, plot, datasets, treeops
 from .core import Tree, Node
-from .plot import TreeFigure, TangleFigure
+from .plot import TreeFigure, TangleFigure, DensiTreeFigure
 from .infer import (
     neighbor_joining, upgma, tree_from_alignment, distance_matrix,
     Alignment, align, read_fasta, read_character_matrix, trim, bootstrap_support,
@@ -36,6 +36,7 @@ from .treeops import (
     rotate, flip, swap_children, ladderize, collapse_low_support,
     scale_clade, cut_tree, midpoint_root, group_clade, group_otu,
     robinson_foulds, prune_to_taxa, untangle, crossing_number,
+    collapse_clade,
 )
 
 __version__ = "0.2.2"
@@ -43,7 +44,7 @@ __version__ = "0.2.2"
 __all__ = [
     "core", "layout", "infer", "comparative", "plot", "datasets", "treeops",
     "Tree", "Node",
-    "TreeFigure", "TangleFigure",
+    "TreeFigure", "TangleFigure", "DensiTreeFigure",
     "neighbor_joining", "upgma", "tree_from_alignment", "distance_matrix",
     "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",
@@ -54,5 +55,5 @@ __all__ = [
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
     "rotate", "flip", "swap_children", "ladderize", "collapse_low_support",
     "scale_clade", "cut_tree", "midpoint_root", "group_clade", "group_otu",
-    "prune_to_taxa", "untangle", "crossing_number",
+    "prune_to_taxa", "untangle", "crossing_number", "collapse_clade",
 ]

@@ -359,6 +359,27 @@ class TreeFigure(_Renderable):
         from .elements import _NodePies
         return self.add(_NodePies(**kwargs))
 
+    def collapsed_clades(self, **kwargs) -> "TreeFigure":
+        """Draw a triangle for each clade collapsed by
+        :func:`phytreon.treeops.collapse_clade`."""
+        from .elements import _CollapsedClades
+        return self.add(_CollapsedClades(**kwargs))
+
+    def node_bars(self, **kwargs) -> "TreeFigure":
+        """Interval bars at internal nodes (e.g. 95% HPD divergence times)."""
+        from .elements import _NodeBars
+        return self.add(_NodeBars(**kwargs))
+
+    def connections(self, pairs, **kwargs) -> "TreeFigure":
+        """Curved links between pairs of tips/nodes (HGT, co-occurrence …)."""
+        from .elements import _Connections
+        return self.add(_Connections(pairs, **kwargs))
+
+    def scale_bar(self, **kwargs) -> "TreeFigure":
+        """A compact branch-length scale bar."""
+        from .elements import _ScaleBar
+        return self.add(_ScaleBar(**kwargs))
+
     def time_axis(self, **kwargs) -> "TreeFigure":
         from .elements import _TimeAxis
         return self.add(_TimeAxis(**kwargs))

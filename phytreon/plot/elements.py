@@ -77,10 +77,13 @@ class _TipLabels(_Element):
             text = tip.name or ""
             if not text or (step > 1 and i % step != 0):
                 continue
+            # a collapsed clade is drawn as a triangle reaching out to its
+            # farthest hidden leaf; its label has to clear that, not sit on it
+            far = tip.data.get("_collapsed", {}).get("far", 0.0)
             if kind == "polar" and getattr(lay, "inward", False):
                 # tips point toward the centre: label sits further inward
                 a = tip._angle
-                x, y = lay._polar_to_xy(tip._r - off, a)
+                x, y = lay._polar_to_xy(tip._r - off - far, a)
                 deg = math.degrees(a)
                 if 90 < (deg % 360) < 270:
                     rot, ha = deg, "left"
@@ -91,7 +94,8 @@ class _TipLabels(_Element):
             elif kind == "polar":
                 # sit outside any ring tracks (ctx.outer_radius) when present
                 rings = ctx.outer_radius > ctx.ring_base
-                r = (ctx.outer_radius if (self.align or rings) else tip._r) + off
+                r = (ctx.outer_radius if (self.align or rings)
+                     else tip._r + far) + off
                 a = tip._angle
                 x, y = lay._polar_to_xy(r, a)
                 deg = math.degrees(a)
@@ -109,8 +113,8 @@ class _TipLabels(_Element):
             elif kind == "radial":
                 # offset outward along the branch direction, rotate to match
                 a = tip._angle
-                x = tip.x + off * math.cos(a)
-                y = tip.y + off * math.sin(a)
+                x = tip.x + (off + far) * math.cos(a)
+                y = tip.y + (off + far) * math.sin(a)
                 deg = math.degrees(a)
                 if 90 < (deg % 360) < 270:
                     rot, ha = deg + 180, "right"
@@ -119,7 +123,7 @@ class _TipLabels(_Element):
                 ctx.scene.add(Label(x, y, text, size=self.size, color=cfunc(tip),
                                     ha=ha, va="center", rotation=rot, italic=self.italic))
             else:
-                x = (lay.max_x if self.align else tip.x) + off
+                x = (lay.max_x if self.align else tip.x + far) + off
                 ctx.scene.add(Label(x, tip.y, text, size=self.size, color=cfunc(tip),
                                     ha="left", va="center", italic=self.italic,
                                     role="tiplab"))
@@ -889,3 +893,256 @@ class _TimeAxis(_Element):
         if self.unit:
             ctx.scene.add(Label(maxx / 2, ybase + 1.2, self.unit, size=self.fontsize,
                                 color="#333333", ha="center", va="top"))
+
+
+# --------------------------------------------------------------------------
+# collapsed clades (triangles)
+# --------------------------------------------------------------------------
+class _CollapsedClades(_Element):
+    """Draw a triangle for every clade collapsed by
+    :func:`phytreon.treeops.collapse_clade`.
+
+    The two sides run to the collapsed clade's nearest and farthest leaf, so
+    the wedge shows both how deep the hidden clade is and how uneven it is --
+    the convention iTOL uses. Set ``scale_height=True`` to also let the width
+    grow with the number of hidden tips, so a big clade reads as a big block.
+    """
+
+    def __init__(self, color="#8494a8", alpha: float = 1.0,
+                 height: float = 0.8, scale_height: bool = False,
+                 edgecolor: Optional[str] = None):
+        self.color = color
+        self.alpha = alpha
+        self.height = height           # rows spanned (before any scaling)
+        self.scale_height = scale_height
+        self.edgecolor = edgecolor
+
+    def apply(self, ctx: RenderContext) -> None:
+        lay = ctx.layout
+        nodes = [n for n in ctx.tree.traverse() if "_collapsed" in n.data]
+        if not nodes:
+            return
+        cfunc, scale = ctx.resolve_color(self.color, nodes, default="#8494a8")
+        biggest = max(n.data["_collapsed"]["n"] for n in nodes)
+        for node in nodes:
+            info = node.data["_collapsed"]
+            h = self.height / 2
+            if self.scale_height:
+                h *= 0.35 + 0.65 * (info["n"] / biggest)
+            near, far = info["near"], info["far"]
+            if lay.is_polar:
+                a = node._angle
+                da = h * (lay.extent / max(lay.n_leaves - 1, 1))
+                pts = [lay._polar_to_xy(node._r, a),
+                       lay._polar_to_xy(node._r + near, a - da),
+                       lay._polar_to_xy(node._r + far, a + da)]
+            else:
+                pts = [(node.x, node.y),
+                       (node.x + near, node.y - h),
+                       (node.x + far, node.y + h)]
+            ctx.scene.add(Polygon(pts, facecolor=cfunc(node),
+                                  edgecolor=self.edgecolor, alpha=self.alpha,
+                                  width=0.6 if self.edgecolor else 0.0,
+                                  zorder=1.5,
+                                  label=f"{node.name} ({info['n']} tips)"))
+        if scale is not None:
+            ctx.add_scale(scale)
+
+
+# --------------------------------------------------------------------------
+# node age / confidence bars (95% HPD)
+# --------------------------------------------------------------------------
+class _NodeBars(_Element):
+    """Horizontal bars showing an interval at each internal node.
+
+    The standard way to show divergence-time uncertainty -- a bar spanning the
+    95% HPD of every node's age, as FigTree's "node bars" and ggtree's
+    ``geom_range`` draw it. ``lower``/``upper`` name per-node data keys (e.g.
+    written by BEAST/TreeAnnotator).
+
+    Values are read as **ages** on the same scale as
+    :meth:`~phytreon.plot.figure.TreeFigure.time_axis`: distance back from
+    ``present``, increasing toward the root. Pass ``as_age=False`` if the two
+    keys already hold plot x coordinates instead.
+    """
+
+    def __init__(self, lower: str = "height_95_lower",
+                 upper: str = "height_95_upper", color: str = "#3a7ac1",
+                 width: float = 3.0, alpha: float = 0.55,
+                 present: float = 0.0, as_age: bool = True):
+        self.lower = lower
+        self.upper = upper
+        self.color = color
+        self.width = width
+        self.alpha = alpha
+        self.present = present
+        self.as_age = as_age
+
+    def apply(self, ctx: RenderContext) -> None:
+        lay = ctx.layout
+        if lay.is_polar or getattr(lay, "kind", "rect") != "rect":
+            raise NotImplementedError(
+                "node_bars() is for rectangular layouts (the bar runs along "
+                "the time axis).")
+        maxx = lay.max_x
+        drawn = 0
+        for node in ctx.tree.traverse():
+            lo, hi = node.data.get(self.lower), node.data.get(self.upper)
+            if not (is_numeric(lo) and is_numeric(hi)):
+                continue
+            if self.as_age:
+                # age -> x: the present sits at max_x, ages run back to the root
+                x0 = maxx - (float(hi) - self.present)
+                x1 = maxx - (float(lo) - self.present)
+            else:
+                x0, x1 = float(lo), float(hi)
+            ctx.scene.add(Path([(x0, node.y), (x1, node.y)], color=self.color,
+                               width=self.width, opacity=self.alpha, zorder=2.5))
+            drawn += 1
+        if not drawn:
+            raise ValueError(
+                f"no node carries both {self.lower!r} and {self.upper!r}; "
+                f"node_bars() needs an interval per node -- e.g. the "
+                f"height_95%_HPD annotations on a BEAST summary tree")
+
+
+# --------------------------------------------------------------------------
+# connections between nodes (HGT, co-occurrence, host-symbiont)
+# --------------------------------------------------------------------------
+class _Connections(_Element):
+    """Curved links drawn between arbitrary pairs of tips/nodes.
+
+    iTOL's ``DATASET_CONNECTION``: how horizontal gene transfer, gene sharing,
+    co-occurrence or host-symbiont pairings get shown on a tree. On a circular
+    layout the curves bend toward the centre (iTOL's ``CENTER_CURVES``), which
+    is what keeps a dense set of links readable; on a rectangular one they bow
+    out past the tips so they clear the tree.
+
+    ``pairs`` is an iterable of ``(name1, name2)``, optionally
+    ``(name1, name2, value)``, or a DataFrame with those columns. Pass
+    ``color="value"`` to colour each link by its third field.
+    """
+
+    def __init__(self, pairs, color="#c1553b", width: float = 0.9,
+                 alpha: float = 0.55, curvature: float = 0.55,
+                 dash: Optional[str] = None, cmap=None,
+                 palette: str = "curated", label: str = "connection"):
+        self.pairs = pairs
+        self.color = color
+        self.width = width
+        self.alpha = alpha
+        self.curvature = curvature     # 0 = straight, 1 = bends to the centre
+        self.dash = dash
+        self.cmap = cmap
+        self.palette = palette
+        self.label = label
+
+    def _rows(self):
+        data = self.pairs
+        if hasattr(data, "itertuples"):           # DataFrame
+            ncol = len(data.columns)
+            for row in data.itertuples(index=False):
+                vals = tuple(row)
+                yield (str(vals[0]), str(vals[1]),
+                       vals[2] if ncol > 2 else None)
+            return
+        for item in data:
+            item = tuple(item)
+            yield (str(item[0]), str(item[1]),
+                   item[2] if len(item) > 2 else None)
+
+    @staticmethod
+    def _bezier(p0, p1, ctrl, n: int = 32):
+        return [((1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * ctrl[0] + t ** 2 * p1[0],
+                 (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * ctrl[1] + t ** 2 * p1[1])
+                for t in (i / (n - 1) for i in range(n))]
+
+    def apply(self, ctx: RenderContext) -> None:
+        lay = ctx.layout
+        by_name = {n.name: n for n in ctx.tree.traverse() if n.name}
+        rows = list(self._rows())
+        missing = {nm for a, b, _ in rows for nm in (a, b) if nm not in by_name}
+        if missing:
+            shown = sorted(missing)[:5]
+            raise ValueError(
+                f"connections() got names that are not in the tree: {shown}"
+                f"{' ...' if len(missing) > 5 else ''}")
+
+        vals = [v for _, _, v in rows if v is not None]
+        scale = None
+        if vals and self.color == "value":
+            scale = build_color_scale(self.label, vals, cmap=self.cmap,
+                                      palette=self.palette)
+
+        for a, b, val in rows:
+            na, nb = by_name[a], by_name[b]
+            p0, p1 = (na.x, na.y), (nb.x, nb.y)
+            if lay.is_polar:
+                # pull the control point toward the centre: the chord look
+                ctrl = ((p0[0] + p1[0]) / 2 * (1 - self.curvature),
+                        (p0[1] + p1[1]) / 2 * (1 - self.curvature))
+            else:
+                # bow sideways, past the deeper tip, so links clear the tree
+                ctrl = (max(p0[0], p1[0]) + self.curvature * lay.max_x,
+                        (p0[1] + p1[1]) / 2)
+            col = scale.color(val) if scale is not None else self.color
+            ctx.scene.add(Path(self._bezier(p0, p1, ctrl), color=col,
+                               width=self.width, opacity=self.alpha,
+                               dash=self.dash, zorder=0.8))
+        if scale is not None:
+            ctx.add_scale(scale)
+
+
+# --------------------------------------------------------------------------
+# compact scale bar
+# --------------------------------------------------------------------------
+class _ScaleBar(_Element):
+    """A short bar giving the branch-length scale (ggtree's ``geom_treescale``).
+
+    Unlike :class:`_TimeAxis` this assumes nothing about branch lengths being
+    time and works on any layout, which is what a plain substitutions/site
+    phylogram needs. The length defaults to a round number near a tenth of the
+    tree's depth.
+    """
+
+    def __init__(self, length: Optional[float] = None, label: Optional[str] = None,
+                 x: Optional[float] = None, y: Optional[float] = None,
+                 color: str = "#333333", width: float = 1.4,
+                 fontsize: float = 8.0):
+        self.length = length
+        self.label = label
+        self.x = x
+        self.y = y
+        self.color = color
+        self.width = width
+        self.fontsize = fontsize
+
+    @staticmethod
+    def _nice(v: float) -> float:
+        """Round down to 1, 2 or 5 times a power of ten."""
+        if v <= 0:
+            return 1.0
+        mag = 10 ** math.floor(math.log10(v))
+        for m in (5.0, 2.0, 1.0):
+            if v >= m * mag:
+                return m * mag
+        return mag
+
+    def apply(self, ctx: RenderContext) -> None:
+        lay = ctx.layout
+        length = self.length if self.length is not None \
+            else self._nice(lay.max_x / 10.0)
+        xmin, ymin, xmax, ymax = ctx.scene.bounds()
+        span = (ymax - ymin) or 1.0
+        x0 = self.x if self.x is not None else xmin
+        y0 = self.y if self.y is not None else ymax + 0.05 * span
+        ctx.scene.add(Path([(x0, y0), (x0 + length, y0)], color=self.color,
+                           width=self.width, zorder=4))
+        tick = 0.012 * span
+        for xt in (x0, x0 + length):                 # end ticks
+            ctx.scene.add(Path([(xt, y0 - tick), (xt, y0 + tick)],
+                               color=self.color, width=self.width, zorder=4))
+        text = self.label if self.label is not None else f"{length:g}"
+        ctx.scene.add(Label(x0 + length / 2, y0 + 0.03 * span, text,
+                            size=self.fontsize, color=self.color,
+                            ha="center", va="top"))

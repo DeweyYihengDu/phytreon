@@ -227,7 +227,7 @@ tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 | **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML for nucleotide (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data, +Γ, NNI, AIC/BIC, `model_finder`, parsimony (from sequences, a discrete character/trait matrix via `read_character_matrix`, or single-cell lineage-tracing data via `read_allele_table`/`read_mutation_matrix` + irreversible Camin-Sokal parsimony), expression-similarity dendrograms (`expression_dendrogram` -- explicitly not phylogenetic), bootstrap, built-in MSA, trimming |
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
-| **Tree comparison** | tanglegrams (`TangleFigure`) with rotation-based `untangle`, crossing counts, Robinson-Foulds |
+| **Tree comparison** | tanglegrams (`TangleFigure`) with rotation-based `untangle`, crossing counts, Robinson-Foulds; DensiTree clouds (`DensiTreeFigure`) for a whole tree set |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |
 
 ---
@@ -249,7 +249,10 @@ fluently — every method returns the figure, so calls chain.
 | `.alignment(aln)` | a residue-colored MSA raster |
 | `.painted_branches()` | branches painted by stochastic-map state |
 | `.node_pies()` | ancestral-state pies at internal nodes |
-| `.time_axis(geo=True)` | a time / geological-period axis |
+| `.time_axis(geo=True)` / `.scale_bar()` | a time / geological-period axis, or a compact branch-length scale |
+| `.collapsed_clades()` | collapsed clades as triangles (with `pt.collapse_clade`) |
+| `.node_bars()` | node age intervals, e.g. 95% HPD on a dated tree |
+| `.connections(pairs)` | curved links between tips (HGT, co-occurrence) |
 
 Continuous columns get a colorbar, categorical ones a legend; tracks, labels,
 and legends are placed so nothing overlaps. Layouts: `rectangular`, `slanted`,

@@ -39,6 +39,31 @@ All notable changes to phytreon are documented here. Format loosely follows
     prokaryotic phyla (91 Bacteria, 15 Archaea) fetched from NCBI by
     `examples/data/fetch_large_16S.py`, for demos that need a large tree.
 
+- **More drawing styles**, filling the gaps against iTOL / ggtree / FigTree:
+  - **Collapsed clades.** `treeops.collapse_clade(tree, node)` compresses a
+    clade to a single tip and `TreeFigure.collapsed_clades()` draws it as a
+    triangle whose two sides reach the clade's nearest and farthest hidden
+    leaf (iTOL's convention), so the wedge shows how deep and how ragged the
+    hidden group is. Tip labels are offset past the triangle. Works on
+    rectangular and circular layouts.
+  - **Node interval bars.** `TreeFigure.node_bars(lower=, upper=)` draws the
+    95% HPD age interval across each node -- the standard annotation on a
+    dated Bayesian tree (FigTree's "node bars", ggtree's `geom_range`). Read
+    as ages on the same scale as `time_axis()`, or as raw x with `as_age=False`.
+  - **Connections.** `TreeFigure.connections(pairs)` draws curved links between
+    arbitrary tips for horizontal gene transfer, gene sharing or co-occurrence
+    (iTOL's `DATASET_CONNECTION`). On a circular layout the curves bend toward
+    the centre; on a rectangular one they bow out past the tips. Accepts
+    `(a, b)` / `(a, b, value)` tuples or a DataFrame, and `color="value"`.
+  - **DensiTree.** `DensiTreeFigure(trees)` overlays a whole set of trees
+    translucently so topological uncertainty is visible instead of hidden
+    behind one summary tree. Trees are first rotated onto a shared tip order
+    via `untangle`, which changes only how they read.
+  - **Scale bar.** `TreeFigure.scale_bar()` -- a compact branch-length scale
+    (ggtree's `geom_treescale`) that, unlike `time_axis()`, assumes nothing
+    about branch lengths being time and works on any layout.
+  - New `docs/tutorials/tree_styles.md` and `examples/tree_styles_demo.py`.
+
 ### Fixed
 - `ring()` and `heatmap()` no longer break up into slivers on large trees. Both
   drew a fixed hairline separator around every cell; once a tree passes a few

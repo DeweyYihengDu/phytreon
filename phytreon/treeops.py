@@ -288,6 +288,44 @@ def untangle(t1: Tree, t2: Tree, *, fix: Optional[str] = "left",
 
 
 # --------------------------------------------------------------------------
+# collapse a clade for display (drawn as a triangle)
+# --------------------------------------------------------------------------
+def collapse_clade(tree: Tree, node: Node, *, name: Optional[str] = None) -> Tree:
+    """Collapse ``node``'s subtree into a single tip, drawn as a triangle.
+
+    This is a *display* operation, the standard way to compress a large tree
+    down to the clades you actually want to discuss.  The clade's children are
+    dropped and the summary needed to draw it is recorded on
+    ``node.data["_collapsed"]``:
+
+    ``n`` (tips collapsed), ``near`` / ``far`` (branch length from ``node`` to
+    its closest and farthest leaf) and ``leaves`` (the names).  A triangle
+    whose two sides use ``near`` and ``far`` therefore shows how deep and how
+    ragged the hidden clade is, the same convention iTOL uses.
+
+    The tree is modified in place, so work on a copy
+    (``Tree.from_newick(tree.write())``) to keep the original.  Renders via
+    :meth:`~phytreon.plot.figure.TreeFigure.collapsed_clades`.
+    """
+    if node.is_leaf:
+        raise ValueError("cannot collapse a leaf")
+    depths = [leaf.depth(use_lengths=True) - node.depth(use_lengths=True)
+              for leaf in node.get_leaves()]
+    node.data["_collapsed"] = {
+        "n": len(depths),
+        "near": min(depths),
+        "far": max(depths),
+        "leaves": _leaf_names(node),
+    }
+    if name is not None:
+        node.name = name
+    elif not node.name:
+        node.name = f"{_leaf_names(node)[0]} +{len(depths) - 1}"
+    node.children = []
+    return tree
+
+
+# --------------------------------------------------------------------------
 # restrict to a leaf subset
 # --------------------------------------------------------------------------
 def prune_to_taxa(tree: Tree, taxa: Iterable[str], *, strict: bool = True) -> Tree:
