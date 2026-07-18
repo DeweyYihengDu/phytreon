@@ -20,6 +20,7 @@ nav:
       - Sequences to a tree: tutorials/build_tree.md
       - Annotated trees: tutorials/annotate.md
       - Comparative methods: tutorials/comparative.md
+      - Comparing two trees: tutorials/tanglegram.md
       - Single-cell lineage tracing: tutorials/lineage_tracing.md
       - Expression-similarity dendrograms: tutorials/expression_similarity.md
   - API reference: api.md

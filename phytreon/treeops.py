@@ -179,6 +179,115 @@ def robinson_foulds(t1: Tree, t2: Tree, normalized: bool = False) -> float:
 
 
 # --------------------------------------------------------------------------
+# tanglegram support: crossings between two trees' tip orders
+# --------------------------------------------------------------------------
+def _inversions(seq: List[int]) -> int:
+    """Number of inverted pairs in ``seq``, by merge sort -- O(n log n)."""
+    def sort(a: List[int]):
+        if len(a) < 2:
+            return a, 0
+        mid = len(a) // 2
+        left, il = sort(a[:mid])
+        right, ir = sort(a[mid:])
+        merged: List[int] = []
+        cross = 0
+        i = j = 0
+        while i < len(left) and j < len(right):
+            if left[i] <= right[j]:
+                merged.append(left[i])
+                i += 1
+            else:
+                # right[j] jumps ahead of every left element still pending
+                cross += len(left) - i
+                merged.append(right[j])
+                j += 1
+        merged.extend(left[i:])
+        merged.extend(right[j:])
+        return merged, il + ir + cross
+    return sort(list(seq))[1]
+
+
+def _shared_rank_sequence(t1: Tree, t2: Tree) -> List[int]:
+    """``t2``'s tip order expressed as ranks in ``t1``'s order (shared tips)."""
+    shared = set(t1.leaf_names()) & set(t2.leaf_names())
+    rank = {name: i for i, name in
+            enumerate(n for n in t1.leaf_names() if n in shared)}
+    return [rank[n] for n in t2.leaf_names() if n in shared]
+
+
+def crossing_number(t1: Tree, t2: Tree) -> int:
+    """Number of crossing tip-to-tip links when ``t1`` and ``t2`` face each
+    other in a tanglegram.
+
+    Two links cross exactly when their tips appear in opposite vertical order
+    in the two trees, so this is the number of inverted pairs between the two
+    tip orderings.  Tips present in only one tree are ignored.
+
+    Unlike :func:`robinson_foulds`, this measures *display* discordance -- it
+    depends on how each tree's children happen to be ordered, so minimise it
+    with :func:`untangle` before reading anything into the value.
+
+    Zero crossings does **not** mean the two trees are the same: it only means
+    some tip order satisfies both, which conflicting splits can still allow.
+    Always read :func:`robinson_foulds` alongside it for the actual
+    topological difference.
+    """
+    return _inversions(_shared_rank_sequence(t1, t2))
+
+
+def _untangle_against(target: Tree, reference: Tree, rounds: int) -> int:
+    """Greedily reverse child order in ``target`` to reduce crossings."""
+    best = crossing_number(reference, target)
+    for _ in range(rounds):
+        improved = False
+        for node in target.traverse("preorder"):
+            if node.is_leaf or len(node.children) < 2:
+                continue
+            node.children.reverse()
+            score = crossing_number(reference, target)
+            if score < best:
+                best = score
+                improved = True
+            else:
+                node.children.reverse()          # no gain -- put it back
+        if not improved:
+            break                                # local optimum reached
+    return best
+
+
+def untangle(t1: Tree, t2: Tree, *, fix: Optional[str] = "left",
+             rounds: int = 3) -> int:
+    """Rotate nodes so the two trees' shared tips line up, and return the
+    resulting :func:`crossing_number`.
+
+    Rotating a node reverses the order of its children, which slides that
+    clade up or down the plot without changing the topology -- so untangling
+    only changes how the trees *read*, never what they say.  The search is a
+    greedy hill-climb over single rotations (the standard heuristic; it finds
+    a good arrangement, not a provably optimal one).
+
+    ``fix="left"`` holds ``t1``'s tip order and rotates only ``t2``;
+    ``fix="right"`` does the reverse; ``fix=None`` alternates between the two,
+    which usually untangles further but leaves neither tree in its original
+    order.  Both trees are modified in place.
+    """
+    if fix not in ("left", "right", None):
+        raise ValueError("fix must be 'left', 'right' or None")
+    if fix == "left":
+        return _untangle_against(t2, t1, rounds)
+    if fix == "right":
+        return _untangle_against(t1, t2, rounds)
+    best = crossing_number(t1, t2)
+    for _ in range(rounds):
+        _untangle_against(t2, t1, 1)
+        score = _untangle_against(t1, t2, 1)
+        if score >= best:
+            break                                # alternating stopped helping
+        best = score
+    return best
+
+
+# --------------------------------------------------------------------------
 # restrict to a leaf subset
 # --------------------------------------------------------------------------
 def prune_to_taxa(tree: Tree, taxa: Iterable[str], *, strict: bool = True) -> Tree:

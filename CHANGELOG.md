@@ -3,6 +3,60 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Tanglegrams** for comparing two trees of the same taxa -- e.g. a tree built
+  from genomic data against one built from transcriptomic data, or two
+  inference methods on one alignment:
+  - `TangleFigure(left, right)` draws the two trees facing each other and links
+    their shared tips. Each side is an ordinary `TreeFigure` (`fig.left` /
+    `fig.right`), so every existing element, layout and colour scale works on
+    either tree; ready-made `TreeFigure`s can be passed in directly. Trees with
+    only partly overlapping taxa are supported -- unmatched tips are drawn but
+    left unlinked.
+  - `.untangle()` rotates clades to minimise crossing links (greedy hill-climb
+    over single rotations; `fix="left"`/`"right"`/`None`). Rotation reorders
+    children only, so topology and branch lengths are untouched -- untangling
+    changes how the trees read, never what they say.
+  - `.connect(...)` styles the links: a literal colour, a data column from the
+    left tree's tips (with legend), or `highlight_discordant=True` to colour
+    every link that crosses another.
+  - `treeops.crossing_number(t1, t2)` counts crossing links (inversions between
+    the two tip orders, O(n log n)) and `treeops.untangle(t1, t2)` exposes the
+    rotation search on its own. Both are documented as *display* discordance:
+    zero crossings does not imply identical trees, so read `robinson_foulds`
+    alongside.
+  - Both trees are labelled by default (`tip_labels="both"`, also `"left"`,
+    `"right"` or `False`). The middle band that carries the labels and links is
+    sized from the actual rendered text width, and the figure widens for long
+    taxon names, so species names fit instead of colliding across the middle;
+    `gap=` and `connect(inset=...)` override the estimate.
+  - New `docs/tutorials/tanglegram.md` and `examples/tanglegram_demo.py` (the
+    demo compares neighbour joining, UPGMA and parsimony on the bundled 16S
+    alignment and shows both the discordant and the deceptive-agreement case).
+  - New bundled dataset `examples/data/big16S*` -- 106 taxa across 25
+    prokaryotic phyla (91 Bacteria, 15 Archaea) fetched from NCBI by
+    `examples/data/fetch_large_16S.py`, for demos that need a large tree.
+
+### Fixed
+- `ring()` and `heatmap()` no longer break up into slivers on large trees. Both
+  drew a fixed hairline separator around every cell; once a tree passes a few
+  hundred tips that stroke is as wide as the cell itself, so a metadata ring
+  rendered as a comb of thin white-gapped stripes instead of solid colour
+  bands, and blocks of shared values became unreadable. Past ~150 tips the
+  separator is now dropped and each cell is stroked in its own fill, so
+  neighbouring cells meet with no anti-aliased seam. Force either behaviour
+  with the new `separators=True/False` argument.
+- `ring(pad_angle=...)` is an absolute angle, so on a large tree it could
+  exceed a whole sector and produce inverted (negative-width) wedges; it is now
+  clamped to leave a sliver of every sector standing.
+
+### Changed
+- Extracted the shared `draw`/`save`/`show` plumbing from `TreeFigure` into an
+  internal `_Renderable` base so `TangleFigure` gets identical backend dispatch
+  and export behaviour (including editable-text SVG) rather than a second copy.
+
 ## [0.2.2] — 2026-07-17
 
 ### Fixed

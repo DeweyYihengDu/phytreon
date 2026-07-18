@@ -64,3 +64,23 @@ Downloaded and reshaped with `examples/data/fetch_mutation_data.py`, which
 also collapses SCITE's separate heterozygous/homozygous mutation codes into
 a single "mutated" state (a documented simplification -- see that script's
 docstring and `examples/mutation_lineage_demo.py`).
+
+---
+
+## Large 16S set (`big16S*`)
+
+A broader, ~106-taxon version of the sampler above: type strains and model
+organisms spanning 25 named prokaryotic phyla (91 Bacteria, 15 Archaea),
+including the PVC superphylum (Chlamydiota, Planctomycetota,
+Verrucomicrobiota) and a range of deep-branching lineages. Used by
+`examples/tanglegram_demo.py` and the gallery, where a tree with many taxa
+makes the two-tree comparison legible.
+
+Downloaded from the same NCBI `nucleotide` source with
+`examples/data/fetch_large_16S.py`, which also performs the multiple
+alignment (phytreon's built-in progressive aligner) and gap-trimming, and
+writes `big16S_aligned.fasta`. The alignment step is quadratic and takes
+~10-20 minutes; the aligned output is cached here so examples run offline.
+
+**License:** public domain, as above. Per-taxon accessions are recorded in
+`big16S_metadata.csv`.

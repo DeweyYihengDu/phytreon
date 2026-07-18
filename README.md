@@ -114,6 +114,14 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <sub>The multiple-sequence alignment as a residue raster — <code>tracks_demo.py</code></sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/gallery/tanglegram.png" alt="Tanglegram of 106 taxa: two facing 16S trees with discordant links highlighted"><br>
+      <b>Tanglegram</b><br>
+      <sub>106 taxa, 25 phyla: neighbour joining vs UPGMA, untangled, with the links that still cross highlighted — <code>tanglegram_demo.py</code></sub>
+    </td>
+    <td width="50%"></td>
+  </tr>
 </table>
 
 ---
@@ -219,6 +227,7 @@ tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 | **Inference** | NJ, UPGMA (model-corrected distances or a precomputed distance matrix), ML for nucleotide (JC69/K80/HKY85/GTR) and protein (JTT/WAG/LG) data, +Γ, NNI, AIC/BIC, `model_finder`, parsimony (from sequences, a discrete character/trait matrix via `read_character_matrix`, or single-cell lineage-tracing data via `read_allele_table`/`read_mutation_matrix` + irreversible Camin-Sokal parsimony), expression-similarity dendrograms (`expression_dendrogram` -- explicitly not phylogenetic), bootstrap, built-in MSA, trimming |
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
+| **Tree comparison** | tanglegrams (`TangleFigure`) with rotation-based `untangle`, crossing counts, Robinson-Foulds |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |
 
 ---
@@ -246,6 +255,31 @@ Continuous columns get a colorbar, categorical ones a legend; tracks, labels,
 and legends are placed so nothing overlaps. Layouts: `rectangular`, `slanted`,
 `dendrogram`, `circular`, `fan`, `radial`, `circular_slanted`,
 `inward_circular`, `unrooted` / `daylight` (equal-daylight), `equal_angle`.
+
+---
+
+## Comparing two trees
+
+`TangleFigure` faces two trees at each other and links their shared tips, so
+disagreements read as crossing links — the picture for "does the transcriptome
+tree agree with the genome tree?".
+
+```python
+fig = pt.TangleFigure(genome_tree, transcriptome_tree,
+                      titles=("genome", "transcriptome"))
+fig.untangle()                            # rotate clades to line the tips up
+fig.connect(highlight_discordant=True)    # red = this taxon disagrees
+fig.left.tip_points(color="phylum")       # each side is a full TreeFigure
+fig.save("tanglegram.pdf")
+```
+
+Rotating a node reorders its children, so untangling changes only how the
+trees read, never what they say. Whatever still crosses afterwards is real
+conflict. Note that zero crossings does **not** mean the trees are identical —
+they may merely admit a common tip order — so read `pt.robinson_foulds()`
+alongside `pt.crossing_number()`. See
+[the tutorial](docs/tutorials/tanglegram.md) and
+`examples/tanglegram_demo.py`.
 
 ---
 

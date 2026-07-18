@@ -184,9 +184,83 @@ class _Element:
 
 
 # --------------------------------------------------------------------------
+# shared render / export plumbing
+# --------------------------------------------------------------------------
+class _Renderable:
+    """Draw/save/show for anything that can build a :class:`RenderContext`.
+
+    Shared by :class:`TreeFigure` and
+    :class:`~phytreon.plot.tangle.TangleFigure` so both get identical backend
+    dispatch and export behaviour (notably the editable-text SVG handling).
+    """
+
+    title: Optional[str] = None
+
+    def _build(self) -> RenderContext:              # pragma: no cover
+        raise NotImplementedError
+
+    def _default_figsize(self, ctx: RenderContext):
+        """Figure size to use when the caller did not pass one (None = let
+        the backend decide)."""
+        return None
+
+    def draw(self, backend: str = "mpl", **kwargs):
+        ctx = self._build()
+        if backend in ("mpl", "matplotlib", "static"):
+            from .backends import render_mpl
+            if kwargs.get("figsize") is None:
+                figsize = self._default_figsize(ctx)
+                if figsize is not None:
+                    kwargs["figsize"] = figsize
+            return render_mpl(ctx, title=self.title, **kwargs)
+        if backend in ("plotly", "interactive", "html"):
+            from .backends import render_plotly
+            return render_plotly(ctx, title=self.title, **kwargs)
+        raise ValueError(f"unknown backend {backend!r}")
+
+    def save(self, path: str, dpi: int = 300, **kwargs) -> str:
+        """Save to ``path``; backend chosen from the file extension.
+
+        Supports ``.png`` / ``.jpg`` (raster), ``.pdf`` / ``.svg`` (vector),
+        and ``.html`` (interactive plotly). ``dpi`` controls raster
+        resolution; remaining kwargs (e.g. ``figsize``) are forwarded to the
+        renderer.
+
+        SVG output keeps every label as a real ``<text>`` element (rather than
+        outlined vector paths), so the figure stays fully editable after
+        importing it into PowerPoint (Insert → Picture, then Graphics Format →
+        Convert to Shape), Illustrator, Inkscape, etc. -- you can recolour,
+        move, and re-type the text.
+        """
+        ext = path.lower().rsplit(".", 1)[-1]
+        if ext == "html":
+            self.draw(backend="plotly", **kwargs).write_html(path)
+        else:  # pdf/svg/png/jpg -> matplotlib
+            import matplotlib as mpl
+            fig = self.draw(backend="mpl", **kwargs)
+            extra = getattr(fig, "_phytreon_extra_artists", None)
+            # for SVG, emit editable <text> (not glyph outlines) so labels
+            # remain real, re-typeable text in PowerPoint / vector editors
+            rc = {"svg.fonttype": "none"} if ext == "svg" else {}
+            with mpl.rc_context(rc):
+                fig.savefig(path, bbox_inches="tight", dpi=dpi,
+                            bbox_extra_artists=extra)
+        return path
+
+    def show(self, backend: str = "mpl", **kwargs):
+        fig = self.draw(backend=backend, **kwargs)
+        if backend in ("mpl", "matplotlib", "static"):
+            import matplotlib.pyplot as plt
+            plt.show()
+        else:
+            fig.show()
+        return fig
+
+
+# --------------------------------------------------------------------------
 # the figure object
 # --------------------------------------------------------------------------
-class TreeFigure:
+class TreeFigure(_Renderable):
     """A composable tree figure.
 
     ``TreeFigure(tree, layout=...)`` starts with the branch skeleton already
@@ -307,51 +381,3 @@ class TreeFigure:
         for el in self._elements:
             el.apply(ctx)
         return ctx
-
-    def draw(self, backend: str = "mpl", **kwargs):
-        ctx = self._build()
-        if backend in ("mpl", "matplotlib", "static"):
-            from .backends import render_mpl
-            return render_mpl(ctx, title=self.title, **kwargs)
-        if backend in ("plotly", "interactive", "html"):
-            from .backends import render_plotly
-            return render_plotly(ctx, title=self.title, **kwargs)
-        raise ValueError(f"unknown backend {backend!r}")
-
-    def save(self, path: str, dpi: int = 300, **kwargs) -> str:
-        """Save to ``path``; backend chosen from the file extension.
-
-        Supports ``.png`` / ``.jpg`` (raster), ``.pdf`` / ``.svg`` (vector),
-        and ``.html`` (interactive plotly). ``dpi`` controls raster
-        resolution; remaining kwargs (e.g. ``figsize``) are forwarded to the
-        renderer.
-
-        SVG output keeps every label as a real ``<text>`` element (rather than
-        outlined vector paths), so the figure stays fully editable after
-        importing it into PowerPoint (Insert → Picture, then Graphics Format →
-        Convert to Shape), Illustrator, Inkscape, etc. -- you can recolour,
-        move, and re-type the text.
-        """
-        ext = path.lower().rsplit(".", 1)[-1]
-        if ext == "html":
-            self.draw(backend="plotly", **kwargs).write_html(path)
-        else:  # pdf/svg/png/jpg -> matplotlib
-            import matplotlib as mpl
-            fig = self.draw(backend="mpl", **kwargs)
-            extra = getattr(fig, "_phytreon_extra_artists", None)
-            # for SVG, emit editable <text> (not glyph outlines) so labels
-            # remain real, re-typeable text in PowerPoint / vector editors
-            rc = {"svg.fonttype": "none"} if ext == "svg" else {}
-            with mpl.rc_context(rc):
-                fig.savefig(path, bbox_inches="tight", dpi=dpi,
-                            bbox_extra_artists=extra)
-        return path
-
-    def show(self, backend: str = "mpl", **kwargs):
-        fig = self.draw(backend=backend, **kwargs)
-        if backend in ("mpl", "matplotlib", "static"):
-            import matplotlib.pyplot as plt
-            plt.show()
-        else:
-            fig.show()
-        return fig
