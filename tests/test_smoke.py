@@ -382,3 +382,66 @@ def test_plotly_shifts_aligned_paths():
             if abs(xs[0] - orig_x) > 1e-9:
                 shifted = True
     assert shifted, "aligned Path was not shifted in the plotly backend"
+
+
+def _ring_cells(fig):
+    # ring/heatmap cells are the polygons carrying a per-tip hover label
+    return [p for p in fig._build().scene.polygons if p.label and "|" in p.label]
+
+
+def test_dense_rings_drop_the_sector_separator():
+    # a hairline separator is wider than the sector itself once a tree has a
+    # few hundred tips, which turned the ring into a comb of white slivers
+    # instead of solid colour bands
+    import pandas as pd
+    from phytreon.plot.elements import _RING_DENSE_TIPS
+
+    def cells(n):
+        tr = pt.datasets.random_tree(n, seed=5)
+        df = pd.DataFrame({"name": tr.leaf_names(),
+                           "grp": ["a", "b"] * (n // 2) + ["a"] * (n % 2)})
+        return _ring_cells(pt.TreeFigure(tr, layout="circular").ring(df))
+
+    sparse = cells(40)
+    assert sparse and all(c.edgecolor == "white" for c in sparse)
+
+    dense = cells(_RING_DENSE_TIPS + 60)
+    assert dense
+    # every dense cell is stroked in its own fill, so abutting sectors leave
+    # no anti-aliased hairline between them
+    assert all(c.edgecolor == c.facecolor for c in dense)
+
+
+def test_ring_separators_can_be_forced_either_way():
+    import pandas as pd
+    tr = pt.datasets.random_tree(400, seed=6)
+    df = pd.DataFrame({"name": tr.leaf_names(), "grp": ["a"] * 400})
+    on = _ring_cells(pt.TreeFigure(tr, layout="circular").ring(df, separators=True))
+    assert all(c.edgecolor == "white" for c in on)      # kept despite 400 tips
+
+    small = pt.datasets.random_tree(30, seed=6)
+    df2 = pd.DataFrame({"name": small.leaf_names(), "grp": ["a"] * 30})
+    off = _ring_cells(pt.TreeFigure(small, layout="circular")
+                      .ring(df2, separators=False))
+    assert all(c.edgecolor == c.facecolor for c in off)
+
+
+def test_large_pad_angle_cannot_invert_a_sector():
+    # pad_angle is an absolute angle; on a big tree it can exceed the whole
+    # sector, which used to produce negative-width (inverted) wedges
+    import pandas as pd
+    tr = pt.datasets.random_tree(500, seed=7)
+    df = pd.DataFrame({"name": tr.leaf_names(), "grp": ["a"] * 500})
+    fig = pt.TreeFigure(tr, layout="circular").ring(df, pad_angle=5.0)
+    for cell in _ring_cells(fig):
+        assert len(cell.points) >= 3          # still a real polygon
+
+
+def test_dense_heatmap_drops_the_cell_separator():
+    import pandas as pd
+    from phytreon.plot.elements import _RING_DENSE_TIPS
+    n = _RING_DENSE_TIPS + 60
+    tr = pt.datasets.random_tree(n, seed=8)
+    df = pd.DataFrame({"name": tr.leaf_names(), "v": list(range(n))})
+    cells = _ring_cells(pt.TreeFigure(tr).heatmap(df))
+    assert cells and all(c.edgecolor == c.facecolor for c in cells)

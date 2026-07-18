@@ -17,6 +17,10 @@ from ..core.tree import Node
 from ..scene import Label, Marker, Path, Polygon, Raster
 from .figure import _Element, RenderContext, build_color_scale, is_numeric
 
+#: above this many tips, per-tip cells are too thin to carry a separator
+#: stroke -- see :class:`_Ring` / :class:`_Heatmap`
+_RING_DENSE_TIPS = 150
+
 
 # --------------------------------------------------------------------------
 # tree skeleton
@@ -316,12 +320,17 @@ class _Heatmap(_Element):
     a column matching tip names).  Each column gets its own colour scale by
     default (``shared_scale=True`` for one scale across all columns).
     Rectangular layouts only.
+
+    ``separators`` controls the hairline between cells: ``None`` (default)
+    turns it off automatically past ~150 tips, where the stroke would be wider
+    than the row itself and the block would read as stripes rather than
+    colour. Force it with ``True``/``False``.
     """
 
     def __init__(self, data, offset: float = 0.0, width: float = 0.4,
                  cmap=None, palette: str = "curated", shared_scale: bool = False,
                  colnames: bool = True, colname_size: float = 9.0,
-                 cell_gap: float = 0.05):
+                 cell_gap: float = 0.05, separators: Optional[bool] = None):
         self.data = _index_by_name(data)
         self.offset = offset
         self.width = width
@@ -331,6 +340,7 @@ class _Heatmap(_Element):
         self.colnames = colnames
         self.colname_size = colname_size
         self.cell_gap = cell_gap
+        self.separators = separators   # None = auto (off once rows are thin)
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
@@ -359,6 +369,11 @@ class _Heatmap(_Element):
             scales = {c: build_color_scale(str(c), list(df[c]), cmap=self.cmap,
                                            palette=self.palette) for c in cols}
 
+        # on a tall tree each row is thinner than its own separator stroke, so
+        # the block reads as stripes rather than colour; drop the stroke and
+        # let rows meet (same reasoning as the circular rings)
+        dense = (len(tips) > _RING_DENSE_TIPS) if self.separators is None \
+            else not self.separators
         for _, row in df.iterrows():
             name = str(row.name)
             tip = tips.get(name)
@@ -370,8 +385,10 @@ class _Heatmap(_Element):
                 cx0 = x0 + j * cell_w
                 cx1 = cx0 + cell_w - self.cell_gap * cell_w
                 pts = [(cx0, y0), (cx1, y0), (cx1, y1), (cx0, y1)]
-                ctx.scene.add(Polygon(pts, facecolor=scales[c].color(val),
-                                      edgecolor="white", width=0.3, alpha=1.0,
+                fc = scales[c].color(val)
+                ctx.scene.add(Polygon(pts, facecolor=fc,
+                                      edgecolor=fc if dense else "white",
+                                      width=0.4 if dense else 0.3, alpha=1.0,
                                       zorder=2, label=f"{name} | {c}: {val}",
                                       align=True))
 
@@ -533,13 +550,18 @@ class _Ring(_Element):
     Customisable: ``columns`` (which/what order), ``width``/``gap``/``offset``
     (radial geometry, fractions of the tree radius), ``pad_angle`` (gap between
     sectors, degrees), ``palette``/``cmap`` (per type), ``colnames``.
+
+    ``separators`` controls the hairline between neighbouring sectors: ``None``
+    (default) turns it off automatically past ~150 tips, where the stroke would
+    be wider than the sector itself and the ring would read as a comb of
+    slivers instead of solid colour bands. Force it with ``True``/``False``.
     """
 
     def __init__(self, data, columns=None, geom: str = "tile", width: float = 0.12,
                  gap: float = 0.02, offset: float = 0.04, pad_angle: float = 0.0,
                  cmap=None, palette: str = "curated", fill: str = "#5b7897",
                  bar_pad: float = 0.25, colnames: bool = True,
-                 colname_size: float = 8.0):
+                 colname_size: float = 8.0, separators: Optional[bool] = None):
         self.data = _index_by_name(data)
         self.columns = list(columns) if columns is not None else list(self.data.columns)
         self.geom = geom               # "tile" (heatmap ring) | "bar" (radial bars)
@@ -553,6 +575,7 @@ class _Ring(_Element):
         self.bar_pad = bar_pad         # fraction of the sector left blank around bars
         self.colnames = colnames
         self.colname_size = colname_size
+        self.separators = separators   # None = auto (off once sectors are thin)
 
     def reserved_extent(self, layout) -> float:
         """Radial space (data units) this element claims, for the label pre-pass."""
@@ -570,7 +593,17 @@ class _Ring(_Element):
         tips = ctx.tree.leaves()
         n = len(tips)
         step = lay.extent / max(n - 1, 1)
-        half = step / 2 - math.radians(self.pad_angle) / 2
+        # A hairline separator between sectors reads well until the sectors
+        # get thin: past a few hundred tips the stroke is as wide as the
+        # sector itself and the ring turns into a comb of slivers instead of
+        # solid colour bands. Past that point drop the stroke and let
+        # neighbours overlap very slightly, which also kills anti-alias seams.
+        dense = (n > _RING_DENSE_TIPS) if self.separators is None \
+            else not self.separators
+        # clamp so a large pad_angle cannot eat the whole sector (or invert it)
+        half = max(step / 2 - math.radians(self.pad_angle) / 2, step * 0.05)
+        if dense and not self.pad_angle:
+            half = step / 2                    # sectors meet edge to edge
         w = self.width * lay.max_x
         g = self.gap * lay.max_x
         r0 = ctx.ring_cursor + self.offset * lay.max_x
@@ -610,8 +643,12 @@ class _Ring(_Element):
                     a = tip._angle
                     pts = lay._arc(outer, a - half, a + half) + \
                         lay._arc(inner, a + half, a - half)
-                    ctx.scene.add(Polygon(pts, facecolor=scale.color(val),
-                                          edgecolor="white", width=0.3, alpha=1.0,
+                    # dense: stroke each sector in its own colour so abutting
+                    # sectors have no anti-aliased hairline between them
+                    fc = scale.color(val)
+                    ctx.scene.add(Polygon(pts, facecolor=fc,
+                                          edgecolor=fc if dense else "white",
+                                          width=0.4 if dense else 0.3, alpha=1.0,
                                           zorder=2, label=f"{tip.name} | {col}: {val}"))
                 ctx.add_scale(scale)
             if self.colnames:
