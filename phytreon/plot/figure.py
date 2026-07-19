@@ -148,6 +148,9 @@ class RenderContext:
         self.outer_radius = base       # final outer edge (labels go beyond this)
         # rectangular right-side tracks (heatmap / bars / alignment) stack along x
         self.track_cursor = layout.max_x
+        #: the age at the most recent tip, shared by every element that maps an
+        #: age onto x (time_axis defines it, node_bars follows it)
+        self.present = 0.0
 
     def add_scale(self, scale) -> None:
         """Register a ColorScale: continuous -> colorbar, categorical -> legend.
@@ -452,6 +455,11 @@ class TreeFigure(_Renderable):
             reserve = getattr(el, "reserved_extent", None)
             if reserve is not None:
                 ctx.outer_radius += reserve(layout)
+        # a time axis fixes where "the present" sits; elements that place ages
+        # on x have to agree with it whatever order they were added in
+        for el in self._elements:
+            if getattr(el, "defines_present", False):
+                ctx.present = el.present
         for el in self._elements:
             el.apply(ctx)
         return ctx

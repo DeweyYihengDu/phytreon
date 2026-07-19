@@ -78,8 +78,10 @@ class _TipLabels(_Element):
             if not text or (step > 1 and i % step != 0):
                 continue
             # a collapsed clade is drawn as a triangle reaching out to its
-            # farthest hidden leaf; its label has to clear that, not sit on it
-            far = tip.data.get("_collapsed", {}).get("far", 0.0)
+            # farthest hidden leaf; its label has to clear that, not sit on it.
+            # Ask the layout so the span is in the units it draws in.
+            far = lay._collapsed_span(
+                tip, lay.use_branch_lengths and ctx.tree.has_branch_lengths)[1]
             if kind == "polar" and getattr(lay, "inward", False):
                 # tips point toward the centre: label sits further inward
                 a = tip._angle
@@ -889,6 +891,9 @@ class _TimeAxis(_Element):
     shades the geological periods (Phanerozoic) behind the tree.
     """
 
+    #: this element defines where the present sits on the x axis
+    defines_present = True
+
     def __init__(self, geo: bool = False, n_ticks: int = 6, gridlines: bool = False,
                  present: float = 0.0, unit: str = "Mya", band_alpha: float = 0.3,
                  fontsize: float = 8.0):
@@ -955,12 +960,17 @@ class _CollapsedClades(_Element):
 
     def __init__(self, color="#8494a8", alpha: float = 1.0,
                  height: float = 0.8, scale_height: bool = False,
-                 edgecolor: Optional[str] = None):
+                 edgecolor: Optional[str] = None, min_extent: float = 0.04):
         self.color = color
         self.alpha = alpha
         self.height = height           # rows spanned (before any scaling)
         self.scale_height = scale_height
         self.edgecolor = edgecolor
+        #: shortest triangle to draw, as a fraction of the tree depth. On a
+        #: cladogram (or a clade of zero-length branches) the hidden leaves sit
+        #: at the collapsed node itself, so an extent taken straight from the
+        #: branch lengths would be a zero-size, invisible triangle.
+        self.min_extent = min_extent
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
@@ -974,7 +984,13 @@ class _CollapsedClades(_Element):
             h = self.height / 2
             if self.scale_height:
                 h *= 0.35 + 0.65 * (info["n"] / biggest)
-            near, far = info["near"], info["far"]
+            # ask the layout for the span in the units it actually draws in;
+            # on a cladogram that is edges, not branch length
+            near, far = lay._collapsed_span(node, lay.use_branch_lengths
+                                            and ctx.tree.has_branch_lengths)
+            floor = self.min_extent * lay.max_x
+            if far < floor:            # cladogram / zero-length clade
+                near, far = (near / far * floor if far else floor * 0.6), floor
             if lay.is_polar:
                 a = node._angle
                 da = h * (lay.extent / max(lay.n_leaves - 1, 1))
@@ -1014,7 +1030,7 @@ class _NodeBars(_Element):
     def __init__(self, lower: str = "height_95_lower",
                  upper: str = "height_95_upper", color: str = "#3a7ac1",
                  width: float = 3.0, alpha: float = 0.55,
-                 present: float = 0.0, as_age: bool = True):
+                 present: Optional[float] = None, as_age: bool = True):
         self.lower = lower
         self.upper = upper
         self.color = color
@@ -1030,6 +1046,10 @@ class _NodeBars(_Element):
                 "node_bars() is for rectangular layouts (the bar runs along "
                 "the time axis).")
         maxx = lay.max_x
+        # follow the figure's time axis unless the caller pinned it; the two
+        # used to default to 0 independently, so setting it on one silently
+        # shifted the bars off the axis they are read against
+        present = self.present if self.present is not None else ctx.present
         drawn = 0
         for node in ctx.tree.traverse():
             lo, hi = node.data.get(self.lower), node.data.get(self.upper)
@@ -1037,8 +1057,8 @@ class _NodeBars(_Element):
                 continue
             if self.as_age:
                 # age -> x: the present sits at max_x, ages run back to the root
-                x0 = maxx - (float(hi) - self.present)
-                x1 = maxx - (float(lo) - self.present)
+                x0 = maxx - (float(hi) - present)
+                x1 = maxx - (float(lo) - present)
             else:
                 x0, x1 = float(lo), float(hi)
             ctx.scene.add(Path([(x0, node.y), (x1, node.y)], color=self.color,

@@ -95,5 +95,24 @@ class Layout:
             else:
                 step = (node.length or 0.0) if use_len else 1.0
                 node.data["_rootd"] = node.parent.data["_rootd"] + step
-            max_d = max(max_d, node.data["_rootd"])
+            reach = node.data["_rootd"] + self._collapsed_span(node, use_len)[1]
+            max_d = max(max_d, reach)
         self.max_x = max_d or 1.0
+
+    @staticmethod
+    def _collapsed_span(node: Node, use_len: bool):
+        """``(near, far)`` the collapsed clade at ``node`` reaches, in the
+        units this layout draws in -- branch length, or edges on a cladogram.
+
+        A collapsed clade is drawn as a triangle running out to its deepest
+        hidden leaf, which can sit far beyond the visible tree once its
+        children are gone.  The extent has to be part of ``max_x`` or
+        everything keyed to it -- axis limits, ring radii, aligned labels --
+        would cut straight through the triangle.
+        """
+        info = node.data.get("_collapsed")
+        if not info:
+            return (0.0, 0.0)
+        if use_len:
+            return (info["near"], info["far"])
+        return (info.get("near_edges", 0.0), info.get("far_edges", 0.0))

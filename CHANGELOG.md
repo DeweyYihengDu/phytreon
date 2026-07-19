@@ -3,6 +3,43 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.1] — 2026-07-18
+
+### Added
+- **Annotated NEXUS input** (`Tree.read(path, fmt="beast")`, also `"mrbayes"`,
+  or `pt.read_beast`). BEAST and MrBayes write their per-node estimates into
+  NEXUS comments -- node ages, 95% HPD intervals, posterior clade
+  probabilities, per-branch rates -- and a plain NEXUS read keeps the topology
+  and discards all of it. The new reader parses those `[&key=value,...]` blocks
+  onto `node.data`, applies the TRANSLATE table, and flattens `{lower, upper}`
+  intervals to `<name>_lower` / `<name>_upper`, which are exactly the keys
+  `node_bars()` reads by default -- so a dated Bayesian tree now plots straight
+  from the file. `pt.parse_annotation` exposes the comment parser on its own,
+  and `tree_index=` selects from a file holding a posterior sample.
+
+### Fixed
+- Nested `collapse_clade()` treated an already-collapsed inner clade as a
+  single tip: the outer summary undercounted the hidden tips and its triangle
+  stopped well short of the real farthest leaf.
+- A collapsed clade whose hidden leaves sit at zero distance (a cladogram, or
+  zero-length branches) drew a zero-size, invisible triangle.
+- `DensiTreeFigure(layout="circular")` scaled only the x coordinate when
+  rescaling a tree onto the reference's depth. Depth is the radius on a polar
+  layout, so the overlay smeared into an ellipse reaching far outside the
+  reference tree; both coordinates are now scaled.
+- A collapsed clade's triangle reaches out to the hidden clade's farthest leaf,
+  which can be well beyond the collapsed tree's own depth. `max_x` did not
+  account for it, so everything keyed to it cut through the triangle: it was
+  clipped off the figure, rings were drawn on top of it, and aligned tip labels
+  landed inside it. The layout now includes the collapsed extent, in the units
+  it draws in (branch length, or edges on a cladogram).
+- `node_bars()` and `time_axis()` each defaulted `present` to 0 independently,
+  so setting it on the axis alone silently shifted every bar off the scale it
+  is read against. `node_bars()` now follows the figure's time axis whatever
+  order the two were added in; an explicit `present=` still wins.
+- A comment following a branch length (where BEAST writes per-branch rates)
+  stopped the Newick parser dead at the opening bracket.
+
 ## [0.3.0] — 2026-07-18
 
 ### Added

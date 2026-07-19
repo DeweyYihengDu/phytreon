@@ -303,24 +303,51 @@ def collapse_clade(tree: Tree, node: Node, *, name: Optional[str] = None) -> Tre
     whose two sides use ``near`` and ``far`` therefore shows how deep and how
     ragged the hidden clade is, the same convention iTOL uses.
 
+    Collapsing a clade that already contains a collapsed one is accounted for:
+    the outer summary counts the tips hidden inside the inner clade and reaches
+    to their true depth, rather than treating the inner clade as a single tip
+    sitting at its own node.
+
     The tree is modified in place, so work on a copy
     (``Tree.from_newick(tree.write())``) to keep the original.  Renders via
     :meth:`~phytreon.plot.figure.TreeFigure.collapsed_clades`.
     """
     if node.is_leaf:
         raise ValueError("cannot collapse a leaf")
-    depths = [leaf.depth(use_lengths=True) - node.depth(use_lengths=True)
-              for leaf in node.get_leaves()]
+    base = node.depth(use_lengths=True)
+    base_e = node.depth(use_lengths=False)
+    depths: List[float] = []
+    edges: List[float] = []
+    leaves: List[str] = []
+    total = 0
+    for leaf in node.get_leaves():
+        offset = leaf.depth(use_lengths=True) - base
+        offset_e = leaf.depth(use_lengths=False) - base_e
+        inner = leaf.data.get("_collapsed")
+        if inner:                       # an already-collapsed clade: unfold it
+            depths += [offset + inner["near"], offset + inner["far"]]
+            edges += [offset_e + inner["near_edges"], offset_e + inner["far_edges"]]
+            leaves += list(inner["leaves"])
+            total += inner["n"]
+        else:
+            depths.append(offset)
+            edges.append(offset_e)
+            leaves.append(leaf.name)
+            total += 1
     node.data["_collapsed"] = {
-        "n": len(depths),
+        "n": total,
         "near": min(depths),
         "far": max(depths),
-        "leaves": _leaf_names(node),
+        # the same span counted in edges, for cladogram layouts where the
+        # drawing axis is depth-in-edges rather than branch length
+        "near_edges": min(edges),
+        "far_edges": max(edges),
+        "leaves": leaves,
     }
     if name is not None:
         node.name = name
     elif not node.name:
-        node.name = f"{_leaf_names(node)[0]} +{len(depths) - 1}"
+        node.name = f"{leaves[0]} +{total - 1}"
     node.children = []
     return tree
 

@@ -56,12 +56,27 @@ The standard annotation on a dated Bayesian tree: a bar across each node
 spanning its age credible interval, as FigTree's "node bars" and ggtree's
 `geom_range` draw it.
 
+Read a BEAST/MrBayes summary tree with `fmt="beast"` and it works directly —
+that reader keeps the per-node estimates, and its `{lower, upper}` intervals
+land on the keys `node_bars()` reads by default:
+
 ```python
-(pt.TreeFigure(dated_tree)
-    .node_bars(lower="height_95_lower", upper="height_95_upper")
+tree = pt.Tree.read("beast_summary.tre", fmt="beast")
+tree.root.data["posterior"]          # 0.97
+tree.root.data["height_95_lower"]    # 7.0
+
+(pt.TreeFigure(tree)
+    .node_bars()                     # picks up height_95_lower/_upper
     .time_axis(geo=True)
     .tip_labels()
 ).save("dated.pdf")
+```
+
+A plain `fmt="nexus"` read keeps only the topology — the annotations are
+dropped — so the bars would have nothing to draw. Other keys work too:
+
+```python
+.node_bars(lower="length_95_lower", upper="length_95_upper")
 ```
 
 Values are read as **ages** on the same scale as `time_axis()` — distance back

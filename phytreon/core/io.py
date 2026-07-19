@@ -53,6 +53,10 @@ def to_biopython(tree: Tree):
 
 
 def read(path: str, fmt: str = "newick") -> Tree:
+    # annotated NEXUS keeps the per-node estimates a plain reader discards
+    if fmt.lower() in ("beast", "mrbayes", "nexus-annotated"):
+        from .nexus import read_annotated_nexus
+        return read_annotated_nexus(path)
     if fmt not in _BIO_FORMATS:
         raise ValueError(f"unsupported format {fmt!r}; choose from {_BIO_FORMATS}")
     from Bio import Phylo
@@ -154,19 +158,7 @@ def parse_newick(newick: str) -> Tree:
                     node.support = float(label)
                 except ValueError:
                     node.name = label
-        # optional comment [...]
-        if pos < n and s[pos] == "[":
-            depth, cstart = 0, pos + 1
-            while pos < n:
-                if s[pos] == "[":
-                    depth += 1
-                elif s[pos] == "]":
-                    depth -= 1
-                    if depth == 0:
-                        node.comment = s[cstart:pos]
-                        pos += 1
-                        break
-                pos += 1
+        _maybe_comment(node)
         # optional branch length
         if pos < n and s[pos] == ":":
             pos += 1
@@ -177,6 +169,28 @@ def parse_newick(newick: str) -> Tree:
                 node.length = float(s[start:pos])
             except ValueError:
                 pass
+        # a second comment may follow the branch length -- BEAST writes
+        # per-branch rates there. Left unconsumed it derails the whole parse.
+        _maybe_comment(node)
+
+    def _maybe_comment(node: Node) -> None:
+        """Consume a ``[...]`` block, appending it to ``node.comment``."""
+        nonlocal pos
+        if pos >= n or s[pos] != "[":
+            return
+        depth, cstart = 0, pos + 1
+        while pos < n:
+            if s[pos] == "[":
+                depth += 1
+            elif s[pos] == "]":
+                depth -= 1
+                if depth == 0:
+                    text = s[cstart:pos]
+                    node.comment = (f"{node.comment},{text}"
+                                    if node.comment else text)
+                    pos += 1
+                    return
+            pos += 1
 
     root = parse_clade()
     return Tree(root=root)

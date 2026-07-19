@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from . import core, layout, infer, comparative, plot, datasets, treeops
 from .core import Tree, Node
+from .core.nexus import read_beast, parse_annotation
 from .plot import TreeFigure, TangleFigure, DensiTreeFigure
 from .infer import (
     neighbor_joining, upgma, tree_from_alignment, distance_matrix,
@@ -39,11 +40,11 @@ from .treeops import (
     collapse_clade,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     "core", "layout", "infer", "comparative", "plot", "datasets", "treeops",
-    "Tree", "Node",
+    "Tree", "Node", "read_beast", "parse_annotation",
     "TreeFigure", "TangleFigure", "DensiTreeFigure",
     "neighbor_joining", "upgma", "tree_from_alignment", "distance_matrix",
     "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",

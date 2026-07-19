@@ -39,6 +39,92 @@ def test_collapse_clade_autonames_with_the_hidden_count():
     assert "+2" in node.name                    # first tip plus 2 more
 
 
+def test_nested_collapse_counts_the_inner_clade_properly():
+    # collapsing a clade that already contains a collapsed one used to treat
+    # the inner clade as a single tip sitting at its own node: the count came
+    # out short and the triangle stopped well before the real farthest leaf
+    tr = pt.Tree.from_newick("(((A:1,B:1):1,(C:1,D:5):1):1,E:1);")
+    inner = tr.get_mrca(["C", "D"])
+    outer = tr.get_mrca(["A", "B", "C", "D"])
+    pt.collapse_clade(tr, inner)
+    pt.collapse_clade(tr, outer)
+    info = outer.data["_collapsed"]
+    assert info["n"] == 4                              # not 3
+    assert info["far"] == pytest.approx(6.0)           # via D, not the inner node
+    assert sorted(info["leaves"]) == ["A", "B", "C", "D"]
+
+
+def test_collapsed_clade_stays_visible_without_branch_lengths():
+    # on a cladogram every hidden leaf sits at the collapsed node, so an
+    # extent read straight off the branch lengths is a zero-size triangle
+    tr = pt.Tree.from_newick("((A,B),(C,D));")
+    node = tr.get_mrca(["A", "B"])
+    pt.collapse_clade(tr, node)
+    assert node.data["_collapsed"]["far"] == 0.0       # nothing to measure
+    tri = next(p for p in _polys(pt.TreeFigure(tr).collapsed_clades())
+               if len(p.points) == 3)
+    width = max(x for x, _ in tri.points) - min(x for x, _ in tri.points)
+    assert width > 0                                    # still drawn
+
+
+def test_collapsed_triangle_is_inside_the_plot_and_clear_of_tracks():
+    # collapsing drops the deep children, so max_x shrank while the triangle
+    # still reached the original farthest leaf. Everything keyed to max_x --
+    # axis limits, ring radii, aligned labels -- then cut through it.
+    import math
+    import pandas as pd
+    tr = pt.Tree.from_newick("((A:1,B:9):1,(C:1,D:1):2);")
+    node = tr.get_mrca(["A", "B"])
+    pt.collapse_clade(tr, node, name="AB")
+
+    fig = pt.TreeFigure(tr).collapsed_clades().tip_labels()
+    ctx = fig._build()
+    tri = next(p for p in ctx.scene.polygons if len(p.points) == 3)
+    far = max(x for x, _ in tri.points)
+    assert ctx.layout.max_x >= far                   # depth covers the triangle
+    _, xmax = fig.draw(backend="mpl").axes[0].get_xlim()
+    assert far <= xmax                               # not clipped off the figure
+
+    # aligned tip labels clear it
+    ctx2 = pt.TreeFigure(tr).collapsed_clades().tip_labels(align=True)._build()
+    label = next(lb for lb in ctx2.scene.labels if lb.text == "AB")
+    assert label.x >= far
+
+    # and a ring starts beyond it rather than on top of it
+    meta = pd.DataFrame({"name": tr.leaf_names(), "g": ["x"] * tr.n_leaves})
+    ctx3 = pt.TreeFigure(tr, layout="circular").collapsed_clades().ring(meta)._build()
+    radius = lambda p: [math.hypot(x, y) for x, y in p.points]   # noqa: E731
+    tri_r = max(max(radius(p)) for p in ctx3.scene.polygons if len(p.points) == 3)
+    ring_r = min(min(radius(p)) for p in ctx3.scene.polygons
+                 if p.label and len(p.points) > 3)
+    assert ring_r >= tri_r
+
+
+def test_node_bars_follow_the_time_axis_present_either_order():
+    # both defaulted to present=0 independently, so setting it on the axis
+    # alone silently shifted every bar off the scale it is read against
+    tr = pt.Tree.from_newick("((A:1,B:1):2,(C:2,D:2):1);")
+    for node in tr.traverse():
+        if not node.is_leaf:
+            node.data["height_95_lower"] = 1.0
+            node.data["height_95_upper"] = 2.0
+
+    def bar_x(fig):
+        ctx = fig._build()
+        bar = next(p for p in ctx.scene.paths if p.width == 3.0)
+        return [round(v, 3) for v, _ in bar.points]
+
+    axis_first = bar_x(pt.TreeFigure(tr).time_axis(present=50.0).node_bars())
+    bars_first = bar_x(pt.TreeFigure(tr).node_bars().time_axis(present=50.0))
+    assert axis_first == bars_first                  # order must not matter
+    maxx = pt.TreeFigure(tr)._build().layout.max_x
+    assert axis_first == [round(maxx - (2.0 - 50.0), 3),
+                          round(maxx - (1.0 - 50.0), 3)]
+    # an explicit present= on node_bars still wins
+    pinned = bar_x(pt.TreeFigure(tr).time_axis(present=50.0).node_bars(present=0.0))
+    assert pinned != axis_first
+
+
 def test_collapse_clade_rejects_a_leaf():
     tr = pt.datasets.primates()
     with pytest.raises(ValueError, match="leaf"):
@@ -243,6 +329,23 @@ def test_densitree_opacity_thins_out_for_bigger_samples():
     few = pt.DensiTreeFigure(_same_taxa_trees(3), tip_labels=False)
     many = pt.DensiTreeFigure(_same_taxa_trees(40, ntip=6), tip_labels=False)
     assert many.alpha < few.alpha
+
+
+def test_circular_densitree_scales_the_radius_not_just_x():
+    # depth is the radius on a polar layout, and a point is (r cos a, r sin a),
+    # so rescaling one tree onto another's depth has to scale both coordinates;
+    # scaling x alone smeared the overlay into an ellipse reaching far outside
+    # the reference tree
+    import math
+    shallow = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    deep = pt.Tree.from_newick("((A:5,B:5):5,(C:5,D:5):5);")
+    ctx = pt.DensiTreeFigure([shallow, deep], layout="circular",
+                             align=False, tip_labels=False)._build()
+    radii = [math.hypot(x, y) for p in ctx.scene.paths if p.zorder == 1
+             for x, y in p.points]
+    assert max(radii) <= ctx.layout.max_x + 1e-6
+    # a three-level tree lands on a handful of radii, not a continuum
+    assert len({round(r, 3) for r in radii}) <= 5
 
 
 def test_densitree_needs_at_least_one_tree():

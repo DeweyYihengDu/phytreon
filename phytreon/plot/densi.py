@@ -98,14 +98,22 @@ class DensiTreeFigure(_Renderable):
         """Lay a single tree out on the reference's rows and stroke its edges."""
         layout = get_layout(self.layout_name, **self.layout_kwargs)
         layout.apply(tree)
-        # put this tree's tips on the reference's rows, and scale its depth to
-        # the reference's, so trees of different total length still overlay
+        # rescale this tree's depth onto the reference's, so trees of different
+        # total length still overlay. On a rectangular layout depth runs along
+        # x alone; on a polar one it is the radius, and since a point is
+        # (r cos a, r sin a), scaling the radius means scaling *both*
+        # coordinates -- scaling x only would smear the tree into an ellipse.
         scale = (ref_max_x / layout.max_x) if layout.max_x else 1.0
+        polar = getattr(layout, "is_polar", False)
+
+        # nudge onto the reference's rows. For same-taxon trees both layouts
+        # number the rows 0..n-1, so this is normally 0; it only bites when a
+        # tree is missing taxa.
         shift: List[float] = []
         for leaf in tree.leaves():
             if leaf.name in rows:
                 shift.append(rows[leaf.name] - leaf.data["_row"])
-        dy = sum(shift) / len(shift) if shift else 0.0
+        dy = 0.0 if polar else (sum(shift) / len(shift) if shift else 0.0)
 
         for node in tree.traverse():
             if node.is_root:
@@ -113,8 +121,11 @@ class DensiTreeFigure(_Renderable):
             for pts in (layout.branch_path(node), layout.child_connector(node)):
                 if not pts:
                     continue
-                scene.add(Path([(x * scale, y + dy) for x, y in pts],
-                               color=self.color, width=self.width,
+                if polar:
+                    moved = [(x * scale, y * scale) for x, y in pts]
+                else:
+                    moved = [(x * scale, y + dy) for x, y in pts]
+                scene.add(Path(moved, color=self.color, width=self.width,
                                opacity=self.alpha, zorder=1))
 
     def _default_figsize(self, ctx: RenderContext = None):

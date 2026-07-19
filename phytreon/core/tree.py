@@ -130,6 +130,14 @@ class Tree:
 
     @classmethod
     def read(cls, path: str, fmt: str = "newick") -> "Tree":
+        """Read a tree file.
+
+        ``fmt`` accepts the Biopython Phylo formats (``newick``, ``nexus``,
+        ``phyloxml`` ...) plus ``"beast"`` / ``"mrbayes"``, which read an
+        annotated NEXUS tree and keep the per-node estimates (ages, HPD
+        intervals, posterior probabilities) on ``node.data`` instead of
+        discarding them.
+        """
         from .io import read as _read
         return _read(path, fmt)
 
