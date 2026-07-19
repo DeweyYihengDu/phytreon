@@ -121,14 +121,21 @@ class RenderContext:
         self.track_cursor = layout.max_x
 
     def add_scale(self, scale) -> None:
-        """Register a ColorScale: continuous -> colorbar, categorical -> legend."""
+        """Register a ColorScale: continuous -> colorbar, categorical -> legend.
+
+        Registering the same key twice is a no-op: several elements commonly
+        read the same column (tip points and a ring both coloured by
+        ``phylum``), and each would otherwise emit its own identical legend.
+        """
         if scale is None:
             return
         if scale.continuous and scale.vmin is not None:
-            self.scene.add_colorbar(scale.title, scale.vmin, scale.vmax,
-                                    scale.gradient(32))
+            entry = (scale.title, scale.vmin, scale.vmax, scale.gradient(32))
+            if entry not in self.scene.colorbars:
+                self.scene.add_colorbar(*entry)
         else:
-            self.scene.add_legend(scale.title, scale.legend)
+            if (scale.title, scale.legend) not in self.scene.legends:
+                self.scene.add_legend(scale.title, scale.legend)
 
     # -- aesthetic resolution -------------------------------------------
     def is_data_column(self, spec, nodes) -> bool:
@@ -169,7 +176,20 @@ class RenderContext:
             scale = build_color_scale(spec, [n.data.get(spec) for n in nodes],
                                       cmap=cmap, palette=palette)
             return (lambda n: scale.color(n.data.get(spec))), scale
-        # literal colour
+        # literal colour -- but a bare string that is neither a data column nor
+        # a real colour is almost always a column that was never joined onto
+        # the tree, and letting it through only fails much later inside the
+        # backend as an unreadable "Invalid RGBA argument"
+        if isinstance(spec, str):
+            from matplotlib.colors import is_color_like
+            if not is_color_like(spec):
+                keys = sorted({k for n in nodes for k in n.data
+                               if not k.startswith("_")})
+                raise ValueError(
+                    f"color={spec!r} is neither a colour nor a column on the "
+                    f"tree. Attach the metadata first (tree.join_data(df, "
+                    f"on='name')); columns currently available: "
+                    f"{keys if keys else 'none'}")
         return (lambda n: spec), None
 
 

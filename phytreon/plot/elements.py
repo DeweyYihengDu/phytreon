@@ -559,13 +559,22 @@ class _Ring(_Element):
     (default) turns it off automatically past ~150 tips, where the stroke would
     be wider than the sector itself and the ring would read as a comb of
     slivers instead of solid colour bands. Force it with ``True``/``False``.
+
+    ``leaders=True`` draws a faint dotted guide from each tip out to the first
+    ring. On a phylogram the tips sit at very different radii, so most stop
+    well short of the rings and it stops being obvious which sector belongs to
+    which tip; the alternative is to drop branch lengths entirely
+    (``TreeFigure(tree, layout="circular", use_branch_lengths=False)``), which
+    puts every tip on the same radius.
     """
 
     def __init__(self, data, columns=None, geom: str = "tile", width: float = 0.12,
                  gap: float = 0.02, offset: float = 0.04, pad_angle: float = 0.0,
                  cmap=None, palette: str = "curated", fill: str = "#5b7897",
                  bar_pad: float = 0.25, colnames: bool = True,
-                 colname_size: float = 8.0, separators: Optional[bool] = None):
+                 colname_size: float = 8.0, separators: Optional[bool] = None,
+                 leaders: bool = False, leader_color: str = "#cccccc",
+                 leader_width: float = 0.4):
         self.data = _index_by_name(data)
         self.columns = list(columns) if columns is not None else list(self.data.columns)
         self.geom = geom               # "tile" (heatmap ring) | "bar" (radial bars)
@@ -580,6 +589,9 @@ class _Ring(_Element):
         self.colnames = colnames
         self.colname_size = colname_size
         self.separators = separators   # None = auto (off once sectors are thin)
+        self.leaders = leaders         # dotted tip -> ring guides
+        self.leader_color = leader_color
+        self.leader_width = leader_width
 
     def reserved_extent(self, layout) -> float:
         """Radial space (data units) this element claims, for the label pre-pass."""
@@ -614,6 +626,22 @@ class _Ring(_Element):
 
         # angle sitting in the fan opening (so column names never hit the rings)
         gap_angle = lay.start - (2 * math.pi - lay.extent) / 2
+
+        # On a phylogram the tips sit at very different radii, so most of them
+        # stop well short of the rings and the eye cannot tell which sector
+        # belongs to which tip. A faint dotted guide from each tip out to the
+        # first ring closes that gap (ggtree draws the same thing alongside
+        # aligned tip labels).
+        if self.leaders:
+            for tip in tips:
+                if tip.name not in self.data.index:
+                    continue
+                a = tip._angle
+                ctx.scene.add(Path([lay._polar_to_xy(tip._r, a),
+                                    lay._polar_to_xy(r0, a)],
+                                   color=self.leader_color,
+                                   width=self.leader_width, dash="dot",
+                                   zorder=0.3))
 
         for ci, col in enumerate(self.columns):
             inner = r0 + ci * (w + g)

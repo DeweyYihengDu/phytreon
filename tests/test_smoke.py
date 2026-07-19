@@ -445,3 +445,48 @@ def test_dense_heatmap_drops_the_cell_separator():
     df = pd.DataFrame({"name": tr.leaf_names(), "v": list(range(n))})
     cells = _ring_cells(pt.TreeFigure(tr).heatmap(df))
     assert cells and all(c.edgecolor == c.facecolor for c in cells)
+
+
+def test_one_column_shared_by_two_elements_yields_one_legend():
+    # tip points and a ring both coloured by "phylum" used to emit two
+    # identical legends stacked on top of each other
+    import pandas as pd
+    tr = pt.datasets.random_tree(30, seed=9)
+    df = pd.DataFrame({"name": tr.leaf_names(),
+                       "phylum": ["a", "b", "c"] * 10})
+    tr.join_data(df, on="name")
+    ctx = (pt.TreeFigure(tr, layout="circular")
+           .tip_points(color="phylum")
+           .ring(df, columns=["phylum"]))._build()
+    assert [t for t, _ in ctx.scene.legends] == ["phylum"]
+
+
+def test_unknown_colour_column_says_so_instead_of_failing_in_the_backend():
+    # a column that was never joined onto the tree used to sail through as a
+    # literal colour and blow up much later as "Invalid RGBA argument"
+    import pytest
+    tr = pt.datasets.primates()
+    with pytest.raises(ValueError, match="join_data"):
+        pt.TreeFigure(tr).tip_points(color="phylum")._build()
+    # real colours still work untouched
+    pt.TreeFigure(tr).tip_points(color="steelblue")._build()
+    pt.TreeFigure(tr).tip_points(color="#ff8800")._build()
+
+
+def test_ring_leaders_connect_every_tip_to_the_ring():
+    # on a phylogram most tips stop well short of the rings; the dotted guide
+    # is what tells the eye which sector belongs to which tip
+    import pandas as pd
+    tr = pt.datasets.random_tree(40, seed=10)
+    df = pd.DataFrame({"name": tr.leaf_names(), "g": ["x"] * 40})
+    ctx = pt.TreeFigure(tr, layout="circular").ring(df, leaders=True)._build()
+    leads = [p for p in ctx.scene.paths if p.dash == "dot" and p.zorder == 0.3]
+    assert len(leads) == tr.n_leaves
+    radius = lambda p: (p[0] ** 2 + p[1] ** 2) ** 0.5      # noqa: E731
+    for path in leads:
+        inner, outer = path.points
+        assert radius(outer) > radius(inner)               # points outward
+    # and they stop at the ring, not short of it
+    ring_inner = min(radius(pt_) for poly in ctx.scene.polygons if poly.label
+                     for pt_ in poly.points)
+    assert max(radius(p.points[1]) for p in leads) <= ring_inner + 1e-9

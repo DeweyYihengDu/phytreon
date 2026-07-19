@@ -63,8 +63,22 @@ All notable changes to phytreon are documented here. Format loosely follows
     (ggtree's `geom_treescale`) that, unlike `time_axis()`, assumes nothing
     about branch lengths being time and works on any layout.
   - New `docs/tutorials/tree_styles.md` and `examples/tree_styles_demo.py`.
+- `ring(leaders=True)` draws a faint dotted guide from each tip out to the
+  first ring. On a phylogram the tips sit at very different radii, so most stop
+  well short of the rings and it stops being obvious which sector belongs to
+  which tip. (Dropping branch lengths does *not* fix this -- a cladogram still
+  places tips at different depths -- and stretching tips to a common radius
+  would misrepresent the branch lengths, so a guide line is the honest fix.)
 
 ### Fixed
+- A column read by two elements no longer emits the legend twice. Colouring
+  tip points and a ring by the same `phylum` column stacked two identical
+  legends; `RenderContext.add_scale` now ignores a key it has already
+  registered.
+- `color="some_column"` where the column was never joined onto the tree used
+  to sail through as a literal colour and fail much later inside matplotlib as
+  `Invalid RGBA argument: 'phylum'`. It now raises immediately, naming the
+  columns that *are* available and pointing at `tree.join_data(df, on="name")`.
 - `ring()` and `heatmap()` no longer break up into slivers on large trees. Both
   drew a fixed hairline separator around every cell; once a tree passes a few
   hundred tips that stroke is as wide as the cell itself, so a metadata ring
