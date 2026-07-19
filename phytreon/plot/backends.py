@@ -125,13 +125,21 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
             legend_x = max(1.02, (r - x0) / (x1 - x0) + 0.06)
     extra = []
     y = 1.0
+    from matplotlib.patches import Rectangle
     for lt, entries in scene.legends:
         handles, labels = [], []
+        # a legend for filled areas (rings, heatmaps) reads as a swatch; only
+        # marker-based layers get a dot, so the key matches the mark it stands for
+        patch = scene.legend_swatch.get(lt) == "patch"
         for e in entries:
             lab, col = e[0], e[1]
             mk = e[2] if len(e) > 2 else "o"
-            handles.append(Line2D([0], [0], marker=mk, linestyle="None",
-                                  markerfacecolor=col, markeredgecolor=col))
+            if patch:
+                handles.append(Rectangle((0, 0), 1, 1, facecolor=col,
+                                         edgecolor="none"))
+            else:
+                handles.append(Line2D([0], [0], marker=mk, linestyle="None",
+                                      markerfacecolor=col, markeredgecolor=col))
             labels.append(str(lab))
         leg = Legend(ax, handles, labels, title=lt,
                      loc="upper left", bbox_to_anchor=(legend_x, y),

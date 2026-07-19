@@ -473,6 +473,58 @@ def test_unknown_colour_column_says_so_instead_of_failing_in_the_backend():
     pt.TreeFigure(tr).tip_points(color="#ff8800")._build()
 
 
+def test_baseline_category_is_greyed_and_frees_a_palette_slot():
+    # when one level covers most of the tree, colouring it as loudly as the
+    # rare ones spends the figure's ink on the least informative category
+    from phytreon.plot.figure import BASELINE_GREY, build_color_scale
+    vals = ["ref"] * 50 + ["odd", "rare"]
+    plain = build_color_scale("ctx", vals)
+    muted = build_color_scale("ctx", vals, baseline="ref")
+
+    assert dict(muted.legend)["ref"] == BASELINE_GREY
+    assert dict(plain.legend)["ref"] != BASELINE_GREY
+    # the greyed level consumes no palette slot: the remaining levels get
+    # exactly the colours they would have had if it were not in the data
+    without = build_color_scale("ctx", ["odd", "rare"])
+    assert dict(muted.legend)["odd"] == dict(without.legend)["odd"]
+    assert dict(muted.legend)["rare"] == dict(without.legend)["rare"]
+    assert len(muted.legend) == 3                      # still fully documented
+
+
+def test_baseline_accepts_several_levels():
+    from phytreon.plot.figure import BASELINE_GREY, build_color_scale
+    scale = build_color_scale("c", ["a", "b", "c"], baseline=["a", "b"])
+    lut = dict(scale.legend)
+    assert lut["a"] == lut["b"] == BASELINE_GREY
+    assert lut["c"] != BASELINE_GREY
+
+
+def test_explicit_category_order_beats_alphabetical():
+    from phytreon.plot.figure import build_color_scale
+    vals = ["low", "high", "mid"]
+    assert [c for c, _ in build_color_scale("c", vals).legend] == \
+        ["high", "low", "mid"]                          # alphabetical default
+    ordered = build_color_scale("c", vals, order=["low", "mid", "high"])
+    assert [c for c, _ in ordered.legend] == ["low", "mid", "high"]
+    # a level missing from order still shows up, after the listed ones
+    partial = build_color_scale("c", vals, order=["high"])
+    assert [c for c, _ in partial.legend] == ["high", "low", "mid"]
+
+
+def test_filled_layers_get_swatch_legends_and_markers_get_dots():
+    import pandas as pd
+    tr = pt.datasets.random_tree(20, seed=11)
+    df = pd.DataFrame({"name": tr.leaf_names(), "grp": ["a", "b"] * 10,
+                       "other": ["x", "y"] * 10})
+    tr.join_data(df, on="name")
+    ctx = (pt.TreeFigure(tr, layout="circular")
+           .tip_points(color="grp")
+           .ring(df, columns=["other"]))._build()
+    # a ring is a filled area -> swatch; tip points are markers -> dot
+    assert ctx.scene.legend_swatch["other"] == "patch"
+    assert ctx.scene.legend_swatch["grp"] == "point"
+
+
 def test_ring_leaders_connect_every_tip_to_the_ring():
     # on a phylogram most tips stop well short of the rings; the dotted guide
     # is what tells the eye which sector belongs to which tip

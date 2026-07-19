@@ -171,7 +171,8 @@ class _NodeLabels(_Element):
 class _Points(_Element):
     def __init__(self, which: str = "tip", color="black", size=6.0,
                  marker: str = "o", shape=None, edgecolor: Optional[str] = None,
-                 palette: str = "curated", cmap=None):
+                 palette: str = "curated", cmap=None, baseline=None,
+                 order=None):
         self.which = which                 # tip | node | all
         self.color = color
         self.size = size
@@ -180,6 +181,8 @@ class _Points(_Element):
         self.edgecolor = edgecolor
         self.palette = palette
         self.cmap = cmap
+        self.baseline = baseline
+        self.order = order
 
     def _select(self, ctx):
         if self.which == "tip":
@@ -191,7 +194,9 @@ class _Points(_Element):
     def apply(self, ctx: RenderContext) -> None:
         nodes = self._select(ctx)
         cfunc, cscale = ctx.resolve_color(self.color, nodes, default="black",
-                                          palette=self.palette, cmap=self.cmap)
+                                          palette=self.palette, cmap=self.cmap,
+                                          baseline=self.baseline,
+                                          order=self.order)
         sfunc, _ = _resolve_size(self.size, nodes)
         shfunc, shleg = ctx.resolve_shape(self.shape, nodes, default=self.marker)
         for n in nodes:
@@ -334,7 +339,8 @@ class _Heatmap(_Element):
     def __init__(self, data, offset: float = 0.0, width: float = 0.4,
                  cmap=None, palette: str = "curated", shared_scale: bool = False,
                  colnames: bool = True, colname_size: float = 9.0,
-                 cell_gap: float = 0.05, separators: Optional[bool] = None):
+                 cell_gap: float = 0.05, separators: Optional[bool] = None,
+                 baseline=None, order=None):
         self.data = _index_by_name(data)
         self.offset = offset
         self.width = width
@@ -345,6 +351,8 @@ class _Heatmap(_Element):
         self.colname_size = colname_size
         self.cell_gap = cell_gap
         self.separators = separators   # None = auto (off once rows are thin)
+        self.baseline = baseline
+        self.order = order
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
@@ -367,11 +375,16 @@ class _Heatmap(_Element):
         if self.shared_scale:
             flat = [df.iloc[i][c] for i in range(len(df)) for c in cols]
             shared = build_color_scale("value", flat, cmap=self.cmap,
-                                       palette=self.palette)
+                                       palette=self.palette,
+                                       baseline=self.baseline,
+                                       order=self.order, swatch="patch")
             scales = {c: shared for c in cols}
         else:
             scales = {c: build_color_scale(str(c), list(df[c]), cmap=self.cmap,
-                                           palette=self.palette) for c in cols}
+                                           palette=self.palette,
+                                           baseline=self.baseline,
+                                           order=self.order, swatch="patch")
+                      for c in cols}
 
         # on a tall tree each row is thinner than its own separator stroke, so
         # the block reads as stripes rather than colour; drop the stroke and
@@ -574,7 +587,7 @@ class _Ring(_Element):
                  bar_pad: float = 0.25, colnames: bool = True,
                  colname_size: float = 8.0, separators: Optional[bool] = None,
                  leaders: bool = False, leader_color: str = "#cccccc",
-                 leader_width: float = 0.4):
+                 leader_width: float = 0.4, baseline=None, order=None):
         self.data = _index_by_name(data)
         self.columns = list(columns) if columns is not None else list(self.data.columns)
         self.geom = geom               # "tile" (heatmap ring) | "bar" (radial bars)
@@ -592,6 +605,8 @@ class _Ring(_Element):
         self.leaders = leaders         # dotted tip -> ring guides
         self.leader_color = leader_color
         self.leader_width = leader_width
+        self.baseline = baseline       # level(s) greyed out as the default state
+        self.order = order             # explicit legend order
 
     def reserved_extent(self, layout) -> float:
         """Radial space (data units) this element claims, for the label pre-pass."""
@@ -667,7 +682,9 @@ class _Ring(_Element):
                                           label=f"{tip.name} | {col}: {val:g}"))
             else:
                 scale = build_color_scale(str(col), colvals,
-                                          cmap=self.cmap, palette=self.palette)
+                                          cmap=self.cmap, palette=self.palette,
+                                          baseline=self.baseline,
+                                          order=self.order, swatch="patch")
                 for tip in tips:
                     if tip.name not in self.data.index:
                         continue

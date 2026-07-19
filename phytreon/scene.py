@@ -100,6 +100,9 @@ class Scene:
     rasters: List[Raster] = field(default_factory=list)
     # legend entries: (title, [(label, color), ...])
     legends: List[Tuple[str, List[Tuple[str, str]]]] = field(default_factory=list)
+    # legend title -> "point" | "patch": how that key should be drawn, so a
+    # legend for filled areas (rings, heatmaps) uses swatches rather than dots
+    legend_swatch: dict = field(default_factory=dict)
     # continuous colorbars: (title, vmin, vmax, [hex stops low->high])
     colorbars: List[Tuple[str, float, float, List[str]]] = field(default_factory=list)
 

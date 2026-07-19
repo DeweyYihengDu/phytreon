@@ -63,6 +63,16 @@ All notable changes to phytreon are documented here. Format loosely follows
     (ggtree's `geom_treescale`) that, unlike `time_axis()`, assumes nothing
     about branch lengths being time and works on any layout.
   - New `docs/tutorials/tree_styles.md` and `examples/tree_styles_demo.py`.
+- **Grey the default state, colour the exceptions.** `baseline=` on `ring()`,
+  `heatmap()`, `tip_points()` (and `build_color_scale`) renders the named
+  level(s) neutral grey. Baseline levels no longer consume a palette slot, so
+  the remaining levels keep the strongest hues. When one level covers most of
+  the tree, colouring it as loudly as the rare ones spends the figure's ink on
+  its least informative part and buries the exceptions.
+- `order=` sets the categorical legend order explicitly; levels were otherwise
+  sorted alphabetically, which rarely matches a meaningful progression.
+- Legend keys now match the mark they stand for: filled layers (rings,
+  heatmaps) get square swatches instead of dots.
 - `ring(leaders=True)` draws a faint dotted guide from each tip out to the
   first ring. On a phylogram the tips sit at very different radii, so most stop
   well short of the rings and it stops being obvious which sector belongs to

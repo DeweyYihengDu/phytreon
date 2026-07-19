@@ -32,13 +32,18 @@ class ColorScale:
 
     def __init__(self, title: str, mapping: Callable[[object], str],
                  legend: List[Tuple[str, str]], continuous: bool,
-                 vmin: float = None, vmax: float = None):
+                 vmin: float = None, vmax: float = None,
+                 swatch: str = "point"):
         self.title = title
         self._map = mapping
         self.legend = legend
         self.continuous = continuous
         self.vmin = vmin
         self.vmax = vmax
+        #: how the legend key should be drawn: "point" (markers) or "patch"
+        #: (filled areas -- rings, heatmaps, highlights), so the key matches
+        #: the mark it stands for
+        self.swatch = swatch
 
     def color(self, value) -> str:
         return self._map(value)
@@ -65,8 +70,13 @@ def is_numeric(v) -> bool:
     return isinstance(v, numbers.Number) and not isinstance(v, bool)
 
 
+#: neutral grey for categories deliberately pushed into the background
+BASELINE_GREY = "#d9d9d9"
+
+
 def build_color_scale(title: str, values, cmap=None,
-                      palette: str = "curated") -> ColorScale:
+                      palette: str = "curated", baseline=None,
+                      order=None, swatch: str = "point") -> ColorScale:
     """Build a colour scale (categorical or continuous) from raw values.
 
     * ``palette`` -- name of the qualitative palette (default ``"curated"`` =
@@ -74,6 +84,16 @@ def build_color_scale(title: str, values, cmap=None,
       hue wheel, ``"set2"``, ``"dark2"``, ``"tab10"``).
     * ``cmap`` -- continuous colour spec: ``None`` for the default blue
       gradient, a ``(low, high)`` hex pair, or a matplotlib colormap name.
+    * ``baseline`` -- one category, or a list of them, to render in neutral
+      grey. Baseline levels do not consume a palette slot, so the remaining
+      levels keep the saturated colours. Use it for the "expected" or default
+      state: when one level covers most of the tree, colouring it as loudly as
+      the rare ones spends most of the figure's ink on the least informative
+      category and buries the exceptions.
+    * ``order`` -- explicit category order for the legend (levels not listed
+      follow, sorted). Categorical levels are otherwise sorted alphabetically,
+      which rarely matches a meaningful progression.
+    * ``swatch`` -- ``"point"`` or ``"patch"``; how the legend key is drawn.
     """
     from .palettes import categorical_palette, continuous_mapper
 
@@ -87,18 +107,27 @@ def build_color_scale(title: str, values, cmap=None,
             val = vmin + frac * (vmax - vmin)
             legend.append((f"{val:g}", mapping(val)))
         return ColorScale(title, mapping, legend, continuous=True,
-                          vmin=vmin, vmax=vmax)
+                          vmin=vmin, vmax=vmax, swatch=swatch)
 
     # categorical -- one colour per level
     cats = sorted({str(v) for v in present})
-    colors = categorical_palette(len(cats), palette)
-    lut = {c: colors[i] for i, c in enumerate(cats)}
+    if order:
+        wanted = [str(c) for c in order]
+        cats = ([c for c in wanted if c in cats]
+                + [c for c in cats if c not in wanted])
+
+    muted = {str(b) for b in ([baseline] if isinstance(baseline, str)
+                              else (baseline or []))}
+    highlighted = [c for c in cats if c not in muted]
+    colors = categorical_palette(len(highlighted), palette)
+    lut = {c: colors[i] for i, c in enumerate(highlighted)}
+    lut.update({c: BASELINE_GREY for c in cats if c in muted})
 
     def mapping(v, _lut=lut):
         return _lut.get(str(v), "#cccccc") if v is not None else "#cccccc"
 
     legend = [(c, lut[c]) for c in cats]
-    return ColorScale(title, mapping, legend, continuous=False)
+    return ColorScale(title, mapping, legend, continuous=False, swatch=swatch)
 
 
 # --------------------------------------------------------------------------
@@ -136,6 +165,7 @@ class RenderContext:
         else:
             if (scale.title, scale.legend) not in self.scene.legends:
                 self.scene.add_legend(scale.title, scale.legend)
+                self.scene.legend_swatch[scale.title] = scale.swatch
 
     # -- aesthetic resolution -------------------------------------------
     def is_data_column(self, spec, nodes) -> bool:
@@ -160,7 +190,8 @@ class RenderContext:
         return (lambda n: spec), None        # literal marker
 
     def resolve_color(self, spec, nodes, default: str = "black",
-                      palette: str = "curated", cmap=None):
+                      palette: str = "curated", cmap=None, baseline=None,
+                      order=None, swatch: str = "point"):
         """Return ``(func, scale)``.
 
         ``func(node) -> color``.  ``scale`` is a :class:`ColorScale` if the
@@ -174,7 +205,9 @@ class RenderContext:
             return (lambda n: spec(n)), None
         if self.is_data_column(spec, nodes):
             scale = build_color_scale(spec, [n.data.get(spec) for n in nodes],
-                                      cmap=cmap, palette=palette)
+                                      cmap=cmap, palette=palette,
+                                      baseline=baseline, order=order,
+                                      swatch=swatch)
             return (lambda n: scale.color(n.data.get(spec))), scale
         # literal colour -- but a bare string that is neither a data column nor
         # a real colour is almost always a column that was never joined onto

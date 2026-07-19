@@ -110,6 +110,53 @@ to match a reference (`consensus=`, default the first tree) via
 topology or branch lengths, so aligning the cloud never changes what any tree
 says. Pass `align=False` to skip it.
 
+## Grey the default state, colour the exceptions
+
+When one level of a category covers most of the tree — `GTDB_reference`,
+`wild_type`, `present` — giving it a saturated colour spends most of the
+figure's ink on its least informative part and buries the handful of tips that
+actually carry the finding. `baseline=` renders those levels neutral grey, and
+they stop consuming palette slots so the remaining levels keep the strongest
+hues:
+
+```python
+context = ["GTDB reference", "Near-known target", "Intermediate",
+           "Deep or mixed", "Unresolved"]
+
+(pt.TreeFigure(tree, layout="circular")
+    .branches(color="#707070", size=0.4)     # neutral baseline for the tree
+    .ring(meta, columns=["Phylogenetic context"],
+          width=0.07,                        # a narrow band, not a heavy hoop
+          baseline="GTDB reference",         # the expected state recedes
+          order=context,                     # known -> unresolved, not A-Z
+          leaders=True)
+).save("context.pdf")
+```
+
+`order=` matters more than it looks: categorical levels are otherwise sorted
+alphabetically, which almost never matches a meaningful progression.
+
+Legend keys follow the mark they stand for — filled layers (rings, heatmaps)
+get square swatches, marker layers get dots.
+
+### Prefer clade annotation over a per-tip ring
+
+If a variable is essentially clade-structured (a phylum that forms one
+monophyletic block), a per-tip ring repeats the same colour across hundreds of
+sectors to convey one fact. A shaded sector plus an arc label says it once:
+
+```python
+for name, taxa in phyla.items():
+    node = tree.get_mrca(taxa)
+    if set(node.leaf_names()) == set(taxa):        # verify monophyly first
+        fig.highlight(node=node, fill=colour[name], alpha=0.10)
+        fig.clade_label(name, node=node)
+```
+
+That frees a whole ring, and the tree usually gets much cleaner. Where the
+group is *not* monophyletic a ring is the honest choice — a shaded sector
+would imply a clade that the tree does not support.
+
 ## Scale bar
 
 A compact branch-length scale, ggtree's `geom_treescale`:
