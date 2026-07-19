@@ -3,7 +3,7 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.3.0] — 2026-07-18
 
 ### Added
 - **Tanglegrams** for comparing two trees of the same taxa -- e.g. a tree built
