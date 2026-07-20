@@ -437,6 +437,30 @@ def test_large_pad_angle_cannot_invert_a_sector():
         assert len(cell.points) >= 3          # still a real polygon
 
 
+def test_circular_title_does_not_overlap_a_pole_pointing_tip_label():
+    # Scene.bounds() only sees a label's anchor, not its rendered (rotated)
+    # extent -- a tip label pointing toward a pole reaches its own text
+    # length beyond the anchor, an amount no fixed data-unit padding
+    # anticipates, and can poke past the axes box into the title.
+    #
+    # This converges cleanly up to ~100 tips at realistic name lengths (or
+    # more, thinned via tip_labels(max_labels=...) for very large trees);
+    # this case is already on the dense side deliberately.
+    tr = pt.datasets.random_tree(60, seed=42)
+    for leaf in tr.leaves():
+        leaf.name = f"Genus_species_{leaf.name}"
+    fig = (pt.TreeFigure(tr, layout="circular").tip_labels()
+           .titled("Does this collide with any label?"))
+    mplfig = fig.draw(backend="mpl", figsize=(8, 8))
+    ax = mplfig.axes[0]
+    mplfig.canvas.draw()
+    renderer = mplfig.canvas.get_renderer()
+    title_bb = ax.title.get_window_extent(renderer=renderer)
+    overlaps = [t for t in ax.texts
+                if t.get_window_extent(renderer=renderer).overlaps(title_bb)]
+    assert not overlaps, f"title overlaps: {[t.get_text() for t in overlaps]}"
+
+
 def test_dense_heatmap_drops_the_cell_separator():
     import pandas as pd
     from phytreon.plot.elements import _RING_DENSE_TIPS

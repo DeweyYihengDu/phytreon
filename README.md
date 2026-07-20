@@ -120,6 +120,30 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <b>Tanglegram</b><br>
       <sub>106 taxa, 25 phyla: neighbour joining vs UPGMA, untangled, with the links that still cross highlighted — <code>tanglegram_demo.py</code></sub>
     </td>
+    <td width="50%">
+      <img src="assets/gallery/collapsed_clades.png" alt="Rectangular tree with three phylum-level clades collapsed to triangles"><br>
+      <b>Collapsed clades</b><br>
+      <sub>Phylum-level clades collapsed to triangles reaching their nearest/farthest hidden leaf — <code>tree_styles_demo.py</code></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/gallery/node_bars.png" alt="Dated tree with 95% HPD node-age interval bars along a time axis"><br>
+      <b>Node interval bars</b><br>
+      <sub>95% HPD node-age intervals against a time axis, as read from a BEAST/MrBayes summary tree — <code>tree_styles_demo.py</code></sub>
+    </td>
+    <td width="50%">
+      <img src="assets/gallery/connections.png" alt="Circular tree with curved connections drawn between tips"><br>
+      <b>Connections</b><br>
+      <sub>Curved links between tips for HGT, gene sharing, or co-occurrence, coloured by strength — <code>tree_styles_demo.py</code></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/gallery/densitree.png" alt="DensiTree overlay of 60 bootstrap trees, dark where they agree, fanning out where they disagree"><br>
+      <b>DensiTree</b><br>
+      <sub>60 bootstrap NJ trees overlaid — dark where they agree, fanned out where they don't — <code>tree_styles_demo.py</code></sub>
+    </td>
     <td width="50%"></td>
   </tr>
 </table>

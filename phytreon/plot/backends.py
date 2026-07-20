@@ -84,6 +84,8 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
     delta = 0.0
     if equal or kind != "rect":
         _set_equal_limits(ax, scene, pad=0.06)
+        if equal and base_text:
+            _expand_equal_limits_for_labels(fig, ax, base_text)
     else:
         # provisional right margin so labels have room to render before measuring
         _set_limits(ax, scene, max_x, right_pad=(track_w + 0.8 * max_x) if has_tracks
@@ -251,6 +253,65 @@ def _measure_right(fig, ax, artists):
             dx = inv.transform(corner)[0]
             mx = dx if mx is None else max(mx, dx)
     return mx
+
+
+def _label_bbox_data(fig, ax, texts):
+    """(xmin, ymin, xmax, ymax) in data coords spanned by rendered text."""
+    fig.canvas.draw()
+    r = fig.canvas.get_renderer()
+    inv = ax.transData.inverted()
+    xs, ys = [], []
+    for t in texts:
+        bb = t.get_window_extent(renderer=r)
+        for corner in ((bb.x0, bb.y0), (bb.x1, bb.y1), (bb.x1, bb.y0), (bb.x0, bb.y1)):
+            dx, dy = inv.transform(corner)
+            xs.append(dx)
+            ys.append(dy)
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _expand_equal_limits_for_labels(fig, ax, texts):
+    """Grow the current equal-aspect limits so every label's rendered extent
+    actually fits inside them.
+
+    ``Scene.bounds()`` only sees a label's *anchor* point, not how far the
+    rotated glyphs reach beyond it. On a circular tree a tip label pointing
+    toward a pole (rotation ~90 deg) extends its own text length past the
+    anchor -- an amount no fixed data-unit padding can anticipate, since it
+    depends on font size and string length, not tree geometry. Left
+    unaccounted for, such a label can poke past the axes box and overlap a
+    title (which is anchored to the box, not to the data).
+
+    Changing the limits changes the data-to-pixel scale, which changes how
+    much *data space* the same fixed-size text needs -- so one measurement is
+    never quite right (the same issue ``_measure_right`` solves with two
+    passes for aligned tracks); several passes converge close enough, and a
+    small extra margin absorbs what is left. This holds up to a few hundred
+    tips at ordinary label lengths; an extreme combination (a great many tips
+    *and* very long names, all unthinned) can still leave a sliver of overlap
+    -- thin the labels (``tip_labels(max_labels=...)``) well before density
+    gets there regardless, for legibility's own sake.
+    """
+    if not texts:
+        return
+    # each pass re-measures at the scale the previous pass produced; the
+    # amount still missing shrinks each time (moving the limits changes how
+    # much data-space the same fixed-size text needs), so this converges
+    # rather than looping indefinitely
+    for _ in range(6):
+        xmin, ymin, xmax, ymax = _label_bbox_data(fig, ax, texts)
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        new = (min(x0, xmin), max(x1, xmax), min(y0, ymin), max(y1, ymax))
+        if all(abs(a - b) < 1e-9 for a, b in zip(new, (x0, x1, y0, y1))):
+            break
+        ax.set_xlim(new[0], new[1])
+        ax.set_ylim(new[2], new[3])
+    # residual margin: covers what the last pass's measurement still misses
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    ax.set_xlim(x0 - 0.04 * (x1 - x0), x1 + 0.04 * (x1 - x0))
+    ax.set_ylim(y0 - 0.04 * (y1 - y0), y1 + 0.04 * (y1 - y0))
 
 
 def _set_equal_limits(ax, scene, pad=0.08):

@@ -3,7 +3,22 @@
 All notable changes to phytreon are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.3.1] — 2026-07-18
+## [Unreleased]
+
+### Added
+- README gallery now shows the 0.3.0 drawing styles (collapsed clades, node
+  interval bars, connections, DensiTree) that had no visual example before.
+
+### Fixed
+- A title on a circular/equal-aspect figure could overlap a tip label pointing
+  toward a pole. `Scene.bounds()` only sees a label's anchor point, not how far
+  its rotated glyphs actually reach -- a label pointing straight up extends its
+  own text length past the anchor, an amount no fixed data-unit padding can
+  anticipate (it depends on font size and string length, not tree geometry).
+  The renderer now measures the actual rendered extent of every label and
+  expands the axes limits to contain it before placing the title.
+
+
 
 ### Added
 - **Annotated NEXUS input** (`Tree.read(path, fmt="beast")`, also `"mrbayes"`,
