@@ -144,7 +144,11 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <b>DensiTree</b><br>
       <sub>60 bootstrap NJ trees overlaid — dark where they agree, fanned out where they don't — <code>tree_styles_demo.py</code></sub>
     </td>
-    <td width="50%"></td>
+    <td width="50%">
+      <img src="assets/gallery/sequence_network.png" alt="CLANS-style sequence similarity network with phyla resolving into separate clusters"><br>
+      <b>Sequence network</b><br>
+      <sub>CLANS-style cluster map — for families too divergent for a trustworthy tree — <code>network_demo.py</code></sub>
+    </td>
   </tr>
 </table>
 
@@ -252,6 +256,7 @@ tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
 | **Tree comparison** | tanglegrams (`TangleFigure`) with rotation-based `untangle`, crossing counts, Robinson-Foulds; DensiTree clouds (`DensiTreeFigure`) for a whole tree set |
+| **When a tree would mislead** | CLANS-style sequence-similarity networks (`SequenceNetwork`) — force-directed cluster maps for families too divergent to align reliably |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |
 
 ---

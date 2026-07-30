@@ -6,8 +6,36 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Sequence-similarity networks** (`SequenceNetwork`) -- the CLANS-style
+  cluster map. A tree assumes the sequences align well enough for branch order
+  to mean something; for a family only detectable by profile searches that
+  assumption fails, and the deep branching a tree reports is then an artefact
+  of alignment error rather than a record of descent. This draws the sequence
+  space instead: one node per sequence, an edge above a similarity cutoff, laid
+  out by Fruchterman-Reingold so mutually-similar groups fall into visible
+  clusters.
+  - Build from an alignment (`from_alignment`), a distance matrix
+    (`from_distances`), or `(name1, name2, similarity)` triples straight out of
+    a BLAST report (`from_pairs`).
+  - `color_by` (with the same `baseline` / `order` controls as the tree
+    figures), `label_clusters`, `label_nodes`, and `components()` to confirm
+    that the clusters the eye picks out really are connected components.
+  - The layout adds a gravity term to the textbook algorithm: sequence networks
+    are disconnected by construction, and without it the isolated nodes drift
+    off, set the scale of the picture, and squash the connected core into an
+    unreadable dot. The default was chosen by measuring the trade-off against
+    cluster separation on a real 16S graph.
+  - New `docs/tutorials/network.md` and `examples/network_demo.py`.
 - README gallery now shows the 0.3.0 drawing styles (collapsed clades, node
   interval bars, connections, DensiTree) that had no visual example before.
+
+### Changed
+- The ruff rule set is now stated explicitly in `pyproject.toml`
+  (`select = ["E4", "E7", "E9", "F"]`). `ruff` is unpinned in the dev extras so
+  CI installs the newest release; a version that widens its defaults would
+  otherwise turn the build red without a line of this project changing. That is
+  not hypothetical -- the currently installed ruff reports 550+ style findings
+  across untouched files under the exact command CI runs.
 
 ### Fixed
 - A title on a circular/equal-aspect figure could overlap a tip label pointing

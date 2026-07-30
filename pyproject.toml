@@ -44,3 +44,10 @@ include = ["phytreon*"]
 
 [tool.ruff]
 target-version = "py39"
+
+[tool.ruff.lint]
+# State the rule set explicitly rather than inheriting whatever the installed
+# ruff happens to default to. `ruff` is unpinned in the dev extras, so CI takes
+# the latest release; a newer ruff that widens its defaults would otherwise
+# turn a green build red without a line of this project changing.
+select = ["E4", "E7", "E9", "F"]
