@@ -26,6 +26,16 @@ All notable changes to phytreon are documented here. Format loosely follows
     unreadable dot. The default was chosen by measuring the trade-off against
     cluster separation on a real 16S graph.
   - New `docs/tutorials/network.md` and `examples/network_demo.py`.
+- `support_labels(attr=[...])` combines several support values into one label
+  (`"88/95/0.98"`). A topology cross-checked by ML bootstrap, SH-aLRT and a
+  Bayesian posterior carries three of them, and that is how such trees are
+  annotated in print; calling `support_labels()` three times stacked all three
+  on exactly the same point. `min_value=` hides weakly supported nodes.
+- Reading a BEAST/MrBayes tree now also copies the posterior probability onto
+  `node.support` when that is empty -- it *is* the clade support of a Bayesian
+  tree, and without it the default `support_labels()` drew nothing on a BEAST
+  tree while working fine on a bootstrapped one. An existing support value is
+  never overwritten.
 - README gallery now shows the 0.3.0 drawing styles (collapsed clades, node
   interval bars, connections, DensiTree) that had no visual example before.
 

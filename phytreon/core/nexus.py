@@ -112,11 +112,28 @@ def parse_annotation(comment: Optional[str]) -> Dict[str, object]:
     return out
 
 
+#: annotation keys that carry a node's clade support, best first
+_SUPPORT_KEYS = ("posterior", "prob", "label")
+
+
 def annotate_from_comments(tree: Tree) -> Tree:
-    """Parse every node's ``comment`` into ``node.data`` (in place)."""
+    """Parse every node's ``comment`` into ``node.data`` (in place).
+
+    A posterior probability is also copied onto ``node.support`` when that is
+    empty: it *is* the clade support of a Bayesian tree, and without this
+    ``support_labels()`` would silently draw nothing on a BEAST tree while
+    working fine on a bootstrapped one.
+    """
     for node in tree.traverse():
-        for key, value in parse_annotation(node.comment).items():
+        parsed = parse_annotation(node.comment)
+        for key, value in parsed.items():
             node.data.setdefault(key, value)
+        if node.support is None:
+            for key in _SUPPORT_KEYS:
+                val = parsed.get(key)
+                if isinstance(val, float):
+                    node.support = val
+                    break
     return tree
 
 

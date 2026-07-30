@@ -100,6 +100,47 @@ def test_collapsed_triangle_is_inside_the_plot_and_clear_of_tracks():
     assert ring_r >= tri_r
 
 
+def test_several_support_values_combine_into_one_label():
+    # a topology checked by several methods carries several support values;
+    # drawing them as separate labels stacked them on the same point
+    tr = pt.Tree.from_newick("((A:1,B:1):2,(C:2,D:2):1);")
+    for node in tr.traverse():
+        if not node.is_leaf:
+            node.data.update(bootstrap=88, shalrt=95, posterior=0.98)
+
+    stacked = pt.TreeFigure(tr).support_labels(attr="bootstrap") \
+        .support_labels(attr="shalrt").support_labels(attr="posterior")._build()
+    coords = {(round(lb.x, 3), round(lb.y, 3)) for lb in stacked.scene.labels}
+    assert len(coords) < len(stacked.scene.labels)      # they do collide
+
+    ctx = pt.TreeFigure(tr).support_labels(
+        attr=["bootstrap", "shalrt", "posterior"])._build()
+    texts = [lb.text for lb in ctx.scene.labels]
+    assert texts and all(t == "88/95/0.98" for t in texts)
+    # one label per internal node, no overlap
+    assert len({(round(lb.x, 3), round(lb.y, 3))
+                for lb in ctx.scene.labels}) == len(ctx.scene.labels)
+
+
+def test_a_missing_value_in_a_combined_label_shows_as_a_dash():
+    tr = pt.Tree.from_newick("((A:1,B:1):2,C:3);")
+    node = tr.get_mrca(["A", "B"])
+    node.data.update(bootstrap=88)                       # shalrt absent
+    ctx = pt.TreeFigure(tr).support_labels(attr=["bootstrap", "shalrt"])._build()
+    assert [lb.text for lb in ctx.scene.labels] == ["88/-"]
+
+
+def test_min_value_hides_weakly_supported_nodes():
+    tr = pt.Tree.from_newick("(((A:1,B:1):1,C:2):1,D:3);")
+    vals = {frozenset(["A", "B"]): 95, frozenset(["A", "B", "C"]): 45}
+    for node in tr.traverse():
+        if not node.is_leaf and not node.is_root:
+            node.data["bootstrap"] = vals.get(frozenset(node.leaf_names()), 60)
+    ctx = pt.TreeFigure(tr).support_labels(attr="bootstrap",
+                                           min_value=70)._build()
+    assert [lb.text for lb in ctx.scene.labels] == ["95"]
+
+
 def test_node_bars_follow_the_time_axis_present_either_order():
     # both defaulted to present=0 independently, so setting it on the axis
     # alone silently shifted every bar off the scale it is read against

@@ -134,27 +134,63 @@ class _TipLabels(_Element):
 
 
 class _NodeLabels(_Element):
-    """Label internal nodes -- by default their support values."""
+    """Label internal nodes -- by default their support values.
 
-    def __init__(self, attr: str = "support", size: float = 7.0,
-                 color="#666666", offset: float = 0.0, fmt: str = "{:g}"):
-        self.attr = attr
+    ``attr`` may name several keys, which are then printed as one combined
+    label (``"88/95/1.0"``). A tree whose topology was checked by more than one
+    method carries more than one support value, and reporting them together on
+    the branch is how those papers present it -- drawing them as separate
+    labels would just stack them on the same point.
+
+    ``min_value`` hides weakly supported nodes, so a dense tree is not covered
+    in numbers that say only "this branch is unreliable".
+    """
+
+    def __init__(self, attr="support", size: float = 7.0,
+                 color="#666666", offset: float = 0.0, fmt: str = "{:g}",
+                 sep: str = "/", min_value: Optional[float] = None):
+        #: one key, or several to combine into a single label
+        self.attrs = [attr] if isinstance(attr, str) else list(attr)
         self.size = size
         self.color = color
         self.offset = offset
         self.fmt = fmt
+        self.sep = sep
+        self.min_value = min_value
+
+    @property
+    def attr(self):
+        """The first key -- kept for callers that set a single attribute."""
+        return self.attrs[0]
+
+    def _value(self, node, key):
+        val = getattr(node, key, None)
+        if val is None:
+            val = node.data.get(key)
+        return val
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
         for node in ctx.tree.traverse():
             if node.is_leaf or node.is_root:
                 continue
-            val = getattr(node, self.attr, None)
-            if val is None:
-                val = node.data.get(self.attr)
-            if val is None:
+            values = [self._value(node, key) for key in self.attrs]
+            if all(v is None for v in values):
                 continue
-            text = self.fmt.format(val) if isinstance(val, (int, float)) else str(val)
+            if self.min_value is not None:
+                numeric = [v for v in values if is_numeric(v)]
+                # keep the node only if something about it is worth reading
+                if numeric and max(numeric) < self.min_value:
+                    continue
+            parts = []
+            for val in values:
+                if val is None:
+                    parts.append("-")
+                elif isinstance(val, (int, float)):
+                    parts.append(self.fmt.format(val))
+                else:
+                    parts.append(str(val))
+            text = self.sep.join(parts)
             if getattr(lay, "kind", "rect") != "rect":
                 x, y, ha, va = node.x, node.y, "center", "bottom"
             else:

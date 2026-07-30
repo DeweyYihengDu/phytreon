@@ -102,6 +102,31 @@ def test_node_bars_work_straight_off_a_beast_file(beast_file):
     assert len(bars) == 2                                  # both internal nodes
 
 
+def test_posterior_becomes_the_node_support(beast_file):
+    # posterior IS the clade support of a Bayesian tree; without this the
+    # default support_labels() would draw nothing on a BEAST tree while
+    # working fine on a bootstrapped one
+    tree = pt.Tree.read(beast_file, fmt="beast")
+    node = tree.get_mrca(["Homo_sapiens", "Pan_troglodytes"])
+    assert node.support == pytest.approx(1.0)
+    assert tree.root.support == pytest.approx(0.97)
+    ctx = pt.TreeFigure(tree).support_labels()._build()
+    assert [lb.text for lb in ctx.scene.labels]          # not silently empty
+
+
+def test_an_existing_support_value_is_not_overwritten():
+    from phytreon.core.nexus import annotate_from_comments
+    tree = pt.Tree.from_newick("((A,B)95,(C,D)80);")
+    for node in tree.traverse():
+        if not node.is_leaf:
+            node.comment = "&posterior=0.5"
+    annotate_from_comments(tree)
+    assert tree.get_mrca(["A", "B"]).support == 95.0    # bootstrap survives
+    assert tree.get_mrca(["C", "D"]).support == 80.0
+    # the root carried no support of its own, so it does take the posterior
+    assert tree.root.support == pytest.approx(0.5)
+
+
 def test_read_beast_helper_matches_tree_read(beast_file):
     assert (pt.read_beast(beast_file).leaf_names()
             == pt.Tree.read(beast_file, fmt="beast").leaf_names())
