@@ -57,6 +57,25 @@ All notable changes to phytreon are documented here. Format loosely follows
   (`from_trees`, weight = fraction of trees containing the split), a distance
   matrix, or an alignment. `conflicts()` lists the conflicting pairs so a box
   can be confirmed rather than assumed. New `docs/tutorials/splitnet.md`.
+  - The drawing is **planar**, by the same construction SplitsTree uses: the
+    taxa are put in a circular ordering so that each split cuts the circle as
+    a single arc — one chord — and the network is the dual of the resulting
+    chord arrangement, each edge drawn perpendicular to its own chord. A
+    regression test asserts zero crossings over random circular split systems.
+  - Boxes and conflicting split pairs now match exactly at every `max_splits`
+    setting, on random systems and on real bootstrap sets: the drawing neither
+    invents a box nor swallows a conflict. `dropped` lists any split no
+    circular ordering can lay out as an arc, rather than drawing it wrong.
+  - Terminal splits are drawn and are exempt from `max_splits`. They can never
+    conflict, so they never cost a box; without them every taxon sits on an
+    internal node and the names land on each other.
+  - Past a dozen taxa the labels move out to a ring with hairline leaders
+    (`label_ring`), because a split network bunches taxa wherever the splits
+    between them are short.
+  - A split and its complement are now recognised as one split. They were
+    drawn as two chords lying on top of each other, which lost the cells that
+    belong between them — and a rooted tree hands over both sides of its root
+    edge, so this was the ordinary case rather than a rare one.
 - `support_labels(stack=True, prefixes=[...])` writes several support values on
   separate lines (`p:1.00` / `b:100` / `n:0.98`) as well as the joined form,
   which stays readable with four values where a slash-joined string does not.

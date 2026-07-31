@@ -159,7 +159,7 @@ Every figure below is produced by a script in [`examples/`](examples/)
     <td width="50%">
       <img src="assets/gallery/split_network.png" alt="Split network of bootstrap replicates with boxes marking conflicting splits"><br>
       <b>Split network</b><br>
-      <sub>Conflicting splits drawn as boxes instead of being resolved away — <code>figstyles_demo.py</code></sub>
+      <sub>Conflicting splits drawn as boxes instead of being resolved away; planar, via the circular ordering — <code>figstyles_demo.py</code></sub>
     </td>
   </tr>
   <tr>

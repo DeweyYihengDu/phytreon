@@ -137,8 +137,8 @@ net = pt.SplitNetwork.from_trees(replicates, label_size=7)
 net.color_by({r["name"]: r["domain"] for _, r in meta.iterrows()},
              title="domain")
 net.titled("60 bootstrap replicates as a split network")
-net.save(os.path.join(OUT, "style_splitnet.png"), figsize=(8, 6))
-verts, edges = net._median_network()
+net.save(os.path.join(OUT, "style_splitnet.png"), figsize=(11, 8))
+verts, edges = net._network()
 print(f"split network: {len(net.splits)} splits, "
       f"{len(net.conflicts())} conflicting pairs, "
       f"{len(edges) - len(verts) + 1} boxes")

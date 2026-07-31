@@ -1,13 +1,17 @@
 """Figure styles taken from the comparative-genomics literature: ribbon
 tanglegrams, multi-panel grids, domain-architecture tracks, stacked support
 values, and split networks."""
+import itertools
+import random
+
 import matplotlib
 matplotlib.use("Agg")
 
 import pytest
 
 import phytreon as pt
-from phytreon.plot.splitnet import conflicting, splits_from_tree
+from phytreon.plot.splitnet import (circular_ordering, conflicting, is_circular,
+                                    splits_from_tree)
 
 
 # --------------------------------------------------------------------------
@@ -219,7 +223,7 @@ def test_two_conflicting_splits_make_exactly_one_box():
     splits = [(frozenset(["A", "B"]), 1.0), (frozenset(["B", "C"]), 1.0)]
     net = pt.SplitNetwork(names, splits)
     assert len(net.conflicts()) == 1
-    verts, edges = net._median_network()
+    verts, edges = net._network()
     assert len(verts) == 4 and len(edges) == 4        # a 4-cycle: the box
 
 
@@ -228,7 +232,7 @@ def test_compatible_splits_stay_a_tree():
     splits = [(frozenset(["A", "B"]), 1.0), (frozenset(["A", "B", "C"]), 1.0)]
     net = pt.SplitNetwork(names, splits)
     assert net.conflicts() == []
-    verts, edges = net._median_network()
+    verts, edges = net._network()
     assert len(edges) == len(verts) - 1               # acyclic
 
 
@@ -278,6 +282,102 @@ def test_taxa_sharing_a_vertex_are_still_drawn_apart():
     net = pt.SplitNetwork(names, splits)
     pos = net.positions
     assert len({(round(x, 6), round(y, 6)) for x, y in pos.values()}) == 4
+
+
+def _crossings(net):
+    """Pairs of network edges that cross away from any shared node.
+
+    Sharing a node is not a crossing, and two edges of the same split lie
+    parallel, so only proper interior intersections are counted.
+    """
+    verts, edges = net._network()
+    xy = net._vertex_coords(verts)
+
+    def side(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    hits = 0
+    for (i1, j1, _), (i2, j2, _) in itertools.combinations(edges, 2):
+        if {i1, j1} & {i2, j2}:
+            continue
+        p, q, r, s = xy[i1], xy[j1], xy[i2], xy[j2]
+        d = [side(r, s, p), side(r, s, q), side(p, q, r), side(p, q, s)]
+        if any(abs(v) < 1e-12 for v in d):
+            continue
+        if (d[0] > 0) != (d[1] > 0) and (d[2] > 0) != (d[3] > 0):
+            hits += 1
+    return hits
+
+
+def test_the_drawing_is_planar():
+    # the whole point of the circular ordering: a split that is one arc is one
+    # chord, and chords can only meet by opening a box, never by crossing
+    rng = random.Random(7)
+    for _ in range(25):
+        n = rng.randint(6, 20)
+        names = [str(i) for i in range(n)]
+        sides = set()
+        while len(sides) < rng.randint(5, 30):
+            a, ln = rng.randrange(n), rng.randint(1, n - 1)
+            sides.add(frozenset(names[(a + t) % n] for t in range(ln)))
+        net = pt.SplitNetwork(names, [(s, rng.random() + 0.05) for s in sides],
+                              order=names, max_splits=99)
+        assert _crossings(net) == 0
+
+
+def test_every_conflict_opens_exactly_one_box():
+    # for a circular split system the network's independent cycles and its
+    # conflicting split pairs are the same count -- no conflict is swallowed
+    # and no box is invented
+    rng = random.Random(3)
+    for _ in range(15):
+        n = rng.randint(6, 16)
+        names = [str(i) for i in range(n)]
+        sides = set()
+        while len(sides) < rng.randint(4, 14):
+            a, ln = rng.randrange(n), rng.randint(1, n - 1)
+            sides.add(frozenset(names[(a + t) % n] for t in range(ln)))
+        net = pt.SplitNetwork(names, [(s, 1.0) for s in sides],
+                              order=names, max_splits=99)
+        verts, edges = net._network()
+        assert len(edges) - len(verts) + 1 == len(net.conflicts())
+
+
+def test_three_mutual_conflicts_draw_as_three_rhombi():
+    # the case that catches a median closure: it returns the whole 3-cube,
+    # eight nodes, which in the plane can only be drawn with crossings. The
+    # chord arrangement returns seven cells -- a hexagon of three rhombi
+    names = [str(i) for i in range(6)]
+    splits = [(frozenset(["0", "1", "2"]), 1.0),
+              (frozenset(["2", "3", "4"]), 1.0),
+              (frozenset(["4", "5", "0"]), 1.0)]
+    net = pt.SplitNetwork(names, splits, order=names)
+    assert len(net.conflicts()) == 3
+    verts, edges = net._network()
+    assert (len(verts), len(edges)) == (7, 9)
+    assert _crossings(net) == 0
+
+
+def test_circular_ordering_makes_the_hierarchy_contiguous():
+    # every compatible split must come out as one arc, or it cannot be drawn
+    names = list("ABCDEFGH")
+    splits = [(frozenset("ABCD"), 1.0), (frozenset("AB"), 0.9),
+              (frozenset("CD"), 0.8), (frozenset("EF"), 0.7),
+              (frozenset("BC"), 0.4)]                    # the one conflict
+    order = circular_ordering(names, splits)
+    assert sorted(order) == sorted(names)
+    for side, _ in splits[:4]:
+        assert is_circular(side, order)
+
+
+def test_splits_that_are_not_arcs_are_set_aside_not_drawn_wrong():
+    names = list("ABCD")
+    # AC and BD cannot both be arcs of any ordering of four taxa
+    net = pt.SplitNetwork(names, [(frozenset("AB"), 1.0), (frozenset("AC"), 1.0),
+                                  (frozenset("AD"), 1.0)], max_splits=99)
+    assert len(net.dropped) + len(net.splits) == 3
+    for side, _ in net.splits:
+        assert is_circular(side, net.order)
 
 
 def test_split_network_renders(tmp_path):

@@ -38,50 +38,81 @@ draws long, one found in half of them draws short and boxed against its rival.
 - a **box** is two groupings the data supports at once; its size is how much
   support the losing one has
 - a **tree-like** region is agreement
-- **pendant edges** fan taxa that no retained split separates around their
-  shared vertex — being together at one vertex *is* the statement
+- **terminal edges** carry each taxon out to the rim, so the names have room;
+  they are in every tree by definition and say nothing about topology
+- taxa that no retained split separates share a node and are fanned around it
+  — being together at one node *is* the statement
 
 `net.conflicts()` lists the conflicting split pairs, so a box you think you see
-can be confirmed rather than assumed.
+can be confirmed rather than assumed. `net.dropped` lists any split the
+circular ordering could not lay out as one arc, so nothing goes missing
+silently.
 
 ## `max_splits` is the readability knob
 
-This matters more than it looks. A split network stays legible only while the
-conflict is modest; past that it degenerates into a mesh, and the median
-closure that draws it grows steeply. Measured on a 60-replicate 16S bootstrap
-set (31 distinct splits, 82 conflicting pairs in total):
+It caps the *informative* splits. Terminal splits are exempt — they can never
+conflict, so they can never be the point of the picture. Each conflict opens a
+box, and past a couple of dozen boxes the drawing is a mesh. Measured on a
+60-replicate 16S bootstrap set (47 distinct splits, 7 of which no circular
+ordering can draw):
 
-| `max_splits` | conflicts | boxes | vertices | time |
+| `max_splits` | conflicts | boxes | nodes | time |
 |---|---|---|---|---|
-| 16 | 1 | 1 | 18 | instant |
-| **20** (default) | 11 | 15 | 34 | 0.1 s |
-| 24 | 31 | 82 | 80 | 1.1 s |
-| 31 (all) | 82 | 474 | 284 | 80 s |
+| 12 | 0 | 0 | 31 | 0.1 s |
+| 16 | 2 | 2 | 37 | 0.2 s |
+| **20** (default) | 9 | 9 | 48 | 0.3 s |
+| 28 (all) | 13 | 13 | 54 | 0.6 s |
 
-Raise it to chase weaker conflicting signal and expect both the picture and the
-wait to degrade; lower it for a cleaner figure showing only the conflicts among
-the strongest splits.
+Boxes and conflicts match exactly at every setting. That is the check worth
+knowing about: the drawing neither invents a box nor swallows a conflict.
 
 !!! note "Why the selection is not simply 'the strongest N'"
     Splits present in more than half the trees are exactly the majority-rule
     consensus — and a majority consensus is compatible **by construction**. A
     plain top-N cut therefore draws a tree no matter how reticulate the data
-    is; on the 16S set above it discarded all 82 conflicting pairs. So most of
-    the budget goes to the strongest splits and the rest is reserved for the
-    strongest splits that actually conflict with something already kept. If the
-    data really is tree-like, nothing conflicts, the reserve goes unused, and
-    the drawing is a tree because the data says so rather than because the
-    selection said so.
+    is. So most of the budget goes to the strongest splits and the rest is
+    reserved for the strongest splits that actually conflict with something
+    already kept. If the data really is tree-like, nothing conflicts, the
+    reserve goes unused, and the drawing is a tree because the data says so
+    rather than because the selection said so.
+
+## Why it does not cross itself
+
+Three steps, and the middle one is what makes the picture readable.
+
+1. **Splits**, from neighbour joining or from your tree set.
+2. **A circular ordering** of the taxa, so that as many splits as possible cut
+   the circle as a single arc — which makes each of them a *chord*. This is the
+   idea NeighborNet turns on. Without it the split directions are arbitrary and
+   the drawing crosses itself: 48 edges and 87 crossings on the 16S set above.
+3. **The chord arrangement.** The chords cut the disc into cells; the network
+   is the dual — one node per cell, one edge per shared chord segment. Two
+   chords that cross leave a cell on each of their four sides, and those four
+   cells are the box. Each edge is drawn perpendicular to its own chord, and
+   the result is planar.
+
+Step 3 is the one that has to be got right. Taking the median closure of the
+taxon signatures instead — the Buneman graph — overshoots: for three mutually
+conflicting splits it returns the whole 3-cube, eight nodes, which in two
+dimensions can only be drawn as a wireframe cube with its hidden edges crossing
+the visible ones. The chord arrangement returns seven cells, which is the
+hexagon of three rhombi SplitsTree draws.
 
 ## What this is and is not
 
-Splits are extracted by neighbour joining (or from your tree set) and drawn by
-the split-decomposition convention: each split becomes a displacement shared by
-every taxon on one side, so conflicting splits open into boxes. The vertex set
-is closed under coordinate-wise medians, which supplies the box corners.
+The ordering, the planarity and the boxes are the same construction SplitsTree
+uses. What differs is where the split *weights* come from: NJ branch lengths or
+tree counts here, rather than NeighborNet's nonnegative least-squares fit over
+all circular splits. If the split system itself is the claim of the figure,
+estimate it in SplitsTree and bring the splits here to draw:
 
-This is **not** a reimplementation of SplitsTree's NeighborNet. It recovers the
-boxes for the conflicts an NJ tree plus a tree set expose; NeighborNet's
-circular ordering finds splits this will not. For a publication figure where
-the split system itself is the claim, compute it in SplitsTree and bring the
-splits here to draw.
+```python
+pt.SplitNetwork(names, [(frozenset(side), weight), ...])
+```
+
+## Labels
+
+Past a dozen taxa the names move out to a ring with hairline leaders back to
+their nodes, because a split network bunches taxa wherever the splits between
+them are short and a long species name then lies across its neighbour. Force it
+either way with `label_ring=True` / `False`.
