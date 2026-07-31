@@ -23,6 +23,7 @@ nav:
       - Comparing two trees: tutorials/tanglegram.md
       - Other drawing styles: tutorials/tree_styles.md
       - Sequence-similarity networks: tutorials/network.md
+      - Split networks: tutorials/splitnet.md
       - Single-cell lineage tracing: tutorials/lineage_tracing.md
       - Expression-similarity dendrograms: tutorials/expression_similarity.md
   - API reference: api.md

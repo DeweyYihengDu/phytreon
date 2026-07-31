@@ -431,6 +431,11 @@ class TreeFigure(_Renderable):
         from .elements import _Connections
         return self.add(_Connections(pairs, **kwargs))
 
+    def domains(self, data, **kwargs) -> "TreeFigure":
+        """Domain architecture / gene neighbourhood beside each tip."""
+        from .elements import _DomainTrack
+        return self.add(_DomainTrack(data, **kwargs))
+
     def scale_bar(self, **kwargs) -> "TreeFigure":
         """A compact branch-length scale bar."""
         from .elements import _ScaleBar

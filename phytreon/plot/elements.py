@@ -11,7 +11,7 @@ Elements are not used directly; they are added through the fluent
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Optional, Sequence
 
 from ..core.tree import Node
 from ..scene import Label, Marker, Path, Polygon, Raster
@@ -144,11 +144,17 @@ class _NodeLabels(_Element):
 
     ``min_value`` hides weakly supported nodes, so a dense tree is not covered
     in numbers that say only "this branch is unreliable".
+
+    ``stack=True`` writes the values on separate lines instead of joining them,
+    and ``prefixes`` labels each line (``["p", "b", "n"]`` -> ``p:1.00`` /
+    ``b:100`` / ``n:0.98``), which is the other common way these trees are
+    annotated -- readable with four values where a slash-joined string is not.
     """
 
     def __init__(self, attr="support", size: float = 7.0,
                  color="#666666", offset: float = 0.0, fmt: str = "{:g}",
-                 sep: str = "/", min_value: Optional[float] = None):
+                 sep: str = "/", min_value: Optional[float] = None,
+                 stack: bool = False, prefixes: Optional[Sequence[str]] = None):
         #: one key, or several to combine into a single label
         self.attrs = [attr] if isinstance(attr, str) else list(attr)
         self.size = size
@@ -157,6 +163,11 @@ class _NodeLabels(_Element):
         self.fmt = fmt
         self.sep = sep
         self.min_value = min_value
+        self.stack = stack
+        if prefixes is not None and len(prefixes) != len(self.attrs):
+            raise ValueError(
+                f"got {len(prefixes)} prefixes for {len(self.attrs)} keys")
+        self.prefixes = list(prefixes) if prefixes else None
 
     @property
     def attr(self):
@@ -183,14 +194,17 @@ class _NodeLabels(_Element):
                 if numeric and max(numeric) < self.min_value:
                     continue
             parts = []
-            for val in values:
+            for i, val in enumerate(values):
                 if val is None:
-                    parts.append("-")
+                    txt = "-"
                 elif isinstance(val, (int, float)):
-                    parts.append(self.fmt.format(val))
+                    txt = self.fmt.format(val)
                 else:
-                    parts.append(str(val))
-            text = self.sep.join(parts)
+                    txt = str(val)
+                if self.prefixes:
+                    txt = f"{self.prefixes[i]}:{txt}"
+                parts.append(txt)
+            text = "\n".join(parts) if self.stack else self.sep.join(parts)
             if getattr(lay, "kind", "rect") != "rect":
                 x, y, ha, va = node.x, node.y, "center", "bottom"
             else:
@@ -199,6 +213,11 @@ class _NodeLabels(_Element):
                 x = 0.5 * (node.parent.x + node.x) + self.offset
                 y = node.y - 0.3
                 ha, va = "center", "center"
+                if self.stack and len(parts) > 1:
+                    # a stack grows downward from its anchor, so lift it clear
+                    # of the branch instead of straddling it
+                    va = "bottom"
+                    y = node.y - 0.15
             ctx.scene.add(Label(x, y, text, size=self.size, color=self.color,
                                 ha=ha, va=va))
 
@@ -1247,3 +1266,124 @@ class _ScaleBar(_Element):
         ctx.scene.add(Label(x0 + length / 2, y0 + 0.03 * span, text,
                             size=self.fontsize, color=self.color,
                             ha="center", va="top"))
+
+
+# --------------------------------------------------------------------------
+# domain architecture / gene neighbourhood beside the tips
+# --------------------------------------------------------------------------
+class _DomainTrack(_Element):
+    """Draw each tip's domain architecture (or gene neighbourhood) beside it.
+
+    A tree of protein-domain sequences is usually only half the story: the
+    other half is what each protein is *built out of*, and putting the two
+    side by side is what lets a reader see a domain being gained, lost or
+    swapped along a clade. Papers in this area rarely show one without the
+    other.
+
+    ``data`` maps a tip name to its architecture, given either as plain names::
+
+        {"protein_A": ["ParB", "DUF262", "HTH"], ...}
+
+    or as ``(name, length)`` pairs when the relative sizes matter::
+
+        {"protein_A": [("ParB", 120), ("DUF262", 200), ("HTH", 60)], ...}
+
+    ``arrows=True`` draws each element as a block arrow instead of a
+    rectangle, the convention for a gene neighbourhood; pass negative lengths
+    for genes transcribed the other way and the arrow flips.
+    """
+
+    def __init__(self, data, width: float = 0.5, offset: float = 0.04,
+                 height: float = 0.7, gap: float = 0.06, arrows: bool = False,
+                 palette: str = "curated", to_scale: bool = True,
+                 labels: bool = False, label_size: float = 6.0,
+                 edgecolor: Optional[str] = "white"):
+        self.data = {str(k): list(v) for k, v in dict(data).items()}
+        self.width = width
+        self.offset = offset
+        self.height = height
+        self.gap = gap                 # blank between adjacent elements
+        self.arrows = arrows
+        self.palette = palette
+        #: honour the supplied lengths; False spaces the elements evenly
+        self.to_scale = to_scale
+        self.labels = labels
+        self.label_size = label_size
+        self.edgecolor = edgecolor
+
+    def reserved_extent(self, layout) -> float:
+        return 0.0                     # rectangular only; nothing radial
+
+    @staticmethod
+    def _parts(items):
+        """Normalise an architecture to ``[(name, length), ...]``."""
+        out = []
+        for item in items:
+            if isinstance(item, (tuple, list)):
+                out.append((str(item[0]), float(item[1])))
+            else:
+                out.append((str(item), 1.0))
+        return out
+
+    def _block(self, x0, x1, y0, y1, forward=True):
+        """A rectangle, or a block arrow pointing the way the gene reads."""
+        if not self.arrows:
+            return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        head = min(abs(x1 - x0) * 0.35, (y1 - y0) * 0.9)
+        ym = 0.5 * (y0 + y1)
+        if forward:
+            return [(x0, y0), (x1 - head, y0), (x1, ym),
+                    (x1 - head, y1), (x0, y1)]
+        return [(x1, y0), (x0 + head, y0), (x0, ym), (x0 + head, y1), (x1, y1)]
+
+    def apply(self, ctx: RenderContext) -> None:
+        lay = ctx.layout
+        if lay.is_polar:
+            raise NotImplementedError(
+                "domains() is for rectangular layouts (the architecture runs "
+                "along x beside each tip).")
+        tips = [t for t in ctx.tree.leaves() if t.name in self.data]
+        if not tips:
+            keys = sorted(self.data)[:3]
+            raise ValueError(
+                f"no tip name matches the architecture data (it has "
+                f"{keys}{' ...' if len(self.data) > 3 else ''})")
+
+        names = sorted({nm for items in self.data.values()
+                        for nm, _ in self._parts(items)})
+        scale = build_color_scale("domain", names, palette=self.palette,
+                                  swatch="patch")
+
+        total_w = self.width * lay.max_x
+        x0 = ctx.track_cursor + (self.offset + 0.02) * lay.max_x
+        longest = max(sum(abs(ln) for _, ln in self._parts(v))
+                      for v in self.data.values()) or 1.0
+        gap_w = self.gap * total_w / max(len(names), 1)
+        half = self.height / 2
+
+        for tip in tips:
+            parts = self._parts(self.data[tip.name])
+            span = sum(abs(ln) for _, ln in parts) or 1.0
+            # to scale: every architecture shares one ruler, so a longer
+            # protein really draws longer. Otherwise each fills the track,
+            # which compares composition rather than size.
+            scale_w = (total_w / longest) if self.to_scale else (total_w / span)
+            cursor = x0
+            for nm, ln in parts:
+                w = abs(ln) * scale_w - gap_w
+                if w <= 0:
+                    w = abs(ln) * scale_w
+                pts = self._block(cursor, cursor + w,
+                                  tip.y - half, tip.y + half, forward=ln >= 0)
+                ctx.scene.add(Polygon(pts, facecolor=scale.color(nm),
+                                      edgecolor=self.edgecolor,
+                                      width=0.4 if self.edgecolor else 0.0,
+                                      alpha=1.0, zorder=2, align=True,
+                                      label=f"{tip.name} | {nm}"))
+                if self.labels and w > 0:
+                    ctx.scene.add(Label(cursor + w / 2, tip.y, nm,
+                                        size=self.label_size, color="#ffffff",
+                                        ha="center", va="center", align=True))
+                cursor += abs(ln) * scale_w
+        ctx.track_cursor = x0 + total_w
+        ctx.add_scale(scale)

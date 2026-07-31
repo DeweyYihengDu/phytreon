@@ -150,6 +150,30 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <sub>CLANS-style cluster map — for families too divergent for a trustworthy tree — <code>network_demo.py</code></sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/gallery/ribbon_tanglegram.png" alt="Two facing trees joined by filled colour bands, one band twisting across the others"><br>
+      <b>Ribbon tanglegram</b><br>
+      <sub>Bands instead of per-tip links — a flat band is a group both trees agree on, a twisted one is a group they move — <code>figstyles_demo.py</code></sub>
+    </td>
+    <td width="50%">
+      <img src="assets/gallery/split_network.png" alt="Split network of bootstrap replicates with boxes marking conflicting splits"><br>
+      <b>Split network</b><br>
+      <sub>Conflicting splits drawn as boxes instead of being resolved away — <code>figstyles_demo.py</code></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/gallery/panel_grid.png" alt="Eight small unrooted trees in a grid sharing a single colour legend"><br>
+      <b>Multi-panel grid</b><br>
+      <sub>Many small figures under one shared key, for comparing families at a glance — <code>figstyles_demo.py</code></sub>
+    </td>
+    <td width="50%">
+      <img src="assets/gallery/domain_track.png" alt="Tree with gene neighbourhood block arrows drawn beside each tip"><br>
+      <b>Domain / gene track</b><br>
+      <sub>Architecture beside each tip; arrows show strand, so a gained or swapped domain reads off the clade — <code>figstyles_demo.py</code></sub>
+    </td>
+  </tr>
 </table>
 
 ---
@@ -256,7 +280,9 @@ tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
 | **Tree comparison** | tanglegrams (`TangleFigure`) with rotation-based `untangle`, crossing counts, Robinson-Foulds; DensiTree clouds (`DensiTreeFigure`) for a whole tree set |
-| **When a tree would mislead** | CLANS-style sequence-similarity networks (`SequenceNetwork`) — force-directed cluster maps for families too divergent to align reliably |
+| **When a tree would mislead** | CLANS-style sequence-similarity networks (`SequenceNetwork`); split networks (`SplitNetwork`) drawing conflicting splits as boxes |
+| **Multi-panel figures** | `panels()` — a grid of any figure types with one shared colour key |
+| **Alongside the tree** | domain architectures / gene neighbourhoods (`.domains()`), ribbons between two trees (`.ribbons()`), several support values per branch |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |
 
 ---
@@ -282,6 +308,7 @@ fluently — every method returns the figure, so calls chain.
 | `.collapsed_clades()` | collapsed clades as triangles (with `pt.collapse_clade`) |
 | `.node_bars()` | node age intervals, e.g. 95% HPD on a dated tree |
 | `.connections(pairs)` | curved links between tips (HGT, co-occurrence) |
+| `.domains(arch)` | domain architecture / gene neighbourhood beside each tip |
 
 Continuous columns get a colorbar, categorical ones a legend; tracks, labels,
 and legends are placed so nothing overlaps. Layouts: `rectangular`, `slanted`,

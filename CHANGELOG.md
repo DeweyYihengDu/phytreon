@@ -36,6 +36,31 @@ All notable changes to phytreon are documented here. Format loosely follows
   tree, and without it the default `support_labels()` drew nothing on a BEAST
   tree while working fine on a bootstrapped one. An existing support value is
   never overwritten.
+- **Ribbon tanglegrams.** `TangleFigure.ribbons(groups)` joins the two trees
+  with one filled band per group instead of a line per tip. A line answers
+  "where did this taxon go"; a band answers "where did this *group* go", which
+  is usually the question -- a flat band is a group both trees agree on, a
+  twisted one is a group they place differently, and that does not emerge from
+  a bundle of individual lines.
+- **Multi-panel figures.** `pt.panels([...], ncols=4)` lays any figures out as
+  one grid -- trees, tanglegrams, DensiTree clouds, sequence networks -- with
+  `share_legend=True` drawing each distinct colour key once beside the grid
+  instead of repeating it in every cell, and optional a/b/c panel labels.
+- **Domain architectures and gene neighbourhoods.** `TreeFigure.domains(data)`
+  draws each tip's architecture beside it, so a domain gained, lost or swapped
+  along a clade can be read off the figure. Plain names give evenly-spaced
+  blocks, `(name, length)` pairs draw to scale, `arrows=True` gives block
+  arrows for an operon, and a negative length flips the arrow for a gene on the
+  other strand.
+- **Split networks.** `SplitNetwork` draws conflicting splits as boxes rather
+  than resolving them away: build from a bootstrap/posterior tree set
+  (`from_trees`, weight = fraction of trees containing the split), a distance
+  matrix, or an alignment. `conflicts()` lists the conflicting pairs so a box
+  can be confirmed rather than assumed. New `docs/tutorials/splitnet.md`.
+- `support_labels(stack=True, prefixes=[...])` writes several support values on
+  separate lines (`p:1.00` / `b:100` / `n:0.98`) as well as the joined form,
+  which stays readable with four values where a slash-joined string does not.
+- New `examples/figstyles_demo.py` and four more gallery figures.
 - README gallery now shows the 0.3.0 drawing styles (collapsed clades, node
   interval bars, connections, DensiTree) that had no visual example before.
 

@@ -24,10 +24,11 @@ the entire element/layout/colour stack rather than reimplementing it.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from ..scene import Label, Path, Scene
+from ..scene import Label, Path, Polygon, Scene
 from ..treeops import crossing_number, untangle as _untangle
 from .figure import RenderContext, TreeFigure, _Renderable, build_color_scale
 
@@ -127,6 +128,12 @@ class TangleFigure(_Renderable):
         self._link_color_by: Optional[str] = None
         self._highlight_discordant = False
         self._link_inset: Optional[Tuple[float, float]] = None
+        self._ribbon_groups: Optional[Dict[str, object]] = None
+        self._ribbon_title = "group"
+        self._ribbon_palette = "curated"
+        self._ribbon_baseline = None
+        self._ribbon_alpha = 0.45
+        self._ribbon_width = 0.9
 
     @staticmethod
     def _label_sides(spec) -> set:
@@ -186,6 +193,45 @@ class TangleFigure(_Renderable):
         self._link_color_by = color
         self._highlight_discordant = highlight_discordant
         self._link_inset = inset
+        return self
+
+    def ribbons(self, groups, *, title: str = "group", alpha: float = 0.45,
+                width: float = 0.9, palette: str = "curated",
+                baseline=None) -> "TangleFigure":
+        """Join the two trees with one filled band per group instead of a line
+        per tip.
+
+        ``groups`` maps a tip name to the group it belongs to (a dict, or the
+        name of a column already joined onto the left tree's tips).
+
+        A line per tip answers "where did this taxon go"; a band answers "where
+        did this *group* go". A band that stays flat is a group both trees
+        agree on; one that twists across the others is a group they place
+        differently -- which is the thing a reader is usually trying to see,
+        and it does not emerge from a bundle of individual lines.
+
+        ``width`` is how far the band extends past its outermost member, in
+        tip rows; raise it to make thin groups visible.
+        """
+        if isinstance(groups, str):
+            column = groups
+            mapping = {}
+            for tip in self.left.tree.leaves():
+                if tip.name and column in tip.data:
+                    mapping[tip.name] = tip.data[column]
+            if not mapping:
+                raise ValueError(
+                    f"no tip on the left tree carries a {column!r} value; "
+                    f"join the metadata first (tree.join_data(df, on='name'))")
+            self._ribbon_groups = mapping
+            self._ribbon_title = column
+        else:
+            self._ribbon_groups = dict(groups)
+            self._ribbon_title = title
+        self._ribbon_alpha = alpha
+        self._ribbon_width = width
+        self._ribbon_palette = palette
+        self._ribbon_baseline = baseline
         return self
 
     def titled(self, title: str) -> "TangleFigure":
@@ -328,8 +374,65 @@ class TangleFigure(_Renderable):
         pad = 0.012 * trees
         return band, f_l * total + pad, f_r * total + pad
 
+    @staticmethod
+    def _ribbon_polygon(xl, xr, l0, l1, r0, r1, n: int = 24):
+        """A band from the span ``l0..l1`` on the left to ``r0..r1`` on the
+        right, its two edges eased with a cosine so the band flows rather than
+        kinking at each end."""
+        def edge(ya, yb, forward=True):
+            steps = range(n) if forward else range(n - 1, -1, -1)
+            pts = []
+            for i in steps:
+                t = i / (n - 1)
+                s = 0.5 - 0.5 * math.cos(math.pi * t)   # ease in/out
+                pts.append((xl + (xr - xl) * t, ya + (yb - ya) * s))
+            return pts
+        return edge(l0, r0) + edge(l1, r1, forward=False)
+
+    def _add_ribbons(self, scene: Scene, yscale: float,
+                     xl: float, xr: float) -> None:
+        """Draw one filled band per group instead of a line per tip.
+
+        A line per tip answers "where did this taxon go"; a band answers
+        "where did this *group* go", which is what makes a wholesale
+        rearrangement legible at a glance -- a band that stays flat is a group
+        both trees agree on, one that twists across others is a group they
+        place differently.
+        """
+        left_tips = {n.name: n for n in self.left.tree.leaves() if n.name}
+        right_tips = {n.name: n for n in self.right.tree.leaves() if n.name}
+        shared = [n for n in left_tips if n in right_tips]
+        groups = {}
+        for name in shared:
+            key = self._ribbon_groups.get(name)
+            if key is not None:
+                groups.setdefault(str(key), []).append(name)
+        if not groups:
+            return
+
+        scale = build_color_scale(self._ribbon_title, list(groups),
+                                  palette=self._ribbon_palette,
+                                  baseline=self._ribbon_baseline,
+                                  swatch="patch")
+        scene.add_legend(scale.title, scale.legend)
+        scene.legend_swatch[scale.title] = "patch"
+
+        half = 0.5 * self._ribbon_width
+        for key, members in groups.items():
+            lys = [left_tips[m].y for m in members]
+            rys = [right_tips[m].y * yscale for m in members]
+            pts = self._ribbon_polygon(xl, xr,
+                                       min(lys) - half, max(lys) + half,
+                                       min(rys) - half, max(rys) + half)
+            scene.add(Polygon(pts, facecolor=scale.color(key), edgecolor=None,
+                              alpha=self._ribbon_alpha, zorder=0.3,
+                              label=f"{key} ({len(members)})"))
+
     def _add_links(self, scene: Scene, x0: float, yscale: float,
                    xl: float, xr: float) -> None:
+        if self._ribbon_groups is not None:
+            self._add_ribbons(scene, yscale, xl, xr)
+            return
         left_tips = {n.name: n for n in self.left.tree.leaves() if n.name}
         right_tips = {n.name: n for n in self.right.tree.leaves() if n.name}
         order_l = [n.name for n in self.left.tree.leaves()

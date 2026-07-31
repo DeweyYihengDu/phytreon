@@ -22,7 +22,8 @@ from __future__ import annotations
 from . import core, layout, infer, comparative, plot, datasets, treeops
 from .core import Tree, Node
 from .core.nexus import read_beast, parse_annotation
-from .plot import TreeFigure, TangleFigure, DensiTreeFigure, SequenceNetwork
+from .plot import (TreeFigure, TangleFigure, DensiTreeFigure,
+                   SequenceNetwork, PanelFigure, panels, SplitNetwork)
 from .infer import (
     neighbor_joining, upgma, tree_from_alignment, distance_matrix,
     Alignment, align, read_fasta, read_character_matrix, trim, bootstrap_support,
@@ -46,6 +47,7 @@ __all__ = [
     "core", "layout", "infer", "comparative", "plot", "datasets", "treeops",
     "Tree", "Node", "read_beast", "parse_annotation",
     "TreeFigure", "TangleFigure", "DensiTreeFigure", "SequenceNetwork",
+    "PanelFigure", "panels", "SplitNetwork",
     "neighbor_joining", "upgma", "tree_from_alignment", "distance_matrix",
     "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",

@@ -183,3 +183,68 @@ pt.TreeFigure(tree).scale_bar(length=0.05, label="0.05 subs/site")
 
 Unlike `time_axis()` this assumes nothing about branch lengths being time and
 works on any layout, which is what a plain substitutions/site phylogram needs.
+
+## Ribbons instead of links (comparing two trees)
+
+`TangleFigure`'s default links answer "where did this taxon go". A **ribbon**
+answers "where did this *group* go", which is usually the question — a band
+that stays flat is a group both trees agree on, one that twists across the
+others is a group they place differently:
+
+```python
+fig = pt.TangleFigure(tree_a, tree_b, titles=("REase domain", "Ulp domain"))
+fig.untangle()
+fig.ribbons(clade_of, title="type")      # or a column name on the left tree
+fig.save("recombination.pdf")
+```
+
+`width=` sets how far a band extends past its outermost member (in tip rows);
+raise it to keep a one-member group visible.
+
+## Multi-panel grids
+
+A grid of small trees answers a question a single big tree cannot: *do these
+gene families tell the same story?*
+
+```python
+pt.panels([pt.TreeFigure(t).titled(name) for name, t in gene_trees],
+          ncols=4, share_legend=True, label_panels=True).save("panel.pdf")
+```
+
+`share_legend=True` collects each panel's colour key, draws each distinct one
+once beside the grid, and suppresses the per-panel copies — panels of the same
+data type carry the same key, and repeating it in every cell wastes the space
+the panels need. Any figure type works as a panel: trees, tanglegrams,
+DensiTree clouds, sequence networks.
+
+## Domain architecture and gene neighbourhoods
+
+A tree of protein-domain sequences is half the story; the other half is what
+each protein is built out of. Putting them side by side is what lets a reader
+see a domain gained, lost or swapped along a clade:
+
+```python
+arch = {"NsnA_1": [("wHTH", 60), ("ParB", 180), ("DUF262", 210)],
+        "NsnA_2": [("ParB", 180), ("DUF262", 210)]}
+pt.TreeFigure(tree).tip_labels().domains(arch, labels=True).save("arch.pdf")
+```
+
+Names alone (`["ParB", "DUF262"]`) draw evenly-spaced blocks; `(name, length)`
+pairs draw to scale. `arrows=True` gives block arrows for a gene neighbourhood,
+and a **negative length** flips the arrow for a gene on the other strand.
+`to_scale=False` makes every architecture fill the track, which compares
+composition rather than size.
+
+## Several support values at once
+
+A topology cross-checked by several methods carries several support values:
+
+```python
+.support_labels(attr=["bootstrap", "shalrt", "posterior"])       # 88/95/0.98
+.support_labels(attr=["p", "b", "n"], stack=True,
+                prefixes=["p", "b", "n"])                        # stacked lines
+.support_labels(min_value=70)          # hide the unreliable branches
+```
+
+Calling `support_labels()` once per value would stack them all on the same
+point; combining them is both the readable option and the printed convention.
