@@ -164,15 +164,23 @@ Every figure below is produced by a script in [`examples/`](examples/)
   </tr>
   <tr>
     <td width="50%">
+      <img src="assets/gallery/neighbornet.png" alt="NeighborNet of 16S distances: every circular split fitted, boxes at the centre"><br>
+      <b>NeighborNet</b><br>
+      <sub>Straight from a distance matrix — every circular split fitted to the distances, which is what makes boxes possible at all — <code>figstyles_demo.py</code></sub>
+    </td>
+    <td width="50%">
       <img src="assets/gallery/panel_grid.png" alt="Eight small unrooted trees in a grid sharing a single colour legend"><br>
       <b>Multi-panel grid</b><br>
       <sub>Many small figures under one shared key, for comparing families at a glance — <code>figstyles_demo.py</code></sub>
     </td>
+  </tr>
+  <tr>
     <td width="50%">
       <img src="assets/gallery/domain_track.png" alt="Tree with gene neighbourhood block arrows drawn beside each tip"><br>
       <b>Domain / gene track</b><br>
       <sub>Architecture beside each tip; arrows show strand, so a gained or swapped domain reads off the clade — <code>figstyles_demo.py</code></sub>
     </td>
+    <td width="50%"></td>
   </tr>
 </table>
 

@@ -72,6 +72,20 @@ All notable changes to phytreon are documented here. Format loosely follows
   - Past a dozen taxa the labels move out to a ring with hairline leaders
     (`label_ring`), because a split network bunches taxa wherever the splits
     between them are short.
+  - `from_distances` now runs NeighborNet's **weight estimation**: the
+    neighbour-joining tree supplies a circular ordering, its splits are then
+    discarded, and every split that ordering can draw — all `n(n-1)/2` of them
+    — is fitted to the distances by non-negative least squares. This is not a
+    refinement, it is the difference between a network and a tree. Splits read
+    off one tree are compatible with each other by construction, so the
+    previous behaviour could not draw a box however conflicted the data was:
+    on the 18-taxon 16S matrix, 33 splits and **0 boxes** from the tree
+    against 40 splits and **20 boxes** from the fit, reproducing the distances
+    to a 4.6% relative residual. The fit grows as the fourth power of the
+    taxon count (0.02 s at 30, 0.8 s at 60, 4.5 s at 80); past `FIT_MAX_TAXA`
+    it reads the tree and warns, because a drawing with no boxes is a claim
+    about the data and should not be made on the quiet. `net.estimated`
+    records which route ran.
   - A split and its complement are now recognised as one split. They were
     drawn as two chords lying on top of each other, which lost the cells that
     belong between them — and a rooted tree hands over both sides of its root

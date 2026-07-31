@@ -143,5 +143,24 @@ print(f"split network: {len(net.splits)} splits, "
       f"{len(net.conflicts())} conflicting pairs, "
       f"{len(edges) - len(verts) + 1} boxes")
 
+# -- 6. the same data as a NeighborNet ------------------------------------
+# Straight from the distance matrix, with no tree set at all. The point of the
+# comparison is what estimate= does: splits read off the NJ tree are compatible
+# with one another by construction, so that route cannot draw a box however
+# conflicted the data is, while fitting every circular split to the distances
+# finds the conflict that was in the matrix the whole time.
+aln = pt.Alignment(names, cols)
+taxa, dmat = pt.infer.distance_matrix_model(aln, "k2p")
+for label, estimate in (("from the NJ tree", False), ("all splits fitted", True)):
+    nn = pt.SplitNetwork.from_distances(taxa, dmat, estimate=estimate,
+                                        label_size=7)
+    v, e = nn._network()
+    print(f"neighbornet ({label}): {len(nn.splits)} splits, "
+          f"{len(nn.conflicts())} conflicting pairs, "
+          f"{len(e) - len(v) + 1} boxes")
+nn.color_by({r["name"]: r["domain"] for _, r in meta.iterrows()}, title="domain")
+nn.titled("16S distances: every circular split fitted (NeighborNet)")
+nn.save(os.path.join(OUT, "style_neighbornet.png"), figsize=(11, 8))
+
 print("wrote style_ribbons / style_panels / style_domains / style_operons / "
-      "style_support / style_splitnet to examples/out/")
+      "style_support / style_splitnet / style_neighbornet to examples/out/")

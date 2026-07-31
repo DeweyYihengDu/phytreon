@@ -10,8 +10,9 @@ matplotlib.use("Agg")
 import pytest
 
 import phytreon as pt
-from phytreon.plot.splitnet import (circular_ordering, conflicting, is_circular,
-                                    splits_from_tree)
+from phytreon.plot.splitnet import (FIT_MAX_TAXA, circular_ordering,
+                                    circular_split_weights, circular_splits,
+                                    conflicting, is_circular, splits_from_tree)
 
 
 # --------------------------------------------------------------------------
@@ -378,6 +379,74 @@ def test_splits_that_are_not_arcs_are_set_aside_not_drawn_wrong():
     assert len(net.dropped) + len(net.splits) == 3
     for side, _ in net.splits:
         assert is_circular(side, net.order)
+
+
+def _four_point_distances():
+    """Distances with two groupings in them at once.
+
+    Built as the sum of two conflicting splits -- AB|CD at 1.0 and BC|AD at
+    0.4 -- plus terminal lengths, so the answer is known: any method worth
+    using has to report both, and the weaker one is the box.
+    """
+    names = list("ABCD")
+    splits = [(frozenset("AB"), 1.0), (frozenset("BC"), 0.4)]
+    terminal = 0.5
+    mat = [[0.0] * 4 for _ in range(4)]
+    for i, a in enumerate(names):
+        for j, b in enumerate(names):
+            if i == j:
+                continue
+            d = 2 * terminal
+            d += sum(w for s, w in splits if (a in s) != (b in s))
+            mat[i][j] = d
+    return names, mat
+
+
+def test_a_distance_matrix_alone_can_draw_boxes():
+    # splits read off one tree are compatible with each other by construction,
+    # so taking them and stopping draws a tree however conflicted the data is.
+    # Fitting every circular split against the distances is what finds it.
+    names, mat = _four_point_distances()
+    fitted = pt.SplitNetwork.from_distances(names, mat, estimate=True)
+    assert fitted.estimated
+    assert len(fitted.conflicts()) == 1
+
+    from_tree = pt.SplitNetwork.from_distances(names, mat, estimate=False)
+    assert not from_tree.estimated
+    assert from_tree.conflicts() == []
+
+
+def test_the_fit_recovers_the_weights_it_was_built_from():
+    names, mat = _four_point_distances()
+    net = pt.SplitNetwork.from_distances(names, mat)
+    universe = frozenset(names)
+
+    def weight(*side):
+        # a split and its complement are one split, so match either side
+        want = frozenset(side)
+        return next(w for s, w in net.splits if s in (want, universe - want))
+
+    assert weight("A", "B") == pytest.approx(1.0, abs=1e-6)
+    assert weight("B", "C") == pytest.approx(0.4, abs=1e-6)
+    for taxon in names:                      # the terminal lengths, too
+        assert weight(taxon) == pytest.approx(0.5, abs=1e-6)
+    assert len(net.splits) == 6              # and nothing invented
+
+
+def test_circular_splits_are_every_arc_and_nothing_else():
+    order = list("ABCDE")
+    got = circular_splits(order)
+    assert len(got) == 5 * 4 // 2            # one per pair of taxa
+    for side in got:
+        assert is_circular(side, order)
+    assert len({frozenset(s) for s in got}) == len(got)
+
+
+def test_fitting_too_many_taxa_is_refused_rather_than_hung():
+    names = [str(i) for i in range(FIT_MAX_TAXA + 1)]
+    mat = [[0.0 if i == j else 1.0 for j in names] for i in names]
+    with pytest.raises(ValueError, match="estimate=False"):
+        circular_split_weights(names, mat, names)
 
 
 def test_split_network_renders(tmp_path):

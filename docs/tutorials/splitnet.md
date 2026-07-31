@@ -22,16 +22,50 @@ net.titled("bootstrap splits").save("network.pdf")
 # from a bootstrap or posterior sample: weight = fraction of trees containing it
 pt.SplitNetwork.from_trees(trees)
 
-# from a distance matrix (splits via neighbour joining, weight = branch length)
+# from a distance matrix: NeighborNet — fit every circular split to the distances
 pt.SplitNetwork.from_distances(names, matrix)
 
 # from an alignment
 pt.SplitNetwork.from_alignment(aln)
 ```
 
-`from_trees` is the one that turns a bootstrap set straight into a picture of
-*which groupings the replicates disagree about* — a split found in every tree
-draws long, one found in half of them draws short and boxed against its rival.
+`from_trees` turns a bootstrap set straight into a picture of *which groupings
+the replicates disagree about* — a split found in every tree draws long, one
+found in half of them draws short and boxed against its rival.
+
+`from_distances` does something that looks similar and is not. It builds a
+neighbour-joining tree only to get a circular ordering out of it, then throws
+the tree's splits away and fits **every** split that ordering can draw — all
+`n(n-1)/2` of them — to the distances:
+
+$$\min_w \lVert Aw - d Vert \quad	ext{subject to}\quad w \ge 0$$
+
+where `A[pair, split]` says whether that split separates that pair of taxa. The
+non-negativity is what does the work: a split the data does not support is
+driven to exactly zero rather than to a small negative number, so the result is
+sparse and every surviving split has earned its place.
+
+!!! warning "Why the fit is not optional"
+    Splits read off a single tree are compatible with one another **by
+    construction**, so taking them and stopping produces a drawing with no
+    boxes in it however conflicted the data is. Measured on the 18-taxon 16S
+    distance matrix:
+
+    | | splits | conflicts | boxes |
+    |---|---|---|---|
+    | splits from the NJ tree | 33 | 0 | **0** |
+    | all circular splits fitted | 40 | 20 | **20** |
+
+    Same matrix, same ordering. The conflict was in the distances the whole
+    time and only the fit can report it. The 40 fitted splits reproduce the
+    distance matrix to a relative residual of 4.6%.
+
+The fit is square in the number of taxon *pairs*, so it grows as the fourth
+power of the taxon count: 0.02 s at 30 taxa, 0.8 s at 60, 4.5 s at 80. Past
+`FIT_MAX_TAXA` (80) `from_distances` reads the tree instead and **warns**,
+because a picture with no boxes is a claim about the data and should not be
+made on the quiet. At that size use `from_trees` with a bootstrap sample
+instead. Which route ran is recorded in `net.estimated`.
 
 ## Reading one
 
@@ -98,13 +132,31 @@ dimensions can only be drawn as a wireframe cube with its hidden edges crossing
 the visible ones. The chord arrangement returns seven cells, which is the
 hexagon of three rhombi SplitsTree draws.
 
+## When a split simply cannot be drawn
+
+Four taxa admit three ways of splitting two against two, and a circle can show
+only two of them — the third pair would have to sit opposite each other. So a
+dataset supporting all three resolutions of some quartet is **not circular
+under any ordering**, and no amount of searching will fix it.
+
+That is not hypothetical. On the 60-replicate 16S bootstrap set, 392 of the
+3060 quartets carry all three resolutions. Seven splits therefore have to go;
+they hold 0.8% of the total weight, and in every one of those quartets the
+losing resolution appears in 1–3 replicates out of 60 against 45 for the
+winner. A search from 31 independent starting orderings — swap, move and
+reverse moves run to convergence — returned the same ordering every time, so
+40 of 47 is the ceiling rather than a search failure.
+
+Those splits are listed in `net.dropped` rather than drawn wrong.
+
 ## What this is and is not
 
-The ordering, the planarity and the boxes are the same construction SplitsTree
-uses. What differs is where the split *weights* come from: NJ branch lengths or
-tree counts here, rather than NeighborNet's nonnegative least-squares fit over
-all circular splits. If the split system itself is the claim of the figure,
-estimate it in SplitsTree and bring the splits here to draw:
+The circular ordering, the weight fit, the planarity and the boxes are all the
+same construction SplitsTree uses. What differs is the ordering search:
+NeighborNet agglomerates on the distance matrix directly, while this nests the
+compatible splits and then reorders their children. If you would rather bring
+your own split system — from SplitsTree, or any other source — hand it over
+directly:
 
 ```python
 pt.SplitNetwork(names, [(frozenset(side), weight), ...])
