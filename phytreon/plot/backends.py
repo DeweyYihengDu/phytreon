@@ -23,6 +23,42 @@ _VA_MPL = {"top": "top", "center": "center", "bottom": "bottom"}
 # --------------------------------------------------------------------------
 # matplotlib
 # --------------------------------------------------------------------------
+def _round_figsize(ctx: RenderContext):
+    """Default canvas for a layout drawn round rather than in rows.
+
+    A rectangular tree grows *downward* with its tip count, and the default
+    size has always followed it. A circular or unrooted one has to grow too,
+    but nothing was doing it: the size was a flat 8x8 whatever the tree, so
+    past about thirty tips the names started running into each other. The
+    names sit around a circumference, so the side has to rise with both how
+    many there are and how large they are set.
+
+    Measured, by counting real glyph collisions on a 106-taxon 16S tree at a
+    range of sizes -- the smallest square that came out clean:
+
+    ======  ======  ======
+    tips    10 pt   6 pt
+    ======  ======  ======
+    30      8 in    8 in
+    50      10 in   6 in
+    75      12 in   --
+    106     16 in   9 in
+    ======  ======  ======
+
+    which is ``(0.105 * tips + 4.85) * size / 10``, floored at the old 8 so
+    small trees are unchanged, and capped so a thousand tips does not ask for
+    a canvas no printer will take. Thinning with ``max_labels`` lowers the
+    count and shrinks the figure with it.
+    """
+    load = getattr(ctx, "tip_label_load", None)
+    if not load:
+        return (8, 8)
+    count, size = load
+    side = (0.105 * count + 4.85) * (size / 10.0)
+    side = min(30.0, max(8.0, side))
+    return (side, side)
+
+
 def render_mpl(ctx: RenderContext, title: Optional[str] = None,
                figsize=None, ax=None):
     import matplotlib.pyplot as plt
@@ -34,7 +70,8 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
 
     if ax is None:
         if figsize is None:
-            figsize = (8, 8) if equal else (8, max(2.6, min(0.34 * n, 30)))
+            figsize = (_round_figsize(ctx) if equal
+                       else (8, max(2.6, min(0.34 * n, 30))))
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.figure

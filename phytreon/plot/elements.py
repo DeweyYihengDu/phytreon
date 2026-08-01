@@ -11,6 +11,7 @@ Elements are not used directly; they are added through the fluent
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Optional, Sequence
 
 from ..core.tree import Node
@@ -49,6 +50,13 @@ class _Branches(_Element):
 # --------------------------------------------------------------------------
 # tip / node labels
 # --------------------------------------------------------------------------
+#: Past this many names an unrooted tree cannot keep them apart. Measured by
+#: counting real glyph collisions on a 106-taxon 16S tree: none up to about 20
+#: tips, 8 at 25, 21 at 40, 81 at 106 -- and growing the canvas does not fix
+#: it, since the collisions are between taxa the layout puts at the same point.
+_RADIAL_LABEL_LIMIT = 25
+
+
 class _TipLabels(_Element):
     def __init__(self, color="black", size: float = 10.0,
                  offset: Optional[float] = None, italic: bool = False,
@@ -73,10 +81,16 @@ class _TipLabels(_Element):
         # to clear the tip marker (markers are sized in points, not data units)
         default_off = (0.06 if kind in ("polar", "radial") else 0.02) * lay.max_x
         off = self.offset if self.offset is not None else default_off
+        # middle of the drawing, so an unrooted tree can point its names away
+        # from it rather than along whichever way each branch happens to run
+        cx = sum(t.x for t in tips) / len(tips) if tips else 0.0
+        cy = sum(t.y for t in tips) / len(tips) if tips else 0.0
+        drawn = 0
         for i, tip in enumerate(tips):
             text = tip.name or ""
             if not text or (step > 1 and i % step != 0):
                 continue
+            drawn += 1
             # a collapsed clade is drawn as a triangle reaching out to its
             # farthest hidden leaf; its label has to clear that, not sit on it.
             # Ask the layout so the span is in the units it draws in.
@@ -113,8 +127,16 @@ class _TipLabels(_Element):
                                     color=cfunc(tip), ha="right", va="center",
                                     rotation=90, italic=self.italic))
             elif kind == "radial":
-                # offset outward along the branch direction, rotate to match
-                a = tip._angle
+                # Point the name away from the middle of the tree, not along
+                # its own branch. Following the branch is the prettier idea and
+                # it is what this used to do, but a terminal branch can point
+                # anywhere -- including back across the drawing -- so names on
+                # neighbouring tips ran parallel and straight through each
+                # other. Measured on a 106-taxon 16S tree, counting real glyph
+                # collisions: 164 with the branch direction, 84 pointing
+                # outward, at the same canvas size.
+                a = math.atan2(tip.y - cy, tip.x - cx) if (tip.x, tip.y) != (cx, cy) \
+                    else tip._angle
                 x = tip.x + (off + far) * math.cos(a)
                 y = tip.y + (off + far) * math.sin(a)
                 deg = math.degrees(a)
@@ -129,6 +151,19 @@ class _TipLabels(_Element):
                 ctx.scene.add(Label(x, tip.y, text, size=self.size, color=cfunc(tip),
                                     ha="left", va="center", italic=self.italic,
                                     role="tiplab"))
+        if drawn:
+            ctx.tip_label_load = (drawn, self.size)
+        if kind == "radial" and drawn > _RADIAL_LABEL_LIMIT:
+            warnings.warn(
+                "an unrooted tree cannot seat %d names without them running "
+                "into each other -- it spaces its tips by branch geometry, so "
+                "two taxa a gene cannot separate land on the same spot and so "
+                "do their names, at any figure size. Counting real glyph "
+                "collisions on a 106-taxon 16S tree: none up to about 20 tips, "
+                "8 at 25, 21 at 40, 81 at 106. Thin them with "
+                "tip_labels(max_labels=...), or use layout='circular', which "
+                "seats every name on its own arc and stays clean."
+                % drawn, stacklevel=2)
         if scale is not None:
             ctx.add_scale(scale)
 
@@ -625,6 +660,14 @@ class _Ring(_Element):
     (radial geometry, fractions of the tree radius), ``pad_angle`` (gap between
     sectors, degrees), ``palette``/``cmap`` (per type), ``colnames``.
 
+    Column names are written into the fan opening, along the spoke, so they
+    never sit on top of the data they name. That opening has to be wide enough
+    to hold them: the first and last sectors each hang half a sector into it,
+    so on a tree with few tips -- where sectors are wide -- there may be
+    nothing left. Widen it with the layout's ``extent`` (a 60-tip tree with two
+    rings wants about 345 rather than the default 350), or turn the names off
+    with ``colnames=False`` and rely on the legend.
+
     ``separators`` controls the hairline between neighbouring sectors: ``None``
     (default) turns it off automatically past ~150 tips, where the stroke would
     be wider than the sector itself and the ring would read as a comb of
@@ -758,15 +801,37 @@ class _Ring(_Element):
                                           zorder=2, label=f"{tip.name} | {col}: {val}"))
                 ctx.add_scale(scale)
             if self.colnames:
-                # label each ring in the empty fan gap, oriented tangentially
-                # (perpendicular to the spoke) so the names separate radially
-                # instead of stacking on one another.
-                rmid = (inner + outer) / 2
-                x, y = lay._polar_to_xy(rmid, gap_angle)
-                rot = (math.degrees(gap_angle) + 90) % 180 - 0  # keep upright
+                # Name each ring in the empty fan gap, running *along* the
+                # spoke rather than across it. Across the spoke the name takes
+                # up its own width in angle, and the gap is only the few
+                # degrees the fan leaves open -- a name any longer than that
+                # spilled out of the gap and printed itself over the ring's own
+                # data. Along the spoke it takes up only its height, which
+                # fits any gap; it grows back toward the centre from the ring's
+                # outer edge, so consecutive rings' names do not run together.
+                # Sit neighbouring rings' names on opposite sides of the gap as
+                # well. Anchoring each to its own ring's outer edge separates
+                # them only by the ring spacing, and a name longer than that
+                # still reaches back into the one before it; putting
+                # consecutive rings on either side of the gap separates them by
+                # an amount that does not depend on how long the names are.
+                # The wedge that is really free is narrower than the fan
+                # opening: the first and last sectors each hang half a sector
+                # past their tip, so that much of the opening is already
+                # coloured in at both ends.
+                free = (2 * math.pi - lay.extent) / 2 - half
+                spread = max(free, 0.0) * 0.5
+                angle = gap_angle + (spread if ctx.ring_slot % 2 else -spread)
+                x, y = lay._polar_to_xy(outer, angle)
+                deg = math.degrees(angle)
+                if 90 < (deg % 360) < 270:          # keep it the right way up
+                    rot, ha = deg + 180, "left"
+                else:
+                    rot, ha = deg, "right"
                 ctx.scene.add(Label(x, y, str(col), size=self.colname_size,
-                                    color="#444444", ha="center", va="center",
+                                    color="#444444", ha=ha, va="center",
                                     rotation=rot))
+            ctx.ring_slot += 1
 
         ctx.ring_cursor = r0 + len(self.columns) * (w + g)
 

@@ -39,13 +39,18 @@ meta = pd.DataFrame({
 }).set_index("name")
 tr.join_data(meta.reset_index(), on="name")     # so tip points can map city/serotype
 
-p = (pt.TreeFigure(tr, layout="circular_slanted", extent=350)
+# extent=345 rather than the default 350: the ring names live in the fan
+# opening, and the first and last sectors each hang half a sector into it,
+# so a 60-tip tree needs a few more degrees of it left free
+p = (pt.TreeFigure(tr, layout="circular_slanted", extent=345)
      .branches(color="lineage", size=1.1)
      .tip_points(shape="city", size=5, color="#333333")
      .ring(meta, columns=["serotype"], geom="tile", width=0.07, offset=0.03)
      .ring(meta, columns=["AMR_score"], geom="bar",
            width=0.28, offset=0.03)
-     .tip_labels(size=4)
+     # 7 pt, not the 4 pt this used to need: the canvas now grows with the
+     # label count, so the names no longer have to shrink to fit a fixed square
+     .tip_labels(size=7)
      .titled("Annotated circular tree (lineage / city / serotype / AMR)"))
 p.save(os.path.join(OUT, "showcase_circular.png"))
 print("[ok] showcase_circular.png")

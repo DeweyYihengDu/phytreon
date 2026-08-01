@@ -146,11 +146,21 @@ class RenderContext:
         self.ring_base = base          # where the first ring starts
         self.ring_cursor = base        # running outer edge while drawing rings
         self.outer_radius = base       # final outer edge (labels go beyond this)
+        #: how many rings have been drawn so far, counted across *all* ring
+        #: calls rather than within one -- two ``.ring()`` calls of one column
+        #: each are two rings, and their names have to be told apart
+        self.ring_slot = 0
         # rectangular right-side tracks (heatmap / bars / alignment) stack along x
         self.track_cursor = layout.max_x
         #: the age at the most recent tip, shared by every element that maps an
         #: age onto x (time_axis defines it, node_bars follows it)
         self.present = 0.0
+        #: ``(how many tip labels, their point size)`` once they are drawn.
+        #: A round layout has to be big enough to seat them all around its
+        #: circumference, and only the labels themselves know how many there
+        #: are and how large -- thinning with ``max_labels`` means a smaller
+        #: figure is enough, and so does asking for smaller text.
+        self.tip_label_load: Optional[Tuple[int, float]] = None
 
     def add_scale(self, scale) -> None:
         """Register a ColorScale: continuous -> colorbar, categorical -> legend.

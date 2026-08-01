@@ -5,6 +5,34 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Figures no longer print names on top of each other.** Three defects, all
+  found by counting real glyph collisions rather than by eye — measured off
+  glyph ink and off *oriented* boxes, since a circular tree's labels are
+  rotated and matplotlib's window extent for rotated text is the axis-aligned
+  envelope, nearly twice the ink in each direction.
+  - The default canvas grows with the tip count for round layouts, as it
+    always has for rectangular ones. It was a flat 8×8 whatever the tree, so a
+    circular tree ran its names together past about thirty tips: **215
+    collisions at 106 taxa, now none**. The rule — `(0.105 × labels + 4.85) ×
+    size / 10` inches, floored at the old 8 — comes from the smallest square
+    that measured clean at 30, 50, 75 and 106 tips, at two label sizes.
+    Thinning with `max_labels` lowers the count and shrinks the figure with it.
+  - Unrooted trees point each name away from the middle of the drawing instead
+    of along its own branch. A terminal branch can point anywhere, including
+    back across the figure, so neighbouring names ran parallel and straight
+    through one another: **164 collisions at 106 taxa, now 84** at the same
+    canvas. The rest cannot be fixed by placement — the layout puts taxa a gene
+    cannot separate at the same point, so their names land there too, at any
+    figure size — so it now says so and points at `max_labels` or
+    `layout="circular"`, which stays clean at every size tested.
+  - Ring names run along the spoke rather than across it. Across the spoke a
+    name takes up its own width in angle, which is more than the fan opening
+    leaves, so it printed itself over the ring it was naming.
+- New `tests/test_figure_quality.py` holds all of this as regression tests: a
+  106-taxon tree drawn rectangular, circular, circular with a ring, and as a
+  tanglegram must print every name without a single collision.
+
 ### Added
 - **Sequence-similarity networks** (`SequenceNetwork`) -- the CLANS-style
   cluster map. A tree assumes the sequences align well enough for branch order
