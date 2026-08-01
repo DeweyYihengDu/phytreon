@@ -171,6 +171,43 @@ def _area(poly: Sequence[XY]) -> float:
     return abs(total) / 2.0
 
 
+def _nudge_apart(pos: Dict[str, XY], least: float,
+                 rounds: int = 20) -> Dict[str, XY]:
+    """Push taxa drawn nearer than ``least`` just far enough to both be seen.
+
+    Two taxa a gene cannot separate belong at the same point, and the network
+    is right to put them there -- but one marker then hides the other, and a
+    reader counts one taxon where there are two. The nudge is a fraction of the
+    figure's own width, on the order of the marker it is keeping visible, so it
+    cannot be misread as a distance: nothing is legible at that scale anyway.
+    """
+    names = list(pos)
+    if len(names) < 2 or least <= 0:
+        return pos
+    out = {nm: list(xy) for nm, xy in pos.items()}
+    for _ in range(rounds):
+        moved = False
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                ax, ay = out[a]
+                bx, by = out[b]
+                dx, dy = bx - ax, by - ay
+                gap = math.hypot(dx, dy)
+                if gap >= least:
+                    continue
+                if gap < 1e-12:            # exactly coincident: pick a way
+                    ang = 2 * math.pi * (hash((a, b)) % 360) / 360.0
+                    dx, dy, gap = math.cos(ang), math.sin(ang), 1.0
+                push = (least - gap) / 2.0
+                ux, uy = dx / gap, dy / gap
+                out[a] = [ax - ux * push, ay - uy * push]
+                out[b] = [bx + ux * push, by + uy * push]
+                moved = True
+        if not moved:
+            break
+    return {nm: (xy[0], xy[1]) for nm, xy in out.items()}
+
+
 def _compatible_core(names, splits) -> List[frozenset]:
     """The strongest splits that all fit on one tree, heaviest first."""
     universe = frozenset(names)
@@ -930,7 +967,7 @@ class SplitNetwork(_Renderable):
                 for k, nm in enumerate(members):
                     a = first + step * k
                     pos[nm] = (vx + r * math.cos(a), vy + r * math.sin(a))
-            self._pos = pos
+            self._pos = _nudge_apart(pos, 0.025 * span)
         return self._pos
 
     def _ring_anchors(self, coords, pos) -> Optional[Dict[str, XY]]:

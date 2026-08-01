@@ -1,13 +1,18 @@
 """Do the figures come out publishable?
 
-Not "does it render without raising" -- these check the things a reviewer sees
-first: names printed on top of each other, and text too small to survive the
-journal's downscaling. Overlap is measured off real glyph ink and off
-*oriented* boxes, because a circular tree's labels are rotated and
-matplotlib's window extent for rotated text is the axis-aligned envelope,
-which for a 45-degree label is nearly twice the ink in each direction --
-comparing those envelopes reports collisions between labels that are nowhere
-near each other.
+Not "does it render without raising" -- these check what a reviewer sees
+first: names on top of each other, names on top of the data, text too small
+to survive the journal's downscaling, a circle drawn as an oval, and strokes
+too thin to print.
+
+Two measurement details do most of the work. Overlap is taken off real glyph
+ink rather than the layout box, and off *oriented* boxes -- a circular tree's
+labels are rotated, and matplotlib's window extent for rotated text is the
+axis-aligned envelope, nearly twice the ink in each direction for a
+45-degree label, so comparing envelopes reports collisions between labels
+that are nowhere near each other. And text sitting on a filled shape is not
+by itself a fault, since a clade highlight is drawn behind its labels on
+purpose; what matters is the luminance contrast between the two.
 """
 import math
 
@@ -226,6 +231,109 @@ def test_a_ring_name_is_not_printed_over_the_ring(big):
     on_data = text_on_fill(fig)
     plt.close(fig)
     assert "domain" not in on_data
+
+
+def _luminance(rgb):
+    def lin(c):
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(v) for v in rgb[:3])
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def worst_contrast(fig):
+    """The least readable text-on-fill pairing in the figure, as a ratio."""
+    from matplotlib.colors import to_rgba
+    from matplotlib.path import Path as MPath
+    fig.canvas.draw()
+    worst = 21.0
+    for ax in fig.axes:
+        shapes = []
+        for p in ax.patches:
+            if not (p.get_fill() and p.get_visible()):
+                continue
+            fc = to_rgba(p.get_facecolor())
+            if fc[3] < 0.2:
+                continue
+            try:
+                shapes.append((p.get_path().transformed(p.get_transform()), fc))
+            except Exception:                          # pragma: no cover
+                pass
+        for t in ax.texts:
+            pts = _corners(t, fig) if t.get_visible() else None
+            if not pts:
+                continue
+            box = MPath(pts + [pts[0]], closed=True)
+            tc = to_rgba(t.get_color())
+            for path, fc in shapes:
+                if path.intersects_path(box, filled=True):
+                    lt, lf = _luminance(tc), _luminance(fc)
+                    worst = min(worst, (max(lt, lf) + 0.05) / (min(lt, lf) + 0.05))
+    return worst
+
+
+def test_a_name_inside_a_coloured_block_still_reads():
+    # it used to be white whatever the block, which is 2.2:1 against the paler
+    # half of the palette -- below the 3:1 floor for large text
+    tree = pt.Tree.from_newick("((P1:.1,P2:.1):.1,P3:.2);")
+    arch = {"P1": [("wHTH", 60), ("ParB", 180)],
+            "P2": [("DUF262", 210), ("ParBDB", 90)],
+            "P3": [("TRD", 70), ("PUA", 95)]}
+    fig = pt.TreeFigure(tree).tip_labels().domains(arch, labels=True).draw()
+    worst = worst_contrast(fig)
+    plt.close(fig)
+    assert worst >= 4.5, "least readable block label is %.1f:1" % worst
+
+
+def test_a_round_layout_is_not_drawn_as_an_oval(big):
+    # scaling x and y differently turns a circular tree into an ellipse and
+    # every ring sector into a different shape
+    for layout in ("circular", "circular_slanted", "unrooted"):
+        fig = pt.TreeFigure(big, layout=layout).tip_labels(max_labels=20).draw()
+        for ax in fig.axes:
+            if ax.get_aspect() not in ("equal", 1.0, 1):
+                continue
+            p0 = ax.transData.transform((0.0, 0.0))
+            px = ax.transData.transform((1.0, 0.0))
+            py = ax.transData.transform((0.0, 1.0))
+            sx, sy = abs(px[0] - p0[0]), abs(py[1] - p0[1])
+            assert abs(sx - sy) / max(sx, sy) < 0.01, layout
+        plt.close(fig)
+
+
+def test_no_default_figure_sets_text_too_small_to_print(big):
+    # 5 pt is about the floor that survives a journal reducing a figure to one
+    # column; anything under it is decoration, not information
+    figs = [pt.TreeFigure(big).tip_points(color="phylum").tip_labels()
+            .support_labels().scale_bar().draw(),
+            pt.TreeFigure(big, layout="circular").tip_labels().draw()]
+    for fig in figs:
+        for ax in fig.axes:
+            for t in list(ax.texts) + ([ax.title] if ax.get_title() else []):
+                assert t.get_fontsize() >= 5.0, t.get_text()
+        plt.close(fig)
+
+
+def test_a_dendrogram_grows_sideways_not_downwards(big):
+    # its leaves run along x, so it is the width that has to follow the tip
+    # count -- it was being given the tall, narrow shape a rectangular tree
+    # wants, which crushed 106 names into eight inches
+    fig = pt.TreeFigure(big, layout="dendrogram").tip_labels().draw()
+    w, h = fig.get_size_inches()
+    assert w > h
+    _clean(fig)
+
+
+def test_network_edges_stay_thick_enough_to_print():
+    # edge width carries the similarity, but scaled without a floor the weak
+    # edges reach widths a press cannot hold -- so they fade instead
+    net = pt.SequenceNetwork.from_pairs(
+        [("s%d" % i, "s%d" % (i + 1), 0.05 + 0.15 * i) for i in range(5)])
+    fig = net.draw()
+    for ax in fig.axes:
+        for ln in ax.lines:
+            if ln.get_linestyle() not in ("None", "none", ""):
+                assert ln.get_linewidth() >= 0.3, ln.get_linewidth()
+    plt.close(fig)
 
 
 def test_a_split_network_prints_every_name():

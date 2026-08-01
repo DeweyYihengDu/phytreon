@@ -29,9 +29,33 @@ All notable changes to phytreon are documented here. Format loosely follows
   - Ring names run along the spoke rather than across it. Across the spoke a
     name takes up its own width in angle, which is more than the fan opening
     leaves, so it printed itself over the ring it was naming.
+- **A dendrogram now grows sideways.** Its leaves run along x, so the *width*
+  has to follow the tip count; it was being given the tall, narrow default a
+  rectangular tree wants, which crushed 106 names into eight inches — **151
+  collisions, now none**.
+- **A ring's name is only drawn when there is room for it.** It goes in the fan
+  opening, but the first and last sectors each hang half a sector into that
+  opening, and on a tree with few tips the sectors swallow it whole. Rather
+  than print the name across the ring it is naming, it is now left to the
+  legend, which already carries the column name. Measured over tip counts 10 to
+  106 and sizes 6 to 14 pt: no name lands on data anywhere.
+- **A name inside a coloured block picks its own ink.** It was white whatever
+  the block, which measures 2.2:1 against the paler half of the palette, below
+  the 3:1 floor for large text. Choosing black or white by the block's
+  luminance guarantees at least 4.58:1.
+- **Network edges never go thinner than 0.3 pt.** Width carries the similarity,
+  but scaled without a floor the weak edges reached 0.26 pt — below what a
+  press reproduces, so the cutoff's weakest edges vanished from print. They
+  fade with opacity instead.
+- **Taxa a gene cannot separate no longer hide each other** in a split network:
+  markers drawn closer than a marker's width are nudged just far enough apart
+  to both be seen.
 - New `tests/test_figure_quality.py` holds all of this as regression tests: a
-  106-taxon tree drawn rectangular, circular, circular with a ring, and as a
-  tanglegram must print every name without a single collision.
+  106-taxon tree drawn rectangular, circular, circular with a ring, as a
+  dendrogram and as a tanglegram must print every name without a single
+  collision; a round layout must not be scaled into an oval; no default figure
+  may set text under 5 pt; a block label must reach 4.5:1 contrast; network
+  edges must stay printable.
 
 ### Added
 - **Sequence-similarity networks** (`SequenceNetwork`) -- the CLANS-style

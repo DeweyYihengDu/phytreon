@@ -18,6 +18,41 @@ from ..core.tree import Node
 from ..scene import Label, Marker, Path, Polygon, Raster
 from .figure import _Element, RenderContext, build_color_scale, is_numeric
 
+def readable_on(fill) -> str:
+    """Black or white, whichever actually reads on ``fill``.
+
+    A name printed inside its own coloured block was always white, which is
+    right on a dark block and close to invisible on a pale one -- measured at
+    2.2:1 against some of the palette, where 3:1 is the floor for large text
+    and 4.5:1 for body text. Picking by the background's luminance keeps every
+    block above 4.5:1 whatever colour it lands on.
+    """
+    from matplotlib.colors import to_rgba
+
+    def channel(c):
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b, _ = to_rgba(fill)
+    lum = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    # Compare the two inks actually used, not white against an idealised black:
+    # a near-black at #1a1a1a is itself luminous enough to lose a comparison it
+    # appears to win, and the label then comes out at 3.9:1 on a mid blue.
+    # Against true black the worst any fill can force is 4.58:1, at luminance
+    # 0.179 where the two choices cross.
+    return "#ffffff" if 1.05 / (lum + 0.05) >= (lum + 0.05) / 0.05 else "#000000"
+
+
+#: How much of the fan opening a ring's name needs before it is worth drawing.
+#: The name lies along the spoke, so what has to fit is its *height* in angle,
+#: and that falls as the radius grows -- which is why this is measured rather
+#: than derived. Counting collisions against the ring sectors on a 16S tree
+#: while sweeping the tip count: the name lands on data up to about two degrees
+#: of free wedge and is clear from roughly two and a half. Asking for *smaller*
+#: names does not lower it, because a figure drawn with smaller names is itself
+#: smaller by the same rule and the two cancel; asking for larger ones does
+#: raise it. Measured at 6, 8, 10 and 12 pt.
+_RING_NAME_MIN_GAP = math.radians(2.5)
+
 #: above this many tips, per-tip cells are too thin to carry a separator
 #: stroke -- see :class:`_Ring` / :class:`_Heatmap`
 _RING_DENSE_TIPS = 150
@@ -818,9 +853,16 @@ class _Ring(_Element):
                 # The wedge that is really free is narrower than the fan
                 # opening: the first and last sectors each hang half a sector
                 # past their tip, so that much of the opening is already
-                # coloured in at both ends.
+                # coloured in at both ends. On a tree with few tips the sectors
+                # are wide enough to swallow the opening whole, leaving the
+                # name nowhere to stand -- and rather than print it across the
+                # ring it is naming, leave it out. The column already titles
+                # its own legend, so nothing goes unlabelled.
                 free = (2 * math.pi - lay.extent) / 2 - half
-                spread = max(free, 0.0) * 0.5
+                if free <= _RING_NAME_MIN_GAP * max(1.0, self.colname_size / 8.0):
+                    ctx.ring_slot += 1
+                    continue
+                spread = free * 0.5
                 angle = gap_angle + (spread if ctx.ring_slot % 2 else -spread)
                 x, y = lay._polar_to_xy(outer, angle)
                 deg = math.degrees(angle)
@@ -1447,7 +1489,8 @@ class _DomainTrack(_Element):
                                       label=f"{tip.name} | {nm}"))
                 if self.labels and w > 0:
                     ctx.scene.add(Label(cursor + w / 2, tip.y, nm,
-                                        size=self.label_size, color="#ffffff",
+                                        size=self.label_size,
+                                        color=readable_on(scale.color(nm)),
                                         ha="center", va="center", align=True))
                 cursor += abs(ln) * scale_w
         ctx.track_cursor = x0 + total_w

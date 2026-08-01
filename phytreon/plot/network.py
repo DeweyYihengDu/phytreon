@@ -35,6 +35,12 @@ from .figure import RenderContext, _Renderable, build_color_scale
 
 XY = Tuple[float, float]
 
+#: Thinnest stroke worth drawing, in points. Journals reproduce a quarter-point
+#: rule unreliably and anything under it not at all, so a width scaled by data
+#: is floored here and the fading is done with opacity instead.
+_MIN_STROKE = 0.3
+
+
 
 class _NetworkLayout:
     """Layout shim so a network scene can drive the ordinary backends."""
@@ -345,9 +351,14 @@ class SequenceNetwork(_Renderable):
 
         for i, j, w in self.edges:
             if self.weight_edges:
-                # a stronger hit reads as a firmer line
+                # A stronger hit reads as a firmer line -- but never thinner
+                # than a press can hold. Below about a quarter point a rule
+                # drops out of a printed figure altogether, so scaling weak
+                # edges down without a floor deletes exactly the edges the
+                # cutoff was chosen to keep. Fade them instead: opacity
+                # survives the press where width does not.
                 frac = (w - wmin) / wspan
-                width = self.edge_width * (0.6 + 0.9 * frac)
+                width = max(self.edge_width * (0.6 + 0.9 * frac), _MIN_STROKE)
                 alpha = self.edge_alpha * (0.45 + 0.55 * frac)
             else:
                 width, alpha = self.edge_width, self.edge_alpha

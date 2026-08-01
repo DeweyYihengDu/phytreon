@@ -70,8 +70,18 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
 
     if ax is None:
         if figsize is None:
-            figsize = (_round_figsize(ctx) if equal
-                       else (8, max(2.6, min(0.34 * n, 30))))
+            rows = max(2.6, min(0.34 * n, 30))
+            if equal:
+                figsize = _round_figsize(ctx)
+            elif getattr(ctx.layout, "kind", "rect") == "dendrogram":
+                # a dendrogram is a rectangular tree with its axes swapped:
+                # the leaves run along x and the names hang below them, so it
+                # is the *width* that has to grow with the tip count. Giving it
+                # the tall-and-narrow shape a rectangular tree wants crushed
+                # 106 leaves into eight inches of width.
+                figsize = (rows, 8)
+            else:
+                figsize = (8, rows)
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.figure
