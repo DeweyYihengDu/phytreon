@@ -33,12 +33,21 @@ pt.SplitNetwork.from_alignment(aln)
 the replicates disagree about* — a split found in every tree draws long, one
 found in half of them draws short and boxed against its rival.
 
-`from_distances` does something that looks similar and is not. It builds a
-neighbour-joining tree only to get a circular ordering out of it, then throws
-the tree's splits away and fits **every** split that ordering can draw — all
-`n(n-1)/2` of them — to the distances:
+`from_distances` is **Neighbor-Net**, and it does something that looks similar
+to the above and is not. It is two steps, and both matter.
 
-$$\min_w \lVert Aw - d Vert \quad	ext{subject to}\quad w \ge 0$$
+First the taxa are put in a circular ordering by agglomeration on the distances
+themselves. Neighbour joining picks the two nodes to *merge*, and merging is
+exactly what costs it: from then on that pair is one subtree and nothing can
+ever come between them. Neighbor-Net picks the two nodes to stand *next to each
+other* and merges nothing, so its clusters are chains that grow at both ends,
+and a chain can seat two taxa side by side that no single tree groups.
+
+Then **every** split that ordering can draw — all `n(n-1)/2` of them — is
+fitted to the distances:
+
+$$\min_w \lVert Aw - d 
+Vert \quad	ext{subject to}\quad w \ge 0$$
 
 where `A[pair, split]` says whether that split separates that pair of taxa. The
 non-negativity is what does the work: a split the data does not support is
@@ -51,14 +60,15 @@ sparse and every surviving split has earned its place.
     boxes in it however conflicted the data is. Measured on the 18-taxon 16S
     distance matrix:
 
-    | | splits | conflicts | boxes |
-    |---|---|---|---|
-    | splits from the NJ tree | 33 | 0 | **0** |
-    | all circular splits fitted | 40 | 20 | **20** |
+    | | splits | conflicts | boxes | residual |
+    |---|---|---|---|---|
+    | splits read off the NJ tree | 33 | 0 | **0** | — |
+    | fitted, ordering from the tree | 38 | 11 | 11 | 4.6% |
+    | fitted, agglomerative ordering | 38 | 24 | **24** | **2.7%** |
 
-    Same matrix, same ordering. The conflict was in the distances the whole
-    time and only the fit can report it. The 40 fitted splits reproduce the
-    distance matrix to a relative residual of 4.6%.
+    Same matrix all three times. The conflict was in the distances the whole
+    time; only the fit can report it, and only the agglomerative ordering can
+    seat the taxa so that most of it is drawable.
 
 The fit is square in the number of taxon *pairs*, so it grows as the fourth
 power of the taxon count: 0.02 s at 30 taxa, 0.8 s at 60, 4.5 s at 80. Past
@@ -149,14 +159,30 @@ reverse moves run to convergence — returned the same ordering every time, so
 
 Those splits are listed in `net.dropped` rather than drawn wrong.
 
+## How good is the ordering?
+
+Measurably: build a distance matrix that really *is* the sum of a known
+circular split system, and ask whether every one of those splits comes back as
+an arc. Over 40 such matrices (6–16 taxa):
+
+| ordering | every split drawable | share of split weight drawable |
+|---|---|---|
+| agglomerative (`ordering="neighbornet"`) | **40 / 40** | **100%** |
+| from the NJ tree's leaf order (`ordering="tree"`) | 3 / 40 | 78.5% |
+
+With 10% multiplicative noise on the distances the agglomeration still returns
+a fully drawable ordering in 34 of 40 cases and keeps 99.7% of the weight. A
+tree's leaf order can only ever respect the tree's own splits, so it discards a
+fifth of the signal before anything is even drawn.
+
+`from_trees` has no distance matrix to agglomerate on, so it keeps the
+hierarchy-and-reorder route.
+
 ## What this is and is not
 
-The circular ordering, the weight fit, the planarity and the boxes are all the
-same construction SplitsTree uses. What differs is the ordering search:
-NeighborNet agglomerates on the distance matrix directly, while this nests the
-compatible splits and then reorders their children. If you would rather bring
-your own split system — from SplitsTree, or any other source — hand it over
-directly:
+The agglomeration, the weight fit, the planarity and the boxes are all the same
+construction SplitsTree uses. If you would rather bring your own split system —
+from SplitsTree, or any other source — hand it over directly:
 
 ```python
 pt.SplitNetwork(names, [(frozenset(side), weight), ...])

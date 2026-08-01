@@ -165,8 +165,8 @@ Every figure below is produced by a script in [`examples/`](examples/)
   <tr>
     <td width="50%">
       <img src="assets/gallery/neighbornet.png" alt="NeighborNet of 16S distances: every circular split fitted, boxes at the centre"><br>
-      <b>NeighborNet</b><br>
-      <sub>Straight from a distance matrix — every circular split fitted to the distances, which is what makes boxes possible at all — <code>figstyles_demo.py</code></sub>
+      <b>Neighbor-Net</b><br>
+      <sub>Straight from a distance matrix: agglomerative circular ordering plus a non-negative fit of every circular split — <code>figstyles_demo.py</code></sub>
     </td>
     <td width="50%">
       <img src="assets/gallery/panel_grid.png" alt="Eight small unrooted trees in a grid sharing a single colour legend"><br>
@@ -288,7 +288,7 @@ tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
 | **Tree comparison** | tanglegrams (`TangleFigure`) with rotation-based `untangle`, crossing counts, Robinson-Foulds; DensiTree clouds (`DensiTreeFigure`) for a whole tree set |
-| **When a tree would mislead** | CLANS-style sequence-similarity networks (`SequenceNetwork`); split networks (`SplitNetwork`) drawing conflicting splits as boxes |
+| **When a tree would mislead** | CLANS-style sequence-similarity networks (`SequenceNetwork`); split networks (`SplitNetwork`) drawing conflicting splits as boxes; Neighbor-Net (`neighbor_net`) straight from a distance matrix |
 | **Multi-panel figures** | `panels()` — a grid of any figure types with one shared colour key |
 | **Alongside the tree** | domain architectures / gene neighbourhoods (`.domains()`), ribbons between two trees (`.ribbons()`), several support values per branch |
 | **Tree operations** | rotate, flip, ladderize, collapse, scale clade, midpoint root, cut tree, Robinson-Foulds |

@@ -9,7 +9,8 @@ from .tangle import TangleFigure
 from .densi import DensiTreeFigure
 from .network import SequenceNetwork
 from .panels import PanelFigure, panels
-from .splitnet import SplitNetwork
+from .splitnet import (SplitNetwork, neighbor_net,
+                       neighbornet_ordering)
 
 __all__ = [
     "TreeFigure",
@@ -18,7 +19,7 @@ __all__ = [
     "SequenceNetwork",
     "PanelFigure",
     "panels",
-    "SplitNetwork",
+    "SplitNetwork", "neighbor_net", "neighbornet_ordering",
     "RenderContext",
     "ColorScale",
     "build_color_scale",

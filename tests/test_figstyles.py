@@ -12,7 +12,8 @@ import pytest
 import phytreon as pt
 from phytreon.plot.splitnet import (FIT_MAX_TAXA, circular_ordering,
                                     circular_split_weights, circular_splits,
-                                    conflicting, is_circular, splits_from_tree)
+                                    conflicting, is_circular,
+                                    neighbornet_ordering, splits_from_tree)
 
 
 # --------------------------------------------------------------------------
@@ -447,6 +448,76 @@ def test_fitting_too_many_taxa_is_refused_rather_than_hung():
     mat = [[0.0 if i == j else 1.0 for j in names] for i in names]
     with pytest.raises(ValueError, match="estimate=False"):
         circular_split_weights(names, mat, names)
+
+
+def _circular_distances(n, nsplits, rng):
+    """Distances that are exactly the sum of a random circular split system.
+
+    The ordering it was built on is the answer the agglomeration has to find:
+    every generating split must come back as one arc, or it cannot be drawn.
+    """
+    names = ["t%d" % i for i in range(n)]
+    truth = names[:]
+    rng.shuffle(truth)
+    sides = set()
+    while len(sides) < nsplits:
+        start, size = rng.randrange(n), rng.randint(1, n - 1)
+        sides.add(frozenset(truth[(start + t) % n] for t in range(size)))
+    weights = {s: rng.uniform(0.2, 1.0) for s in sides}
+    for nm in names:
+        weights.setdefault(frozenset([nm]), rng.uniform(0.2, 1.0))
+    mat = [[0.0] * n for _ in range(n)]
+    for i, a in enumerate(names):
+        for j, b in enumerate(names):
+            if i != j:
+                mat[i][j] = sum(w for s, w in weights.items()
+                                if (a in s) != (b in s))
+    return names, mat, weights
+
+
+def test_agglomeration_finds_an_ordering_that_draws_every_split():
+    # this is the property Neighbor-Net exists for: given distances that really
+    # are a circular split system, the ordering it returns has to make every
+    # one of those splits a single arc, or the split cannot be drawn at all
+    rng = random.Random(4)
+    for _ in range(20):
+        n = rng.randint(6, 14)
+        names, mat, weights = _circular_distances(n, rng.randint(n, 3 * n), rng)
+        order = neighbornet_ordering(names, mat)
+        assert sorted(order) == sorted(names)
+        undrawable = [s for s in weights if not is_circular(s, order)]
+        assert undrawable == []
+
+
+def test_the_agglomerative_ordering_beats_the_tree_leaf_order():
+    # a tree's leaf order can only respect the tree's own splits, so it loses
+    # the conflicting ones -- which are exactly the splits worth drawing
+    rng = random.Random(4)
+    agglomerative = leaf_order = 0.0
+    for _ in range(12):
+        n = rng.randint(8, 14)
+        names, mat, weights = _circular_distances(n, 3 * n, rng)
+        total = sum(weights.values())
+
+        def drawable(order, weights=weights, total=total):
+            return sum(w for s, w in weights.items()
+                       if is_circular(s, order)) / total
+
+        agglomerative += drawable(neighbornet_ordering(names, mat))
+        tree = pt.neighbor_joining(names, mat)
+        leaf_order += drawable(circular_ordering(
+            names, splits_from_tree(tree, names, trivial=True)))
+    assert agglomerative / 12 == pytest.approx(1.0, abs=1e-9)
+    assert leaf_order / 12 < 0.95
+
+
+def test_neighbor_net_is_reachable_by_name():
+    names, mat, _ = _circular_distances(9, 20, random.Random(1))
+    net = pt.neighbor_net(names, mat)
+    assert net.estimated and net.dropped == []
+    assert _crossings(net) == 0
+    with pytest.raises(ValueError, match="neighbornet"):
+        pt.SplitNetwork.from_distances(names, mat, ordering="whatever")
 
 
 def test_split_network_renders(tmp_path):

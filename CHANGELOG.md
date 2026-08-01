@@ -72,20 +72,32 @@ All notable changes to phytreon are documented here. Format loosely follows
   - Past a dozen taxa the labels move out to a ring with hairline leaders
     (`label_ring`), because a split network bunches taxa wherever the splits
     between them are short.
-  - `from_distances` now runs NeighborNet's **weight estimation**: the
-    neighbour-joining tree supplies a circular ordering, its splits are then
-    discarded, and every split that ordering can draw — all `n(n-1)/2` of them
-    — is fitted to the distances by non-negative least squares. This is not a
-    refinement, it is the difference between a network and a tree. Splits read
-    off one tree are compatible with each other by construction, so the
-    previous behaviour could not draw a box however conflicted the data was:
-    on the 18-taxon 16S matrix, 33 splits and **0 boxes** from the tree
-    against 40 splits and **20 boxes** from the fit, reproducing the distances
-    to a 4.6% relative residual. The fit grows as the fourth power of the
-    taxon count (0.02 s at 30, 0.8 s at 60, 4.5 s at 80); past `FIT_MAX_TAXA`
-    it reads the tree and warns, because a drawing with no boxes is a claim
-    about the data and should not be made on the quiet. `net.estimated`
-    records which route ran.
+- **Neighbor-Net.** `pt.neighbor_net(names, matrix)` — a split network
+  straight from a distance matrix, both halves of the Bryant–Moulton method.
+  - **The ordering** (`neighbornet_ordering`) is built by agglomeration on the
+    distances. Neighbour joining picks the two nodes to *merge*, and merging is
+    what costs it: from then on the pair is one subtree and nothing can come
+    between them. This picks the two to stand *next to each other* and merges
+    nothing, so clusters are chains growing at both ends, and a chain can seat
+    two taxa together that no tree groups. Measured over 40 distance matrices
+    built from known circular split systems: every generating split came back
+    drawable in **40 of 40**, against **3 of 40** for a neighbour-joining
+    tree's leaf order, which left a fifth of the split weight undrawable. With
+    10% noise on the distances it still manages 34 of 40 and keeps 99.7% of
+    the weight. Select with `ordering="neighbornet"` (default) or `"tree"`.
+  - **The weight estimation** fits every split the ordering can draw — all
+    `n(n-1)/2` of them — to the distances by non-negative least squares. This
+    is not a refinement, it is the difference between a network and a tree:
+    splits read off one tree are compatible with each other by construction,
+    so the previous behaviour could not draw a box however conflicted the data
+    was. On the 18-taxon 16S matrix — same matrix all three times — 33 splits
+    and **0 boxes** reading the tree, 38 splits and 11 boxes fitting against
+    the tree's ordering (4.6% residual), 38 splits and **24 boxes** fitting
+    against the agglomerative ordering (**2.7% residual**).
+  - The fit grows as the fourth power of the taxon count (0.02 s at 30, 0.8 s
+    at 60, 4.5 s at 80); past `FIT_MAX_TAXA` it reads the tree and warns,
+    because a drawing with no boxes is a claim about the data and should not
+    be made on the quiet. `net.estimated` records which route ran.
   - A split and its complement are now recognised as one split. They were
     drawn as two chords lying on top of each other, which lost the cells that
     belong between them — and a rooted tree hands over both sides of its root
