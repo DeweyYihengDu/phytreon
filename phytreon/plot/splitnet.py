@@ -60,7 +60,7 @@ import math
 import warnings
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from ..scene import Label, Marker, Path, Scene
+from ..scene import MIN_STROKE_PT, Label, Marker, Path, Scene
 from .figure import RenderContext, _Renderable, build_color_scale
 
 XY = Tuple[float, float]
@@ -1047,10 +1047,17 @@ class SplitNetwork(_Renderable):
         coords = self._vertex_coords(verts)
         scene = Scene()
 
+        # A split's weight sets how firmly its edges are drawn, over a range
+        # that starts at the thinnest stroke a press reproduces. Scaling
+        # freely and letting the renderer clip at the floor would give every
+        # weakly supported split the same width, which is the opposite of what
+        # the width is there to say.
+        lo = MIN_STROKE_PT
+        hi = max(lo * 1.6, self.width * 1.4)
         for i, j, k in edges:
-            weight = self.splits[k][1]
+            weight = min(self.splits[k][1], 1.0)
             scene.add(Path([coords[i], coords[j]], color=self.color,
-                           width=self.width * (0.4 + 1.0 * min(weight, 1.0)),
+                           width=lo + (hi - lo) * weight,
                            opacity=0.7, zorder=0.6))
 
         pos = self.positions
@@ -1065,12 +1072,14 @@ class SplitNetwork(_Renderable):
             vx, vy = coords[index[sig[nm]]]
             if (x, y) != (vx, vy):        # pendant edge back to its vertex
                 scene.add(Path([(vx, vy), (x, y)], color=self.color,
-                               width=self.width * 0.5, opacity=0.6, zorder=0.6))
+                               width=max(self.width * 0.5, MIN_STROKE_PT),
+                               opacity=0.6, zorder=0.6))
             scene.add(Marker(x, y, size=self.node_size, color=cfunc(nm),
                              edgecolor=cfunc(nm), zorder=3, label=nm))
             if self.tip_labels and ring:
                 scene.add(Path([(x, y), ring[nm]], color="#b8bec7",
-                               width=self.width * 0.4, opacity=0.8, zorder=0.4))
+                               width=max(self.width * 0.4, MIN_STROKE_PT),
+                               opacity=0.8, zorder=0.4))
                 x, y = ring[nm]
                 vx, vy = x - outward[nm][0], y - outward[nm][1]
             if self.tip_labels:

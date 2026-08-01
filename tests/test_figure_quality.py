@@ -25,6 +25,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.textpath import TextPath
 
 import phytreon as pt
+from phytreon.scene import MIN_STROKE_PT
 
 
 def _ink(text, size, weight, style):
@@ -323,17 +324,70 @@ def test_a_dendrogram_grows_sideways_not_downwards(big):
     _clean(fig)
 
 
-def test_network_edges_stay_thick_enough_to_print():
-    # edge width carries the similarity, but scaled without a floor the weak
-    # edges reach widths a press cannot hold -- so they fade instead
-    net = pt.SequenceNetwork.from_pairs(
-        [("s%d" % i, "s%d" % (i + 1), 0.05 + 0.15 * i) for i in range(5)])
-    fig = net.draw()
+def _strokes(fig):
+    """Every visible stroke width in the figure, in points."""
+    out = []
     for ax in fig.axes:
         for ln in ax.lines:
-            if ln.get_linestyle() not in ("None", "none", ""):
-                assert ln.get_linewidth() >= 0.3, ln.get_linewidth()
-    plt.close(fig)
+            if ln.get_linestyle() not in ("None", "none", "") and ln.get_linewidth():
+                out.append(ln.get_linewidth())
+        for p in ax.patches:
+            edge = p.get_edgecolor()
+            if p.get_linewidth() and edge is not None and len(edge) > 3 and edge[3]:
+                out.append(p.get_linewidth())
+    return out
+
+
+def test_nothing_is_drawn_thinner_than_a_press_can_hold(big):
+    # a rule under a quarter point prints broken or not at all, so it must not
+    # be reachable -- not by a data-driven scale and not by an option either
+    import numpy as np
+    import pandas as pd
+    num = pd.DataFrame({"name": big.leaf_names(),
+                        "v0": np.linspace(0, 1, big.n_leaves)})
+    figs = [
+        pt.TreeFigure(big).branches(size=0.05).tip_labels(max_labels=20).draw(),
+        pt.TreeFigure(big).tip_labels(max_labels=20).heatmap(num).draw(),
+        pt.SequenceNetwork.from_pairs(
+            [("s%d" % i, "s%d" % (i + 1), 0.01 + 0.2 * i) for i in range(5)],
+        ).draw(),
+    ]
+    for fig in figs:
+        widths = _strokes(fig)
+        assert widths and min(widths) >= MIN_STROKE_PT - 1e-9, min(widths)
+        plt.close(fig)
+
+
+def test_weak_edges_stay_printable_without_becoming_identical():
+    # the fix for hairlines must not be a clamp: clipping at the floor gives
+    # every weak edge the same width, which throws away what width encodes
+    net = pt.SequenceNetwork.from_pairs(
+        [("s%d" % i, "s%d" % (i + 1), 0.02 + 0.1 * i) for i in range(6)])
+    ctx = net._build()
+    widths = [p.width for p in ctx.scene.paths]
+    assert min(widths) >= MIN_STROKE_PT - 1e-9
+    assert len({round(w, 4) for w in widths}) == len(widths), widths
+    assert widths == sorted(widths) or widths == sorted(widths, reverse=True)
+
+
+def test_a_disconnected_network_is_not_squashed_into_a_corner():
+    # a cutoff disconnects the graph by design; laid out in one pass the
+    # stragglers set the scale and the real cluster shrinks to a dot
+    import math
+    edges = [("c%d" % i, "c%d" % j, 0.9)
+             for i in range(12) for j in range(i + 1, 12)]
+    edges += [("lone%d" % i, "lone%d" % i, 0.0) for i in range(6)]
+    net = pt.SequenceNetwork.from_pairs(edges)
+    pts = net.positions
+    index = {nm: i for i, nm in enumerate(net.names)}
+    core = [pts[index["c%d" % i]] for i in range(12)]
+    span = max(max(p[0] for p in pts) - min(p[0] for p in pts),
+               max(p[1] for p in pts) - min(p[1] for p in pts))
+    core_span = max(max(p[0] for p in core) - min(p[0] for p in core),
+                    max(p[1] for p in core) - min(p[1] for p in core))
+    assert core_span / span > 0.3, "cluster fills only %.0f%% of the frame" % (
+        100 * core_span / span)
+    assert all(math.isfinite(x) and math.isfinite(y) for x, y in pts)
 
 
 def test_a_split_network_prints_every_name():

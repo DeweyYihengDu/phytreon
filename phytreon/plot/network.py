@@ -30,16 +30,10 @@ import math
 import random
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from ..scene import Label, Marker, Path, Scene
+from ..scene import MIN_STROKE_PT, Label, Marker, Path, Scene
 from .figure import RenderContext, _Renderable, build_color_scale
 
 XY = Tuple[float, float]
-
-#: Thinnest stroke worth drawing, in points. Journals reproduce a quarter-point
-#: rule unreliably and anything under it not at all, so a width scaled by data
-#: is floored here and the fading is done with opacity instead.
-_MIN_STROKE = 0.3
-
 
 
 class _NetworkLayout:
@@ -175,6 +169,97 @@ def fruchterman_reingold(nodes: Sequence[str], edges: Sequence[Tuple[int, int, f
     return [(p[0], p[1]) for p in pos]
 
 
+def _components(n: int, edges) -> List[List[int]]:
+    """Connected node indices, largest group first."""
+    adj: Dict[int, List[int]] = {i: [] for i in range(n)}
+    for i, j, _ in edges:
+        adj[i].append(j)
+        adj[j].append(i)
+    seen = [False] * n
+    out = []
+    for start in range(n):
+        if seen[start]:
+            continue
+        seen[start] = True
+        stack, group = [start], [start]
+        while stack:
+            v = stack.pop()
+            for w in adj[v]:
+                if not seen[w]:
+                    seen[w] = True
+                    stack.append(w)
+                    group.append(w)
+        out.append(sorted(group))
+    out.sort(key=len, reverse=True)
+    return out
+
+
+def _pack_discs(radii: Sequence[float]) -> List[XY]:
+    """Centres for discs of the given radii: biggest in the middle, rest in
+    rings around it. Sizes come in largest-first."""
+    centres = [(0.0, 0.0)]
+    edge = radii[0]
+    i = 1
+    while i < len(radii):
+        widest = max(radii[i:])
+        ring = edge + widest * 1.15
+        angle = 0.0
+        placed = 0
+        while i < len(radii):
+            step = 2 * math.asin(min(1.0, radii[i] * 1.15 / ring))
+            if placed and angle + step > 2 * math.pi:
+                break
+            centres.append((ring * math.cos(angle + step / 2),
+                            ring * math.sin(angle + step / 2)))
+            angle += step
+            i += 1
+            placed += 1
+        edge = ring + widest
+    return centres
+
+
+def layout_by_component(nodes: Sequence[str], edges, **kwargs) -> List[XY]:
+    """Lay each connected piece out on its own, then pack the pieces.
+
+    Running one force layout over the whole graph lets the pieces set each
+    other's scale, and for a sequence network -- disconnected by construction,
+    because that is what a cutoff does -- the result is decided by whichever
+    isolated sequences drift furthest. Measured on a 106-sequence 16S graph at
+    identity 0.78: eight components, and the one holding 90 of the 106
+    sequences came out occupying 33% of the frame's width, with half of all
+    nodes inside 13% of the radius. The picture was mostly empty paper with
+    the data in one corner.
+
+    Laid out separately and packed, each piece is sized by its own node count
+    (area proportional to it, so node density is comparable between pieces)
+    and the big one takes the room it deserves. A graph in one piece is
+    untouched -- there is nothing to pack.
+    """
+    groups = _components(len(nodes), edges)
+    if len(groups) <= 1:
+        return fruchterman_reingold(nodes, edges, **kwargs)
+
+    laid, radii = [], []
+    for group in groups:
+        local = {g: i for i, g in enumerate(group)}
+        sub = [(local[i], local[j], w) for i, j, w in edges
+               if i in local and j in local]
+        pts = fruchterman_reingold([nodes[g] for g in group], sub, **kwargs)
+        # area with the node count, so a big cluster is not drawn at the same
+        # size as a lone sequence and every piece keeps a comparable density
+        radius = math.sqrt(len(group))
+        laid.append([(x * radius, y * radius) for x, y in pts])
+        radii.append(radius)
+
+    out: List[XY] = [(0.0, 0.0)] * len(nodes)
+    for group, pts, (cx, cy) in zip(groups, laid, _pack_discs(radii)):
+        for g, (x, y) in zip(group, pts):
+            out[g] = (cx + x, cy + y)
+
+    reach = max(math.hypot(x, y) for x, y in out) or 1.0
+    return [(x / reach, y / reach) for x, y in out]
+
+
 class SequenceNetwork(_Renderable):
     """A CLANS-style sequence-similarity cluster map.
 
@@ -308,7 +393,7 @@ class SequenceNetwork(_Renderable):
     def positions(self) -> List[XY]:
         """Node coordinates, computing the layout on first use."""
         if self._pos is None:
-            self._pos = fruchterman_reingold(
+            self._pos = layout_by_component(
                 self.names, self.edges,
                 iterations=self.iterations, seed=self.seed)
         return self._pos
@@ -349,19 +434,24 @@ class SequenceNetwork(_Renderable):
         wmax = max(weights) if weights else 1.0
         wspan = (wmax - wmin) or 1.0
 
+        # A stronger hit reads as a firmer line. The range it is drawn over
+        # *starts* at the thinnest stroke that prints, rather than being scaled
+        # freely and then clipped there: clipping would give every edge below
+        # the floor the same width, so the weakest hits -- the ones a cutoff
+        # exists to include -- would all come out looking identical. Mapping
+        # into the range keeps them apart and printable at the same time, and
+        # the fading is carried by opacity, which the press reproduces at any
+        # value.
+        lo = MIN_STROKE_PT
+        hi = max(lo * 1.6, self.edge_width * 1.5)
+
         for i, j, w in self.edges:
             if self.weight_edges:
-                # A stronger hit reads as a firmer line -- but never thinner
-                # than a press can hold. Below about a quarter point a rule
-                # drops out of a printed figure altogether, so scaling weak
-                # edges down without a floor deletes exactly the edges the
-                # cutoff was chosen to keep. Fade them instead: opacity
-                # survives the press where width does not.
                 frac = (w - wmin) / wspan
-                width = max(self.edge_width * (0.6 + 0.9 * frac), _MIN_STROKE)
+                width = lo + (hi - lo) * frac
                 alpha = self.edge_alpha * (0.45 + 0.55 * frac)
             else:
-                width, alpha = self.edge_width, self.edge_alpha
+                width, alpha = max(self.edge_width, lo), self.edge_alpha
             scene.add(Path([pos[i], pos[j]], color=self.edge_color,
                            width=width, opacity=alpha, zorder=0.5))
 

@@ -14,6 +14,17 @@ from typing import List, Optional, Sequence, Tuple
 XY = Tuple[float, float]
 
 
+#: Thinnest stroke, in points, that a printed figure reliably reproduces.
+#: Journals put the limit between a quarter point and a half; under it a rule
+#: prints broken or not at all, and on screen it disappears the moment the
+#: figure is scaled down. Every renderer floors stroke widths here, so no
+#: combination of options can emit a line that survives on screen and vanishes
+#: in the journal. Elements that scale width by data map *into* a range
+#: starting here rather than clamping onto it -- clamping would flatten every
+#: weak value to one width and throw away what the width was encoding.
+MIN_STROKE_PT = 0.3
+
+
 @dataclass
 class Path:
     """A polyline (used for branches, arcs, connectors)."""

@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Optional
 
+from ..scene import MIN_STROKE_PT
 from .figure import RenderContext
 
 _DASH_MPL = {None: "-", "dash": "--", "dot": ":"}
@@ -231,7 +232,11 @@ def _draw_polygon(ax, poly):
         list(poly.points), closed=True,
         facecolor=poly.facecolor if poly.facecolor else "none",
         edgecolor=poly.edgecolor if poly.edgecolor else "none",
-        alpha=poly.alpha, linewidth=poly.width, zorder=poly.zorder,
+        alpha=poly.alpha, zorder=poly.zorder,
+        # an outline asked for but drawn too thin to print is worse than none:
+        # it reads as a shape with a border on screen and without one on paper
+        linewidth=(max(poly.width, MIN_STROKE_PT)
+                   if (poly.edgecolor and poly.width) else poly.width),
         joinstyle="round",
     ))
 
@@ -239,7 +244,11 @@ def _draw_polygon(ax, poly):
 def _draw_path(ax, p):
     xs = [pt[0] for pt in p.points]
     ys = [pt[1] for pt in p.points]
-    ax.plot(xs, ys, color=p.color, linewidth=p.width,
+    # last line of defence: a stroke thinner than this prints broken or not at
+    # all, so whatever an element or a user asked for, it does not leave here
+    # invisible. Elements that scale width by data already map into a range
+    # that starts above it, so this floor should never be the thing deciding.
+    ax.plot(xs, ys, color=p.color, linewidth=max(p.width, MIN_STROKE_PT),
             linestyle=_DASH_MPL.get(p.dash, "-"), solid_capstyle="round",
             solid_joinstyle="round", zorder=p.zorder, alpha=p.opacity)
 
@@ -437,7 +446,9 @@ def render_plotly(ctx: RenderContext, title: Optional[str] = None,
         fig.add_trace(go.Scatter(
             x=xs, y=ys, fill="toself",
             fillcolor=_rgba(poly.facecolor, poly.alpha) if poly.facecolor and poly.facecolor != "none" else "rgba(0,0,0,0)",
-            line=dict(color=poly.edgecolor or "rgba(0,0,0,0)", width=poly.width),
+            line=dict(color=poly.edgecolor or "rgba(0,0,0,0)",
+                      width=(max(poly.width, MIN_STROKE_PT)
+                             if (poly.edgecolor and poly.width) else poly.width)),
             mode="lines", hoverinfo="text" if poly.label else "skip",
             text=poly.label, showlegend=False,
         ))
@@ -455,7 +466,10 @@ def render_plotly(ctx: RenderContext, title: Optional[str] = None,
     for (color, w, dash), (xs, ys) in colored.items():
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="lines", showlegend=False, hoverinfo="skip",
-            line=dict(color=color, width=w, dash=_DASH_PLOTLY.get(dash, "solid")),
+            # same floor as the static backend: an interactive figure gets
+            # exported to a paper as often as it gets browsed
+            line=dict(color=color, width=max(w, MIN_STROKE_PT),
+                      dash=_DASH_PLOTLY.get(dash, "solid")),
         ))
 
     # markers

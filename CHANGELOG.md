@@ -43,10 +43,25 @@ All notable changes to phytreon are documented here. Format loosely follows
   the block, which measures 2.2:1 against the paler half of the palette, below
   the 3:1 floor for large text. Choosing black or white by the block's
   luminance guarantees at least 4.58:1.
-- **Network edges never go thinner than 0.3 pt.** Width carries the similarity,
-  but scaled without a floor the weak edges reached 0.26 pt — below what a
-  press reproduces, so the cutoff's weakest edges vanished from print. They
-  fade with opacity instead.
+- **Nothing is drawn thinner than a press can hold.** `MIN_STROKE_PT` (0.3 pt)
+  is now a package-wide floor, applied in both backends, so no element and no
+  combination of options can emit a rule that shows on screen and disappears
+  in the journal — verified with deliberately abusive settings
+  (`branches(size=0.05)`, `edge_width=0.02`, `leader_width=0.02`): the
+  thinnest stroke rendered anywhere is exactly the floor.
+  - The elements that scale width by data now map *into* a range beginning at
+    the floor rather than being clipped onto it. Clipping was the first fix
+    and it was the wrong one: it gave every edge below the floor the same
+    width, so the weakest hits — the ones a cutoff exists to include — all
+    came out identical. Mapping keeps them distinguishable and printable at
+    once, with opacity carrying the rest of the fade.
+- **A disconnected sequence network is no longer squashed into a corner.**
+  Each connected piece is laid out on its own and the pieces are then packed,
+  sized by node count so density stays comparable. Laid out in one pass the
+  stragglers set the scale: on the 106-sequence 16S graph the component
+  holding 90 of those sequences occupied **33% of the frame's width, now
+  79%**, and at the stricter cutoff 7% → 24%. A graph in one piece is
+  unaffected.
 - **Taxa a gene cannot separate no longer hide each other** in a split network:
   markers drawn closer than a marker's width are nudged just far enough apart
   to both be seen.
