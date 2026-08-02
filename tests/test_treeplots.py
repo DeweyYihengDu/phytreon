@@ -550,10 +550,10 @@ def _band_right(fig, polar=False):
 
 
 def test_a_full_reach_band_covers_the_whole_species_name():
-    # the point of reach=1.0: the colour runs out past the longest name, so no
-    # name hangs off the end of the band it belongs to
+    # reach="labels" runs the colour out past the longest name, so no name
+    # hangs off the end of the band it belongs to
     tr = _phylum_tree()
-    fig = (pt.TreeFigure(tr).highlight(by="group", reach=1.0)
+    fig = (pt.TreeFigure(tr).highlight(by="group", reach="labels")
            .tip_labels().draw())
     _, outer, label = _band_right(fig)
     plt.close(fig)
@@ -561,24 +561,10 @@ def test_a_full_reach_band_covers_the_whole_species_name():
         label - outer)
 
 
-def test_reach_is_a_fraction_of_the_way_out_to_the_names():
-    tr = _phylum_tree()
-    seen = {}
-    for frac in (0.5, 0.7, 1.0):
-        fig = (pt.TreeFigure(tr).highlight(by="group", reach=frac)
-               .tip_labels().draw())
-        inner, outer, label = _band_right(fig)
-        seen[frac] = (outer - inner) / (label - inner)
-        plt.close(fig)
-    assert seen[0.5] < seen[0.7] < seen[1.0]
-    for frac, got in seen.items():
-        assert abs(got - frac) < 0.03, "asked %.1f, drew %.2f" % (frac, got)
-
-
 def test_reach_works_on_a_circular_tree():
     tr = _phylum_tree()
-    fig = (pt.TreeFigure(tr, layout="circular").highlight(by="group", reach=1.0)
-           .tip_labels().draw())
+    fig = (pt.TreeFigure(tr, layout="circular")
+           .highlight(by="group", reach="labels").tip_labels().draw())
     _, outer, label = _band_right(fig, polar=True)
     plt.close(fig)
     assert outer >= label - 1e-6
@@ -588,7 +574,7 @@ def test_a_stretched_band_is_not_clipped_away():
     # clipping happens while drawing, so a band reaching past the axes box
     # would be cut with no way to recover it afterwards
     tr = _phylum_tree()
-    fig = (pt.TreeFigure(tr).highlight(by="group", reach=1.0)
+    fig = (pt.TreeFigure(tr).highlight(by="group", reach="labels")
            .tip_labels().draw())
     fig.canvas.draw()
     bands = [p for p in fig.axes[0].patches
@@ -599,6 +585,63 @@ def test_a_stretched_band_is_not_clipped_away():
 
 def test_reach_rejects_a_nonsense_fraction():
     tr = _phylum_tree()
-    for bad in (0.0, -0.5, 3.0):
+    for bad in (0.0, -0.5, 9.0):
         with pytest.raises(ValueError, match="reach"):
             pt.TreeFigure(tr).highlight(by="group", reach=bad)
+
+
+def test_a_numeric_reach_is_a_multiple_of_the_tree_depth():
+    # the reference is the branch-length axis the tree is drawn on, so the same
+    # number means the same width in any figure at any font size
+    # span="full" starts the bands at the root, so the right edge is the only
+    # thing under test -- otherwise a narrow band is clamped by its own left
+    # edge and the number being checked is the clamp, not the fraction
+    tr = _phylum_tree()
+    for frac in (0.5, 0.7, 1.0):
+        ctx = (pt.TreeFigure(tr)
+               .highlight(by="group", reach=frac, span="full")._build())
+        right = max(max(x for x, _ in p.points)
+                    for p in ctx.scene.polygons if p.zorder == 0)
+        assert right == pytest.approx(frac * ctx.layout.max_x, rel=1e-6)
+
+
+def test_anchor_root_holds_the_left_edge_and_moves_the_right():
+    tr = _phylum_tree()
+    edges = {}
+    for frac in (0.5, 1.0):
+        ctx = pt.TreeFigure(tr).highlight(by="group", reach=frac,
+                                         anchor="root")._build()
+        bands = [p for p in ctx.scene.polygons if p.zorder == 0]
+        edges[frac] = (min(min(x for x, _ in p.points) for p in bands),
+                       max(max(x for x, _ in p.points) for p in bands))
+    assert edges[0.5][0] == pytest.approx(edges[1.0][0])   # left pinned
+    assert edges[0.5][1] < edges[1.0][1]                   # right moved
+
+
+def test_anchor_tips_keeps_the_names_covered_at_every_width():
+    # the point of anchoring at the tips: whatever the width, the species names
+    # stay on the colour and it is the root-ward end that shortens
+    tr = _phylum_tree()
+    outers, inners = [], []
+    for frac in (0.4, 0.7):
+        fig = (pt.TreeFigure(tr).highlight(by="group", reach=frac,
+                                          anchor="tips")
+               .tip_labels().draw())
+        inner, outer, label = _band_right(fig)
+        plt.close(fig)
+        assert outer >= label - 1e-6, (
+            "reach=%.1f left the names off the colour" % frac)
+        outers.append(outer)
+        inners.append(inner)
+    assert outers[0] == pytest.approx(outers[1], rel=1e-3)  # right pinned
+    assert inners[0] > inners[1]                            # left retreated
+
+
+def test_anchor_rejects_an_unknown_side():
+    with pytest.raises(ValueError, match="anchor must be"):
+        pt.TreeFigure(_phylum_tree()).highlight(by="group", anchor="middle")
+
+
+def test_reach_rejects_a_string_that_is_not_labels():
+    with pytest.raises(ValueError, match="reach"):
+        pt.TreeFigure(_phylum_tree()).highlight(by="group", reach="tips")

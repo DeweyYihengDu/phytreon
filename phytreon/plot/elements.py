@@ -363,12 +363,17 @@ class _Highlight(_Element):
     each in its own colour, with a legend. One call for the whole figure rather
     than one per clade, and a reader can tell which shade means what.
 
-    ``reach`` is how far out the colour goes, as a fraction of the distance
-    from the band's inner edge to where the tip labels actually end: ``1.0``
-    (the default) covers the whole name, ``0.7`` stops seven tenths of the way,
-    ``0.5`` halfway. It is resolved while rendering, because how much room a
-    name takes depends on the font and the figure size rather than on the tree
-    -- so the same number gives the same *proportion* whatever the figure.
+    ``reach`` is how wide the colour block is:
+
+    * a **number** is a multiple of the tree's own depth, so ``0.5`` reaches
+      half way in from the root, ``1.0`` to the tips, ``1.3`` a third of the
+      way past them. The reference is the branch-length axis the tree is drawn
+      on, which makes the same number mean the same width in any figure at any
+      font size.
+    * ``"labels"`` (the default) runs out past the longest tip label, so no
+      species name hangs off the end of the block it belongs to. That end can
+      only be found while rendering, since how much room a name takes depends
+      on the font and the figure rather than on the tree.
 
     A group whose taxa are not monophyletic is drawn as several bands, one per
     run of adjacent tips, rather than as one band over their common ancestor.
@@ -381,15 +386,22 @@ class _Highlight(_Element):
     def __init__(self, node: Optional[Node] = None, taxa=None, by=None,
                  fill="#fdbf6f", alpha: float = 0.3, extend: float = 0.0,
                  palette: str = "curated", order=None, baseline=None,
-                 span: str = "aligned", reach: float = 1.0):
+                 span: str = "aligned", reach="labels",
+                 anchor: str = "root"):
         if span not in ("clade", "aligned", "full"):
             raise ValueError("span must be 'clade', 'aligned' or 'full', "
                              "not %r" % (span,))
-        if not 0.0 < reach <= 1.5:
-            raise ValueError("reach is a fraction of the way out to the end of "
-                             "the tip labels; got %r" % (reach,))
+        if reach != "labels":
+            if not isinstance(reach, (int, float)) or not 0.0 < reach <= 5.0:
+                raise ValueError(
+                    "reach is either 'labels' or a multiple of the tree's "
+                    "depth (0.5 = half way in, 1.0 = the tips); got %r"
+                    % (reach,))
+        if anchor not in ("root", "tips"):
+            raise ValueError("anchor must be 'root' or 'tips', not %r" % (anchor,))
         self.span = span
         self.reach = reach
+        self.anchor = anchor
         self.node = node
         self.taxa = taxa
         self.by = by
@@ -493,6 +505,39 @@ class _Highlight(_Element):
             return flush
         return own
 
+    def _render_kw(self, lay):
+        """What the renderer still has to resolve once it has measured the
+        labels, since only it knows how much room a name takes.
+
+        ``anchor="root"`` needs it only for ``reach="labels"`` -- a numeric
+        reach is a multiple of the tree's own depth and is settled here.
+        ``anchor="tips"`` always needs it: the outer edge belongs out past the
+        names, so the width has to be subtracted from a number that is not
+        known yet.
+        """
+        if self.anchor == "tips" and self.reach != "labels":
+            return {"reach_width": self.reach * lay.max_x}
+        if self.reach == "labels":
+            return {"reach": 1.0}
+        return {}
+
+    def _edges(self, lay, x0: float):
+        """``(inner, outer)`` of the block, in branch-length units.
+
+        ``anchor="root"`` keeps the inner edge where the clade starts and moves
+        the outer one, so the block grows outward from the tree.
+
+        ``anchor="tips"`` does the opposite: the outer edge stays out past the
+        names and the inner edge retreats toward the root, so the names sit on
+        the colour at every width and what shortens is the end nearest the root.
+        These are provisional whenever the renderer has the final say.
+        """
+        span = lay.max_x if self.reach == "labels" else self.reach * lay.max_x
+        if self.anchor == "root":
+            return x0, max(span + self.extend, x0 + 1e-9)
+        outer = lay.max_x + self.extend
+        return max(0.0, min(outer - span, outer - 1e-9)), outer
+
     def _band(self, ctx, leaves, fill, node, x0: float) -> None:
         lay = ctx.layout
         if lay.is_polar:
@@ -501,21 +546,20 @@ class _Highlight(_Element):
             da = (a1 - a0) / max(len(leaves) - 1, 1) / 2 + 1e-9
             if len(leaves) == 1:                      # no span to divide
                 da = lay.extent / max(ctx.tree.n_leaves - 1, 1) / 2
-            inner = lay.inner_radius + x0
-            outer = lay.inner_radius + lay.max_x + self.extend
-            pts = lay._arc(outer, a0 - da, a1 + da)
-            pts += lay._arc(inner, a1 + da, a0 - da)
+            lo, hi = self._edges(lay, x0)
+            pts = lay._arc(lay.inner_radius + hi, a0 - da, a1 + da)
+            pts += lay._arc(lay.inner_radius + lo, a1 + da, a0 - da)
             ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                   alpha=self.alpha, zorder=0,
-                                  reach=self.reach))
+                                  **self._render_kw(lay)))
         else:
             rows = [lf.y for lf in leaves]
-            x1 = lay.max_x + self.extend
+            lo, hi = self._edges(lay, x0)
             y0, y1 = min(rows) - 0.45, max(rows) + 0.45
-            pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+            pts = [(lo, y0), (hi, y0), (hi, y1), (lo, y1)]
             ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                   alpha=self.alpha, zorder=0, rounded=True,
-                                  reach=self.reach))
+                                  **self._render_kw(lay)))
 
 
 # --------------------------------------------------------------------------

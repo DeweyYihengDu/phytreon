@@ -86,6 +86,11 @@ class Polygon:
     #: the renderer knows how much room a name takes: that depends on the font
     #: and the figure size, not on the tree.
     reach: Optional[float] = None
+    #: Width to keep, in branch-length units, when the *outer* edge is the one
+    #: pinned to where the labels end. ``reach`` moves the outer edge and holds
+    #: the inner one; this holds the outer edge out at the labels and moves the
+    #: inner one, so the names stay on the colour at every width.
+    reach_width: Optional[float] = None
 
 
 @dataclass

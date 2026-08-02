@@ -90,10 +90,12 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
 
     # split "aligned" tracks (clade bars, heatmaps) from the base plot so we
     # can place them just past the tip labels after measuring label widths.
-    base_polys = [p for p in scene.polygons if not p.align and p.reach is None]
+    base_polys = [p for p in scene.polygons if not p.align
+                  and p.reach is None and p.reach_width is None]
     # a shape whose outer edge is given as a fraction of "out to the end of the
     # names" cannot be placed until the names have been drawn and measured
-    reach_polys = [p for p in scene.polygons if not p.align and p.reach is not None]
+    reach_polys = [p for p in scene.polygons if not p.align
+                   and (p.reach is not None or p.reach_width is not None)]
     al_polys = [p for p in scene.polygons if p.align]
     base_paths = [p for p in scene.paths if not p.align]
     al_paths = [p for p in scene.paths if p.align]
@@ -380,24 +382,33 @@ def _stretch_reach(poly, target, polar):
     renderer can know. Points already on the inner edge stay put; the ones on
     the outer edge move.
     """
-    if target is None or poly.reach is None:
+    if target is None or (poly.reach is None and poly.reach_width is None):
         return poly
     pts = list(poly.points)
     if polar:
         radii = [math.hypot(x, y) for x, y in pts]
         inner, outer = min(radii), max(radii)
-        want = inner + poly.reach * (target - inner)
-        moved = []
-        for (x, y), rad in zip(pts, radii):
-            if rad > 1e-12 and abs(rad - outer) < 1e-9:
-                moved.append((x / rad * want, y / rad * want))
-            else:
-                moved.append((x, y))
+        if poly.reach_width is not None:
+            new_in = max(0.0, target - poly.reach_width)
+            moved = [((x / r * new_in, y / r * new_in) if r > 1e-12
+                      and abs(r - inner) < 1e-9 else
+                      (x / r * target, y / r * target) if r > 1e-12 else (x, y))
+                     for (x, y), r in zip(pts, radii)]
+        else:
+            want = inner + poly.reach * (target - inner)
+            moved = [((x / r * want, y / r * want)
+                      if r > 1e-12 and abs(r - outer) < 1e-9 else (x, y))
+                     for (x, y), r in zip(pts, radii)]
     else:
         xs = [x for x, _ in pts]
         left, right = min(xs), max(xs)
-        want = left + poly.reach * (target - left)
-        moved = [((want if abs(x - right) < 1e-9 else x), y) for x, y in pts]
+        if poly.reach_width is not None:
+            new_left = max(0.0, target - poly.reach_width)
+            moved = [((new_left if abs(x - left) < 1e-9 else target), y)
+                     for x, y in pts]
+        else:
+            want = left + poly.reach * (target - left)
+            moved = [((want if abs(x - right) < 1e-9 else x), y) for x, y in pts]
     return replace(poly, points=moved)
 
 
