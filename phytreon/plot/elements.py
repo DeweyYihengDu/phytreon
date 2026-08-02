@@ -373,7 +373,12 @@ class _Highlight(_Element):
 
     def __init__(self, node: Optional[Node] = None, taxa=None, by=None,
                  fill="#fdbf6f", alpha: float = 0.3, extend: float = 0.0,
-                 palette: str = "curated", order=None, baseline=None):
+                 palette: str = "curated", order=None, baseline=None,
+                 span: str = "aligned"):
+        if span not in ("clade", "aligned", "full"):
+            raise ValueError("span must be 'clade', 'aligned' or 'full', "
+                             "not %r" % (span,))
+        self.span = span
         self.node = node
         self.taxa = taxa
         self.by = by
@@ -411,7 +416,10 @@ class _Highlight(_Element):
             return
         node = self._target(ctx)
         if node is not None:
-            self._band(ctx, node.get_leaves(), self.fill, node)
+            leaves = node.get_leaves()
+            own = self._own_start(leaves, node)
+            self._band(ctx, leaves, self.fill, node,
+                       self._left_edge(own, None))
 
     def _apply_by_column(self, ctx: RenderContext) -> None:
         tips = ctx.tree.leaves()
@@ -427,15 +435,54 @@ class _Highlight(_Element):
             value = tip.data.get(self.by)
             if value is not None:
                 groups.setdefault(value, []).append(tip)
+        plan = []
         for value, members in groups.items():
             for run in self._runs(members):
                 node = (ctx.tree.get_mrca([t.name for t in run])
                         if len(run) > 1 else run[0])
-                self._band(ctx, run, scale.color(value), node)
+                plan.append((run, node, value, self._own_start(run, node)))
+        flush = min((own for *_, own in plan), default=None)
+        for run, node, value, own in plan:
+            self._band(ctx, run, scale.color(value), node,
+                       self._left_edge(own, flush))
         ctx.add_scale(scale)
         ctx.scene.legend_swatch[scale.title] = scale.swatch
 
-    def _band(self, ctx, leaves, fill, node) -> None:
+    @staticmethod
+    def _own_start(leaves, node) -> float:
+        """Where this clade itself begins, measured from the root."""
+        return node.x if len(leaves) > 1 else (
+            node.parent.x if node.parent else node.x)
+
+    def _left_edge(self, own: float, flush: Optional[float]) -> float:
+        """The x a band starts at, under the chosen ``span``.
+
+        ``"clade"`` starts at the group's own common ancestor, so each left
+        edge is a fact about that clade -- and the edges come out ragged,
+        because clades begin at different depths.
+
+        ``"aligned"`` (the default) starts every band at the shallowest of
+        those. Flush, and no band reaches further rootward than the drawing
+        already did somewhere, so the deep backbone stays outside the colour
+        and remains readable as a backbone.
+
+        ``"full"`` runs from the root. Also flush, and honest for a different
+        reason: a band then reads as *these rows*, which is exactly what it
+        covers -- iTOL's coloured ranges are drawn this way. The cost is that
+        the trunk shared with every other group is under colour too, so the
+        deep structure stops standing out.
+
+        Aligning needs to know every group at once, so it only applies to
+        ``by=``; a lone ``node=``/``taxa=`` band has nothing to line up with
+        and hugs its clade.
+        """
+        if self.span == "full":
+            return 0.0
+        if self.span == "aligned" and flush is not None:
+            return flush
+        return own
+
+    def _band(self, ctx, leaves, fill, node, x0: float) -> None:
         lay = ctx.layout
         if lay.is_polar:
             angles = [lf._angle for lf in leaves]
@@ -443,7 +490,7 @@ class _Highlight(_Element):
             da = (a1 - a0) / max(len(leaves) - 1, 1) / 2 + 1e-9
             if len(leaves) == 1:                      # no span to divide
                 da = lay.extent / max(ctx.tree.n_leaves - 1, 1) / 2
-            inner = node.parent._r if node.parent else 0.0
+            inner = lay.inner_radius + x0
             outer = lay.inner_radius + lay.max_x + self.extend
             pts = lay._arc(outer, a0 - da, a1 + da)
             pts += lay._arc(inner, a1 + da, a0 - da)
@@ -451,9 +498,6 @@ class _Highlight(_Element):
                                   alpha=self.alpha, zorder=0))
         else:
             rows = [lf.y for lf in leaves]
-            # hug the clade: start at the MRCA node, not the root-ward parent
-            x0 = node.x if len(leaves) > 1 else (
-                node.parent.x if node.parent else node.x)
             x1 = lay.max_x + self.extend
             y0, y1 = min(rows) - 0.45, max(rows) + 0.45
             pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]

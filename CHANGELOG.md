@@ -16,6 +16,16 @@ All notable changes to phytreon are documented here. Format loosely follows
   would colour in tips that do not belong to the group — tidier, and false.
   The shades stay pale enough to read a name on (measured: the darkest leaves
   black text at 12.5:1).
+  - `span` decides where the bands start. `"aligned"` (the default) lines every
+    left edge up at the shallowest clade's own start: flush, and no band
+    reaches further rootward than the drawing already did somewhere, so the
+    deep backbone stays outside the colour. `"clade"` is the old behaviour —
+    each band hugs its own ancestor, which makes every left edge a fact about
+    that clade at the cost of a ragged column. `"full"` runs from the root,
+    also flush, and reads as *these rows* rather than *this clade* (iTOL's
+    coloured ranges work this way); the trunk is then under colour too.
+    Aligning needs to know every group at once, so a lone `node=`/`taxa=`
+    highlight still hugs its clade whatever the default.
 
 ### Fixed
 - **Keys stack by measurement instead of by guess.** Each legend block's height

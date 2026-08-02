@@ -473,3 +473,46 @@ def test_highlight_by_column_works_on_a_circular_tree(tmp_path):
     (pt.TreeFigure(tr, layout="circular").highlight(by="group")
         .tip_labels().save(str(out)))
     assert out.exists() and out.stat().st_size > 1000
+
+
+def test_span_decides_whether_the_left_edges_line_up():
+    # the two groups' ancestors sit at different depths (0.8 against 0.1), so
+    # hugging each clade really does give two different left edges here
+    tr = pt.Tree.from_newick("((a1:.1,a2:.1):.8,(b1:.5,b2:.5):.1);")
+    for tip in tr.leaves():
+        tip.data["group"] = tip.name[0]
+
+    def left_edges(**kw):
+        ctx = pt.TreeFigure(tr).highlight(by="group", **kw)._build()
+        return sorted({round(min(x for x, _ in p.points), 6)
+                       for p in ctx.scene.polygons if p.zorder == 0})
+
+    # hugging each clade is honest about where that clade starts, and ragged
+    assert len(left_edges(span="clade")) > 1
+    # aligned is flush, and stops at the shallowest clade's own start, so the
+    # backbone rootward of it stays outside the colour
+    aligned = left_edges(span="aligned")
+    assert len(aligned) == 1 and aligned[0] > 0
+    assert aligned[0] == min(left_edges(span="clade"))
+    # full runs from the root: flush, but the trunk is under colour too
+    assert left_edges(span="full") == [0.0]
+
+
+def test_aligning_needs_every_group_so_one_clade_still_hugs_itself():
+    # a lone highlight has nothing to line up with, and must not change
+    # behaviour just because "aligned" is the default
+    tr = _phylum_tree()
+    node = tr.get_mrca(["a1", "a2"])
+
+    def edge(**kw):
+        ctx = pt.TreeFigure(tr).highlight(node=node, **kw)._build()
+        return [min(x for x, _ in p.points)
+                for p in ctx.scene.polygons if p.zorder == 0]
+
+    assert edge() == edge(span="clade")
+    assert edge(span="full") == [0.0]
+
+
+def test_span_rejects_a_mode_that_does_not_exist():
+    with pytest.raises(ValueError, match="span must be"):
+        pt.TreeFigure(_phylum_tree()).highlight(by="group", span="sideways")
