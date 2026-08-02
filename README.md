@@ -186,6 +186,14 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <sub>One call shades every group in a column behind the branches, with a key; a non-monophyletic group comes out as several bands — <code>tree_styles_demo.py</code></sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/gallery/shaded_ring.png" alt="Circular tree with each phylum drawn as a coloured arc in a ring outside the tree"><br>
+      <b>Groups as a ring</b><br>
+      <sub>The same grouping on a circular tree: a ring outside it, not sectors filled from the middle, so the tree stays readable — <code>tree_styles_demo.py</code></sub>
+    </td>
+    <td width="50%"></td>
+  </tr>
 </table>
 
 ---

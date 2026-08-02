@@ -9,7 +9,16 @@ All notable changes to phytreon are documented here. Format loosely follows
 - **`highlight(by="column")`** shades every group in a joined column behind the
   branches — each in its own colour, with a key — instead of one
   `highlight(node=...)` call per clade and no way to tell the shades apart.
-  Works on rectangular and circular layouts (a band and a wedge respectively).
+  Works on rectangular and circular layouts — a band behind the branches, and
+  on a circular tree a **ring** around it. Not sectors filled from the centre:
+  a sector's area grows with the square of its radius, so filling from the
+  middle swamps the drawing and leaves the tree the smallest thing in it, which
+  is why iTOL draws its coloured ranges as a band too. `shape="wedge"` asks for
+  the filled sector anyway; `width`/`offset` size the ring, and it claims a slot
+  from the same running cursor the `ring()` tracks use, so the two stack outward
+  instead of colliding. The ring is drawn solid (0.85) rather than at the band's
+  pale 0.3 — nothing is printed over it, and at 0.3 it read as a faded copy of
+  its own legend swatch.
   A group whose taxa are **not** monophyletic comes out as several bands, one
   per run of adjacent tips, rather than one band over their common ancestor:
   that ancestor reaches down over other groups' taxa, so a single band there

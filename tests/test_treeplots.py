@@ -561,10 +561,13 @@ def test_a_full_reach_band_covers_the_whole_species_name():
         label - outer)
 
 
-def test_reach_works_on_a_circular_tree():
+def test_reach_works_on_a_circular_wedge():
+    # the circular default is a ring, where reach has nothing to govern; it
+    # applies to the filled sector, which is what shape="wedge" asks for
     tr = _phylum_tree()
     fig = (pt.TreeFigure(tr, layout="circular")
-           .highlight(by="group", reach="labels").tip_labels().draw())
+           .highlight(by="group", shape="wedge", reach="labels")
+           .tip_labels().draw())
     _, outer, label = _band_right(fig, polar=True)
     plt.close(fig)
     assert outer >= label - 1e-6
@@ -665,17 +668,18 @@ def test_gap_zero_butts_neighbouring_bands_together():
 
 def test_the_default_reach_follows_the_layout():
     # a wedge's area grows with the square of its radius, so carrying the
-    # colour out past the names floods a round figure -- it stops at the tips
+    # colour out past the names floods a round figure -- a wedge there stops at
+    # the tips, while a rows layout runs out to the names
+    import math
     tr = _phylum_tree()
     rect = pt.TreeFigure(tr).highlight(by="group")._build()
-    circ = pt.TreeFigure(tr, layout="circular").highlight(by="group")._build()
     rect_bands = [p for p in rect.scene.polygons if p.zorder == 0]
+    assert all(p.reach == 1.0 for p in rect_bands)   # renderer finds the names
+
+    circ = (pt.TreeFigure(tr, layout="circular")
+            .highlight(by="group", shape="wedge")._build())
     circ_bands = [p for p in circ.scene.polygons if p.zorder == 0]
-    # rows layout defers to the renderer to find where the names end
-    assert all(p.reach == 1.0 for p in rect_bands)
-    # round layout is settled at build time, at the tip radius
     assert all(p.reach is None and p.reach_width is None for p in circ_bands)
-    import math
     outer = max(max(math.hypot(x, y) for x, y in p.points) for p in circ_bands)
     lay = circ.layout
     assert outer == pytest.approx(lay.inner_radius + lay.max_x, rel=1e-6)
@@ -742,3 +746,61 @@ def test_the_taxon_test_is_shallow_but_predictable():
 def test_italic_rejects_a_word_it_does_not_know():
     with pytest.raises(ValueError, match="italic"):
         pt.TreeFigure(_mixed_tree()).tip_labels(italic="species")
+
+
+def test_a_circular_highlight_is_a_ring_not_a_sector():
+    # a sector filled from the centre has area growing with the square of its
+    # radius, so it swamps the drawing; iTOL draws a band, and so does this
+    import math
+    tr = _phylum_tree()
+    ctx = (pt.TreeFigure(tr, layout="circular").highlight(by="group")
+           ._build())
+    bands = [p for p in ctx.scene.polygons if p.zorder == 2]
+    assert bands, "no ring drawn"
+    lay = ctx.layout
+    tip_r = lay.inner_radius + lay.max_x
+    for band in bands:
+        radii = [math.hypot(x, y) for x, y in band.points]
+        assert min(radii) >= tip_r - 1e-9, "ring dips inside the tree"
+        # a band, not a disc: its thickness is a fraction of the tree's radius
+        assert (max(radii) - min(radii)) < 0.5 * lay.max_x
+
+
+def test_the_ring_leaves_room_for_the_tip_labels():
+    tr = _phylum_tree()
+    plain = pt.TreeFigure(tr, layout="circular").tip_labels()._build()
+    ringed = (pt.TreeFigure(tr, layout="circular").highlight(by="group")
+              .tip_labels()._build())
+    import math
+
+    def label_r(ctx):
+        return min(math.hypot(lb.x, lb.y) for lb in ctx.scene.labels)
+
+    assert label_r(ringed) > label_r(plain), "labels did not move outside"
+
+
+def test_a_wedge_is_still_available_when_wanted():
+    tr = _phylum_tree()
+    ctx = (pt.TreeFigure(tr, layout="circular")
+           .highlight(by="group", shape="wedge")._build())
+    assert [p for p in ctx.scene.polygons if p.zorder == 0]
+    assert not [p for p in ctx.scene.polygons if p.zorder == 2]
+
+
+def test_a_ring_is_solid_and_a_band_behind_the_tree_is_pale():
+    # the ring sits on white where nothing is printed over it; the band lies
+    # under the branches and the names and has to let them through
+    tr = _phylum_tree()
+    ring = (pt.TreeFigure(tr, layout="circular").highlight(by="group")
+            ._build())
+    band = pt.TreeFigure(tr).highlight(by="group")._build()
+    assert {p.alpha for p in ring.scene.polygons if p.zorder == 2} == {0.85}
+    assert {p.alpha for p in band.scene.polygons if p.zorder == 0} == {0.3}
+    told = (pt.TreeFigure(tr, layout="circular")
+            .highlight(by="group", alpha=0.4)._build())
+    assert {p.alpha for p in told.scene.polygons if p.zorder == 2} == {0.4}
+
+
+def test_shape_rejects_an_unknown_form():
+    with pytest.raises(ValueError, match="shape must be"):
+        pt.TreeFigure(_phylum_tree()).highlight(by="group", shape="blob")

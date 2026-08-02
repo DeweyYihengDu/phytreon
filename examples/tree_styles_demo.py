@@ -145,5 +145,18 @@ shaded.join_data(meta, on="name")
     .titled("Clades shaded by phylum")
     ).save(os.path.join(OUT, "style_shaded_clades.png"), figsize=(10, 6))
 
+# ...and the same grouping on a circular tree, where it is drawn as a ring
+# outside the tree instead of as sectors filled from the middle: a sector's
+# area grows with the square of its radius, so filling from the centre swamps
+# the drawing and leaves the tree the smallest thing in it.
+(pt.TreeFigure(shaded, layout="circular")
+    .highlight(by="phylum")
+    .branches(size=1.3)
+    .tip_points(color="domain", size=5)
+    .tip_labels(size=9, italic="taxa")
+    .titled("Clades as a ring around a circular tree")
+    ).save(os.path.join(OUT, "style_shaded_ring.png"))
+
 print("wrote style_collapsed.png, style_nodebars.png, style_connections.png, "
-      "style_densitree.png and style_shaded_clades.png to examples/out/")
+      "style_densitree.png, style_shaded_clades.png and style_shaded_ring.png "
+      "to examples/out/")

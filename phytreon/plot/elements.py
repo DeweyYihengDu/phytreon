@@ -426,6 +426,14 @@ class _Highlight(_Element):
     Left unset it picks per layout -- ``"labels"`` on a rows layout, ``1.0`` on
     a round one, for the reason in :meth:`_reach`.
 
+    On a circular tree the groups are drawn as a **ring** outside the tree
+    rather than as sectors filled from the middle: a sector's area grows with
+    the square of its radius, so filling from the centre swamps the drawing and
+    leaves the tree the smallest thing in it. ``shape="wedge"`` asks for the
+    filled sector anyway; ``width`` and ``offset`` size the ring, as fractions
+    of the tree's radius, and it claims a slot from the same running cursor the
+    ``ring()`` tracks use, so the two stack outward instead of colliding.
+
     ``gap`` is the white space left between neighbouring bands, in tip rows.
     The default ``0`` butts them together into one continuous field of colour,
     which reads as a single stratified panel rather than a set of stripes; raise
@@ -441,10 +449,13 @@ class _Highlight(_Element):
     """
 
     def __init__(self, node: Optional[Node] = None, taxa=None, by=None,
-                 fill="#fdbf6f", alpha: float = 0.3, extend: float = 0.0,
+                 fill="#fdbf6f", alpha: Optional[float] = None,
+                 extend: float = 0.0,
                  palette: str = "curated", order=None, baseline=None,
                  span: str = "aligned", reach=None,
-                 anchor: str = "root", gap: float = 0.0):
+                 anchor: str = "root", gap: float = 0.0,
+                 shape: str = "auto", width: float = 0.11,
+                 offset: float = 0.03):
         if span not in ("clade", "aligned", "full"):
             raise ValueError("span must be 'clade', 'aligned' or 'full', "
                              "not %r" % (span,))
@@ -459,7 +470,14 @@ class _Highlight(_Element):
         if not 0.0 <= gap < 1.0:
             raise ValueError("gap is the white space left between neighbouring "
                              "bands, in tip rows; got %r" % (gap,))
+        if shape not in ("auto", "ring", "wedge"):
+            raise ValueError("shape must be 'auto', 'ring' or 'wedge', not %r"
+                             % (shape,))
         self.gap = gap
+        self.shape = shape
+        self.width = width
+        self.offset = offset
+        self._slot = None
         self.span = span
         self.reach = reach
         self.anchor = anchor
@@ -480,6 +498,45 @@ class _Highlight(_Element):
             return ctx.tree.get_mrca(self.taxa)
         return None
 
+    def _ring_slot(self, ctx, lay):
+        """``(inner, outer)`` radius of the ring, claimed once per element.
+
+        Taken from the same running cursor the ring tracks use, so a highlight
+        ring and a ``ring()`` track stack outward instead of landing on top of
+        one another, and the cursor moves on only once however many groups get
+        drawn into the slot.
+        """
+        if getattr(self, "_slot", None) is None:
+            r0 = ctx.ring_cursor + self.offset * lay.max_x
+            self._slot = (r0, r0 + self.width * lay.max_x)
+            ctx.ring_cursor = self._slot[1]
+        return self._slot
+
+    def _is_ring(self, lay) -> bool:
+        """Whether this draws as a ring around the tree rather than a wedge."""
+        if not getattr(lay, "is_polar", False):
+            return False
+        return self.shape in ("auto", "ring")
+
+    def _alpha(self, ring: bool) -> float:
+        """How solid the colour is, if the caller did not say.
+
+        A band lies *behind* the branches and the names, so it has to stay a
+        pale wash or it takes them with it. A ring sits outside the tree on
+        white, where nothing is printed over it -- left at the band's 0.3 it
+        reads as a faded copy of its own legend swatch, which is the one place
+        the two are compared side by side.
+        """
+        if self.alpha is not None:
+            return self.alpha
+        return 0.85 if ring else 0.3
+
+    def reserved_extent(self, layout) -> float:
+        """Radial room this claims, so the tip labels land outside it."""
+        if not self._is_ring(layout):
+            return 0.0
+        return (self.offset + self.width) * layout.max_x
+
     @staticmethod
     def _runs(tips):
         """Split tips into groups adjacent in the drawn order."""
@@ -495,6 +552,7 @@ class _Highlight(_Element):
         return out
 
     def apply(self, ctx: RenderContext) -> None:
+        self._slot = None              # a fresh slot for every build
         if self.by is not None:
             self._apply_by_column(ctx)
             return
@@ -623,12 +681,25 @@ class _Highlight(_Element):
             a0, a1 = min(angles), max(angles)
             step = (lay.extent / max(ctx.tree.n_leaves - 1, 1))
             da = step * (1.0 - self.gap) / 2.0
-            lo, hi = self._edges(lay, x0)
-            pts = lay._arc(lay.inner_radius + hi, a0 - da, a1 + da)
-            pts += lay._arc(lay.inner_radius + lo, a1 + da, a0 - da)
-            ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
-                                  alpha=self.alpha, zorder=0,
-                                  **self._render_kw(lay)))
+            if self._is_ring(lay):
+                # A ring outside the tree, not a slice out of it. Filled from
+                # the middle, a group's colour is a sector whose area grows with
+                # the square of its radius, so the colour swamps the drawing and
+                # the tree it is annotating becomes the smallest thing in it --
+                # which is why iTOL draws its coloured ranges as a band. A band
+                # also leaves the branches on white, where they can be read.
+                r0, r1 = self._ring_slot(ctx, lay)
+                pts = lay._arc(r1, a0 - da, a1 + da)
+                pts += lay._arc(r0, a1 + da, a0 - da)
+                ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
+                                      alpha=self._alpha(True), zorder=2))
+            else:
+                lo, hi = self._edges(lay, x0)
+                pts = lay._arc(lay.inner_radius + hi, a0 - da, a1 + da)
+                pts += lay._arc(lay.inner_radius + lo, a1 + da, a0 - da)
+                ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
+                                      alpha=self._alpha(False), zorder=0,
+                                      **self._render_kw(lay)))
         else:
             rows = [lf.y for lf in leaves]
             lo, hi = self._edges(lay, x0)
@@ -636,8 +707,8 @@ class _Highlight(_Element):
             y0, y1 = min(rows) - half, max(rows) + half
             pts = [(lo, y0), (hi, y0), (hi, y1), (lo, y1)]
             ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
-                                  alpha=self.alpha, zorder=0, rounded=True,
-                                  **self._render_kw(lay)))
+                                  alpha=self._alpha(False), zorder=0,
+                                  rounded=True, **self._render_kw(lay)))
 
 
 # --------------------------------------------------------------------------
