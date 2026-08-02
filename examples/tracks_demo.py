@@ -28,7 +28,7 @@ pt.group_otu(tree, by_domain, key="domain")   # also onto internal nodes
 (pt.TreeFigure(tree)
     .branches(color="domain", size=1.4)
     .tip_points(color="phylum", size=6)
-    .tip_labels(italic=True)
+    .tip_labels(italic="taxa")
     .heatmap(meta[["phylum"]], width=0.05)      # domain is on the branches now
     .bar_track(meta, "length", width=0.30, fill="#4c78a8")
  ).save(os.path.join(OUT, "tol_tracks.png"))
@@ -37,7 +37,7 @@ print("[ok] tol_tracks.png  (tile + tile + bar tracks)")
 # 2. alignment track -------------------------------------------------------
 aln = pt.Alignment.from_fasta(os.path.join(DATA, "tol_16S_aligned.fasta"))
 (pt.TreeFigure(tree)
-    .tip_labels(italic=True)
+    .tip_labels(italic="taxa")
     .alignment(aln, width=1.4)                      # full alignment as a raster
  ).save(os.path.join(OUT, "tol_msa.png"))
 print(f"[ok] tol_msa.png  (alignment {aln.ncol} cols x {aln.nseq} seqs)")

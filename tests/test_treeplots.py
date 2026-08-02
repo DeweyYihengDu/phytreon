@@ -693,3 +693,52 @@ def test_gap_rejects_a_value_that_would_erase_the_band():
     for bad in (-0.1, 1.0, 2.0):
         with pytest.raises(ValueError, match="gap"):
             pt.TreeFigure(_phylum_tree()).highlight(by="group", gap=bad)
+
+
+# --------------------------------------------------------------------------
+# italics
+# --------------------------------------------------------------------------
+def _slants(tr, **kw):
+    ctx = pt.TreeFigure(tr).tip_labels(**kw)._build()
+    return {lb.text: lb.italic for lb in ctx.scene.labels}
+
+
+def _mixed_tree():
+    return pt.Tree.from_newick(
+        "((Escherichia_coli:.1,others:.1):.1,(Bacillus_subtilis:.1,"
+        "unclassified:.1):.1);")
+
+
+def test_italic_taxa_slants_the_species_and_leaves_the_catch_alls_upright():
+    # genus and species are italicised by convention and "others" is not, so
+    # one flag for the whole figure cannot be right when both appear in it
+    got = _slants(_mixed_tree(), italic="taxa")
+    assert got["Escherichia_coli"] and got["Bacillus_subtilis"]
+    assert not got["others"] and not got["unclassified"]
+
+
+def test_italic_true_and_false_still_set_every_label():
+    tr = _mixed_tree()
+    assert all(_slants(tr, italic=True).values())
+    assert not any(_slants(tr, italic=False).values())
+    assert not any(_slants(tr).values())          # default unchanged
+
+
+def test_a_function_decides_per_name():
+    got = _slants(_mixed_tree(), italic=lambda n: n.startswith("B"))
+    assert got["Bacillus_subtilis"]
+    assert not got["Escherichia_coli"]
+
+
+def test_the_taxon_test_is_shallow_but_predictable():
+    for name in ("Escherichia_coli", "E. coli", "Bacillus", "Homo sapiens",
+                 "Synechocystis_PCC6803"):
+        assert pt.looks_like_a_taxon(name), name
+    for name in ("others", "other", "unclassified", "Unclassified", "NA",
+                 "environmental sample", "root", "12345", "", "   "):
+        assert not pt.looks_like_a_taxon(name), name
+
+
+def test_italic_rejects_a_word_it_does_not_know():
+    with pytest.raises(ValueError, match="italic"):
+        pt.TreeFigure(_mixed_tree()).tip_labels(italic="species")

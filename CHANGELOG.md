@@ -50,6 +50,17 @@ All notable changes to phytreon are documented here. Format loosely follows
     Aligning needs to know every group at once, so a lone `node=`/`taxa=`
     highlight still hugs its clade whatever the default.
 
+- **`tip_labels(italic=...)` decides per name, not per figure.** Genus and
+  species are italicised by convention and a catch-all label like `others` or
+  `unclassified` is not, so one flag for the whole figure is wrong wherever both
+  appear in it. `True`/`False` still set every label; `"taxa"` italicises the
+  ones that read as an organism; a function receives the name and decides.
+  `pt.looks_like_a_taxon` is the test `"taxa"` uses, exported so it can be
+  wrapped rather than reimplemented — it is deliberately shallow (a capitalised
+  first letter, some letters, and not one of a short list of catch-all words),
+  because nothing short of a taxonomy lookup does better and a rule that can be
+  read off the name is easier to predict than a clever one.
+
 ### Fixed
 - **Keys stack by measurement instead of by guess.** Each legend block's height
   was estimated from its entry count, which left a ragged column and, on the

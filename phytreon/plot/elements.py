@@ -92,16 +92,63 @@ class _Branches(_Element):
 _RADIAL_LABEL_LIMIT = 25
 
 
+#: Names that stand for "everything else" rather than for an organism. A
+#: binomial is set in italics by convention and these are not, so a figure that
+#: italicises every tip is wrong wherever one of these appears.
+_NOT_A_TAXON = frozenset((
+    "other", "others", "unclassified", "unassigned", "unknown", "none",
+    "na", "n/a", "outgroup", "reference", "environmental sample", "sp.",
+    "uncultured", "misc", "mixed", "root",
+))
+
+
+def looks_like_a_taxon(name: str) -> bool:
+    """Whether ``name`` reads as an organism rather than a catch-all label.
+
+    Genus and species are italicised and nothing above genus is, so a figure
+    that italicises every tip gets "others" and "unclassified" wrong. The test
+    is deliberately shallow -- a capitalised first letter, some letters in it,
+    and not one of the catch-all words in :data:`_NOT_A_TAXON` -- because
+    nothing short of a taxonomy lookup can do better, and a shallow rule that
+    can be read off the name is easier to predict than a clever one. Pass a
+    function to ``italic`` for anything this gets wrong.
+    """
+    text = str(name).strip()
+    if not text or text.lower() in _NOT_A_TAXON:
+        return False
+    if not any(ch.isalpha() for ch in text):
+        return False
+    return text[:1].isupper()
+
+
 class _TipLabels(_Element):
     def __init__(self, color="black", size: float = 10.0,
-                 offset: Optional[float] = None, italic: bool = False,
+                 offset: Optional[float] = None, italic=False,
                  align: bool = False, max_labels: Optional[int] = None):
         self.color = color
         self.size = size
         self.offset = offset
+        if isinstance(italic, str) and italic != "taxa":
+            raise ValueError("italic is True, False, 'taxa', or a function of "
+                             "the tip name; got %r" % (italic,))
         self.italic = italic
         self.align = align
         self.max_labels = max_labels       # show ~this many evenly-spaced labels
+
+    def _italic(self, name: str) -> bool:
+        """Whether this one name is slanted.
+
+        Binomials are italicised and catch-all labels are not, so one flag for
+        the whole figure cannot be right when both appear in it. ``True`` /
+        ``False`` still set every label; ``"taxa"`` italicises the ones that
+        read as an organism (see :func:`looks_like_a_taxon`); a function gets
+        the name and decides.
+        """
+        if callable(self.italic):
+            return bool(self.italic(name))
+        if self.italic == "taxa":
+            return looks_like_a_taxon(name)
+        return bool(self.italic)
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
@@ -122,6 +169,7 @@ class _TipLabels(_Element):
         cy = sum(t.y for t in tips) / len(tips) if tips else 0.0
         drawn = 0
         for i, tip in enumerate(tips):
+            slant = self._italic(tip.name or "")
             text = tip.name or ""
             if not text or (step > 1 and i % step != 0):
                 continue
@@ -141,7 +189,7 @@ class _TipLabels(_Element):
                 else:
                     rot, ha = deg + 180, "right"
                 ctx.scene.add(Label(x, y, text, size=self.size, color=cfunc(tip),
-                                    ha=ha, va="center", rotation=rot, italic=self.italic))
+                                    ha=ha, va="center", rotation=rot, italic=slant))
             elif kind == "polar":
                 # sit outside any ring tracks (ctx.outer_radius) when present
                 rings = ctx.outer_radius > ctx.ring_base
@@ -155,12 +203,12 @@ class _TipLabels(_Element):
                 else:
                     rot, ha = deg, "left"
                 ctx.scene.add(Label(x, y, text, size=self.size, color=cfunc(tip),
-                                    ha=ha, va="center", rotation=rot, italic=self.italic))
+                                    ha=ha, va="center", rotation=rot, italic=slant))
             elif kind == "dendrogram":
                 # tips along the bottom; labels drop below, rotated upright
                 ctx.scene.add(Label(tip.x, tip.y - off, text, size=self.size,
                                     color=cfunc(tip), ha="right", va="center",
-                                    rotation=90, italic=self.italic))
+                                    rotation=90, italic=slant))
             elif kind == "radial":
                 # Point the name away from the middle of the tree, not along
                 # its own branch. Following the branch is the prettier idea and
@@ -180,11 +228,11 @@ class _TipLabels(_Element):
                 else:
                     rot, ha = deg, "left"
                 ctx.scene.add(Label(x, y, text, size=self.size, color=cfunc(tip),
-                                    ha=ha, va="center", rotation=rot, italic=self.italic))
+                                    ha=ha, va="center", rotation=rot, italic=slant))
             else:
                 x = (lay.max_x if self.align else tip.x + far) + off
                 ctx.scene.add(Label(x, tip.y, text, size=self.size, color=cfunc(tip),
-                                    ha="left", va="center", italic=self.italic,
+                                    ha="left", va="center", italic=slant,
                                     role="tiplab"))
         if drawn:
             ctx.tip_label_load = (drawn, self.size)

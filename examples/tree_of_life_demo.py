@@ -45,7 +45,7 @@ print("Archaea MRCA spans", len(archaea.leaf_names()), "tips "
 # 1. rectangular -----------------------------------------------------------
 (pt.TreeFigure(tree.ladderize())
     .tip_points(color="domain", size=8)
-    .tip_labels(italic=True)
+    .tip_labels(italic="taxa")
     .support_labels(size=7)
     .scale_bar()                 # branch lengths are substitutions/site, and
     ).save(os.path.join(OUT, "tol_rect.png"))   # without a bar they read as nothing
@@ -79,6 +79,6 @@ pt.group_otu(tree, by_domain, key="domain")
     .ring(meta_c, columns=["phylum"], width=0.13, gap=0.022, colnames=False)
     .ring(meta_c, columns=["length"], geom="bar", width=0.22, gap=0.022,
           colnames=False)                       # legend already names each ring
-    .tip_labels(size=9, italic=True)).save(os.path.join(OUT, "tol_rings.png"),
+    .tip_labels(size=9, italic="taxa")).save(os.path.join(OUT, "tol_rings.png"),
                                            figsize=(12.5, 9))
 print("[ok] tol_rings.png")

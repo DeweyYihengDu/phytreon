@@ -24,7 +24,8 @@ from .core import Tree, Node
 from .core.nexus import read_beast, parse_annotation
 from .plot import (TreeFigure, TangleFigure, DensiTreeFigure,
                    SequenceNetwork, PanelFigure, panels, SplitNetwork,
-                   neighbor_net, neighbornet_ordering)
+                   neighbor_net, neighbornet_ordering,
+                   looks_like_a_taxon)
 from .infer import (
     neighbor_joining, upgma, tree_from_alignment, distance_matrix,
     Alignment, align, read_fasta, read_character_matrix, trim, bootstrap_support,
@@ -49,7 +50,7 @@ __all__ = [
     "Tree", "Node", "read_beast", "parse_annotation",
     "TreeFigure", "TangleFigure", "DensiTreeFigure", "SequenceNetwork",
     "PanelFigure", "panels", "SplitNetwork", "neighbor_net",
-    "neighbornet_ordering",
+    "neighbornet_ordering", "looks_like_a_taxon",
     "neighbor_joining", "upgma", "tree_from_alignment", "distance_matrix",
     "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",
