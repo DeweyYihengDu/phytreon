@@ -398,3 +398,78 @@ def test_densitree_renders(tmp_path):
     out = tmp_path / "densi.png"
     pt.DensiTreeFigure(_same_taxa_trees(6)).titled("cloud").save(str(out))
     assert out.exists() and out.stat().st_size > 1000
+
+
+# --------------------------------------------------------------------------
+# clade shading
+# --------------------------------------------------------------------------
+def _phylum_tree():
+    tr = pt.Tree.from_newick(
+        "(((a1:.1,a2:.1):.1,(b1:.1,b2:.1):.1):.1,(a3:.1,c1:.1):.2);")
+    for tip in tr.leaves():
+        tip.data["group"] = {"a": "alpha", "b": "beta", "c": "gamma"}[tip.name[0]]
+    return tr
+
+
+def test_highlight_by_column_shades_every_group_with_a_key():
+    tr = _phylum_tree()
+    ctx = pt.TreeFigure(tr).highlight(by="group").tip_labels()._build()
+    bands = [p for p in ctx.scene.polygons if p.zorder == 0]
+    assert len(bands) >= 3
+    assert len({p.facecolor for p in bands}) == 3        # one colour per group
+    assert [t for t, _ in ctx.scene.legends] == ["group"]
+    # a shade reads as an area, so its key must be a swatch and not a dot
+    assert ctx.scene.legend_swatch["group"] == "patch"
+
+
+def test_a_scattered_group_is_shaded_as_several_bands_not_one():
+    # "alpha" is a1, a2 and a3, and a3 sits with c1 on the other side of the
+    # root -- their common ancestor is the whole tree, so one band there would
+    # colour in every other group's tips too
+    tr = _phylum_tree()
+    ctx = pt.TreeFigure(tr).highlight(by="group")._build()
+    bands = [p for p in ctx.scene.polygons if p.zorder == 0]
+    by_colour = {}
+    for band in bands:
+        by_colour.setdefault(band.facecolor, []).append(band)
+    scattered = max(by_colour.values(), key=len)
+    assert len(scattered) == 2, "expected two bands for the split group"
+    # and no band may span the whole tree
+    rows = [[y for _, y in b.points] for b in bands]
+    assert all(max(r) - min(r) < tr.n_leaves - 1 for r in rows)
+
+
+def test_highlight_by_a_column_nobody_has_is_a_clear_error():
+    tr = _phylum_tree()
+    with pytest.raises(ValueError, match="join_data"):
+        pt.TreeFigure(tr).highlight(by="nope")._build()
+
+
+def test_a_shade_stays_pale_enough_to_read_a_name_on(tmp_path):
+    from matplotlib.colors import to_rgba
+
+    def luminance(rgb):
+        def lin(c):
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, b = (lin(v) for v in rgb[:3])
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    tr = _phylum_tree()
+    ctx = pt.TreeFigure(tr).highlight(by="group").tip_labels()._build()
+    worst = 21.0
+    for band in (p for p in ctx.scene.polygons if p.zorder == 0):
+        r, g, b, _ = to_rgba(band.facecolor)
+        # the shade is drawn transparent, so what a name sits on is the tint
+        # it composites to on the page, not the saturated colour itself
+        seen = tuple(band.alpha * c + (1 - band.alpha) for c in (r, g, b))
+        lf = luminance(seen)
+        worst = min(worst, (lf + 0.05) / 0.05)
+    assert worst >= 4.5, "darkest shade leaves black text at %.1f:1" % worst
+
+
+def test_highlight_by_column_works_on_a_circular_tree(tmp_path):
+    tr = _phylum_tree()
+    out = tmp_path / "shaded.png"
+    (pt.TreeFigure(tr, layout="circular").highlight(by="group")
+        .tip_labels().save(str(out)))
+    assert out.exists() and out.stat().st_size > 1000

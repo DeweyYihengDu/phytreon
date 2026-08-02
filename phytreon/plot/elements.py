@@ -356,15 +356,33 @@ def _resolve_size(spec, nodes):
 # clade highlight
 # --------------------------------------------------------------------------
 class _Highlight(_Element):
-    """Shade the rectangle / wedge occupied by a clade."""
+    """Shade the band (or wedge) a clade occupies, behind the branches.
 
-    def __init__(self, node: Optional[Node] = None, taxa=None,
-                 fill="#fdbf6f", alpha: float = 0.3, extend: float = 0.0):
+    Three ways to say which clade: ``node``, ``taxa`` (their common ancestor),
+    or ``by`` -- the name of a joined column, which shades *every* group in it,
+    each in its own colour, with a legend. One call for the whole figure rather
+    than one per clade, and a reader can tell which shade means what.
+
+    A group whose taxa are not monophyletic is drawn as several bands, one per
+    run of adjacent tips, rather than as one band over their common ancestor.
+    The ancestor of a scattered group reaches down over other groups' taxa, so
+    a single band there would colour in tips that do not belong to it -- it
+    would look tidier and say something false. Several bands say what is
+    actually there.
+    """
+
+    def __init__(self, node: Optional[Node] = None, taxa=None, by=None,
+                 fill="#fdbf6f", alpha: float = 0.3, extend: float = 0.0,
+                 palette: str = "curated", order=None, baseline=None):
         self.node = node
         self.taxa = taxa
+        self.by = by
         self.fill = fill
         self.alpha = alpha
         self.extend = extend
+        self.palette = palette
+        self.order = order
+        self.baseline = baseline
 
     def _target(self, ctx) -> Optional[Node]:
         if self.node is not None:
@@ -373,30 +391,73 @@ class _Highlight(_Element):
             return ctx.tree.get_mrca(self.taxa)
         return None
 
+    @staticmethod
+    def _runs(tips):
+        """Split tips into groups adjacent in the drawn order."""
+        tips = sorted(tips, key=lambda t: t.data["_row"])
+        out, run = [], [tips[0]]
+        for prev, cur in zip(tips, tips[1:]):
+            if cur.data["_row"] - prev.data["_row"] == 1:
+                run.append(cur)
+            else:
+                out.append(run)
+                run = [cur]
+        out.append(run)
+        return out
+
     def apply(self, ctx: RenderContext) -> None:
-        node = self._target(ctx)
-        if node is None:
+        if self.by is not None:
+            self._apply_by_column(ctx)
             return
+        node = self._target(ctx)
+        if node is not None:
+            self._band(ctx, node.get_leaves(), self.fill, node)
+
+    def _apply_by_column(self, ctx: RenderContext) -> None:
+        tips = ctx.tree.leaves()
+        if not ctx.is_data_column(self.by, tips):
+            raise ValueError(
+                "highlight(by=%r): no tip carries that column -- join it on "
+                "first with tree.join_data(df, on='name')" % (self.by,))
+        scale = build_color_scale(self.by, [t.data.get(self.by) for t in tips],
+                                 palette=self.palette, order=self.order,
+                                 baseline=self.baseline, swatch="patch")
+        groups: dict = {}
+        for tip in tips:
+            value = tip.data.get(self.by)
+            if value is not None:
+                groups.setdefault(value, []).append(tip)
+        for value, members in groups.items():
+            for run in self._runs(members):
+                node = (ctx.tree.get_mrca([t.name for t in run])
+                        if len(run) > 1 else run[0])
+                self._band(ctx, run, scale.color(value), node)
+        ctx.add_scale(scale)
+        ctx.scene.legend_swatch[scale.title] = scale.swatch
+
+    def _band(self, ctx, leaves, fill, node) -> None:
         lay = ctx.layout
-        leaves = node.get_leaves()
         if lay.is_polar:
             angles = [lf._angle for lf in leaves]
             a0, a1 = min(angles), max(angles)
             da = (a1 - a0) / max(len(leaves) - 1, 1) / 2 + 1e-9
+            if len(leaves) == 1:                      # no span to divide
+                da = lay.extent / max(ctx.tree.n_leaves - 1, 1) / 2
             inner = node.parent._r if node.parent else 0.0
             outer = lay.inner_radius + lay.max_x + self.extend
             pts = lay._arc(outer, a0 - da, a1 + da)
             pts += lay._arc(inner, a1 + da, a0 - da)
-            ctx.scene.add(Polygon(pts, facecolor=self.fill, edgecolor=None,
+            ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                   alpha=self.alpha, zorder=0))
         else:
             rows = [lf.y for lf in leaves]
             # hug the clade: start at the MRCA node, not the root-ward parent
-            x0 = node.x
+            x0 = node.x if len(leaves) > 1 else (
+                node.parent.x if node.parent else node.x)
             x1 = lay.max_x + self.extend
             y0, y1 = min(rows) - 0.45, max(rows) + 0.45
             pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-            ctx.scene.add(Polygon(pts, facecolor=self.fill, edgecolor=None,
+            ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                   alpha=self.alpha, zorder=0, rounded=True))
 
 

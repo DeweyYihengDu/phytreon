@@ -180,7 +180,11 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <b>Domain / gene track</b><br>
       <sub>Architecture beside each tip; arrows show strand, so a gained or swapped domain reads off the clade — <code>figstyles_demo.py</code></sub>
     </td>
-    <td width="50%"></td>
+    <td width="50%">
+      <img src="assets/gallery/shaded_clades.png" alt="Rectangular tree with each phylum shaded as a coloured band behind its branches"><br>
+      <b>Shaded clades</b><br>
+      <sub>One call shades every group in a column behind the branches, with a key; a non-monophyletic group comes out as several bands — <code>tree_styles_demo.py</code></sub>
+    </td>
   </tr>
 </table>
 
@@ -288,6 +292,7 @@ tree = pt.expression_dendrogram(expr, genes=["CD3D"])   # NOT a phylogeny
 | **Comparative** | ancestral states (parsimony / Mk-ML ER·SYM·ARD / Brownian), stochastic mapping, painted branches, node pies |
 | **Figure tracks** | tip / node / support labels, tip points, metadata rings, heatmaps, bar tracks, alignment rasters |
 | **Tree comparison** | tanglegrams (`TangleFigure`) with rotation-based `untangle`, crossing counts, Robinson-Foulds; DensiTree clouds (`DensiTreeFigure`) for a whole tree set |
+| **Group a tree visually** | Shade every clade in a metadata column behind the branches (`highlight(by=...)`), collapse clades to triangles, clade brackets |
 | **When a tree would mislead** | CLANS-style sequence-similarity networks (`SequenceNetwork`); split networks (`SplitNetwork`) drawing conflicting splits as boxes; Neighbor-Net (`neighbor_net`) straight from a distance matrix |
 | **Multi-panel figures** | `panels()` — a grid of any figure types with one shared colour key |
 | **Alongside the tree** | domain architectures / gene neighbourhoods (`.domains()`), ribbons between two trees (`.ribbons()`), several support values per branch |

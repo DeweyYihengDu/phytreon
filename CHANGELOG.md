@@ -5,6 +5,18 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **`highlight(by="column")`** shades every group in a joined column behind the
+  branches — each in its own colour, with a key — instead of one
+  `highlight(node=...)` call per clade and no way to tell the shades apart.
+  Works on rectangular and circular layouts (a band and a wedge respectively).
+  A group whose taxa are **not** monophyletic comes out as several bands, one
+  per run of adjacent tips, rather than one band over their common ancestor:
+  that ancestor reaches down over other groups' taxa, so a single band there
+  would colour in tips that do not belong to the group — tidier, and false.
+  The shades stay pale enough to read a name on (measured: the darkest leaves
+  black text at 12.5:1).
+
 ### Fixed
 - **Figures no longer print names on top of each other.** Three defects, all
   found by counting real glyph collisions rather than by eye — measured off

@@ -128,5 +128,22 @@ for _ in range(60):
     .titled(f"{len(boot)} bootstrap NJ trees overlaid")
     ).save(os.path.join(OUT, "style_densitree.png"), figsize=(8, 6))
 
-print("wrote style_collapsed.png, style_nodebars.png, style_connections.png "
-      "and style_densitree.png to examples/out/")
+# -- 5. clades shaded by a metadata column --------------------------------
+# One call shades every group in the column behind the branches, each in its
+# own colour with a key. A group whose taxa are not monophyletic comes out as
+# several bands rather than one: its common ancestor reaches down over other
+# groups' taxa, so a single band there would colour in tips that do not
+# belong to it.
+shaded = pt.build_tree(ALN, aligner="none", trim_kw=dict(max_gap=0.5),
+                       method="nj", dist_model="k2p", root="midpoint")
+shaded.join_data(meta, on="name")
+(pt.TreeFigure(shaded)
+    .highlight(by="phylum")
+    .tip_points(color="domain", size=6)
+    .tip_labels()
+    .support_labels(size=6)
+    .titled("Clades shaded by phylum")
+    ).save(os.path.join(OUT, "style_shaded_clades.png"), figsize=(10, 6))
+
+print("wrote style_collapsed.png, style_nodebars.png, style_connections.png, "
+      "style_densitree.png and style_shaded_clades.png to examples/out/")
