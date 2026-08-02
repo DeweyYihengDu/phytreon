@@ -27,6 +27,15 @@ from typing import List, Tuple
 _SEQ_LOW = "#dbe9f8"
 _SEQ_HIGH = "#123d70"
 
+#: The same ramp, but starting where it is still visible. A filled mark can
+#: legitimately fade to nearly white -- the cell has area, its neighbours give
+#: it an edge, and pale reads as "low". A *line* cannot: it has no area, so the
+#: pale end of the ordinary ramp is simply not on the page. Measured against
+#: white paper, ``#dbe9f8`` is 1.23:1 and no opacity rescues it, because even
+#: fully opaque it is that colour; the ramp first reaches the 3:1 floor 48% of
+#: the way along, which is this colour.
+_SEQ_LINE_LOW = "#7b96b7"
+
 # curated categorical default -- eight muted hues in a CVD-safe fixed order.
 CURATED_PALETTE = [
     "#2a78d6",   # blue

@@ -135,6 +135,14 @@ All notable changes to phytreon are documented here. Format loosely follows
     width, so the weakest hits — the ones a cutoff exists to include — all
     came out identical. Mapping keeps them distinguishable and printable at
     once, with opacity carrying the rest of the fade.
+- **A faint connection line is still on the page.** `connections(color="value")`
+  ran the default sequential ramp, whose pale end measures **1.23:1 against
+  white paper** — and no opacity rescues that, since fully opaque the line is
+  still that colour. A filled mark may legitimately fade to nearly white (the
+  cell has area, its neighbours give it an edge, pale reads as "low"); a line
+  has no area, so it simply is not there. Links now start the ramp where it
+  first reaches the 3:1 floor, 48% along, and the colour bar is built from the
+  same mapper so the key still matches the lines.
 - **A disconnected sequence network is no longer squashed into a corner.**
   Each connected piece is laid out on its own and the pieces are then packed,
   sized by node count so density stays comparable. Laid out in one pass the

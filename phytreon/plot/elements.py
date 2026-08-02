@@ -1632,7 +1632,17 @@ class _Connections(_Element):
         vals = [v for _, _, v in rows if v is not None]
         scale = None
         if vals and self.color == "value":
-            scale = build_color_scale(self.label, vals, cmap=self.cmap,
+            # A link is a line, and a line has no area, so the pale end of the
+            # ordinary sequential ramp is not on the page at all -- measured,
+            # 1.23:1 against white paper, and opacity cannot save it since even
+            # fully opaque it is still that colour. Start the ramp where it is
+            # visible. The colour bar is built from the same mapper, so the key
+            # keeps matching the lines.
+            cmap = self.cmap
+            if cmap is None:
+                from .palettes import _SEQ_HIGH, _SEQ_LINE_LOW
+                cmap = (_SEQ_LINE_LOW, _SEQ_HIGH)
+            scale = build_color_scale(self.label, vals, cmap=cmap,
                                       palette=self.palette)
 
         for a, b, val in rows:

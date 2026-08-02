@@ -804,3 +804,37 @@ def test_a_ring_is_solid_and_a_band_behind_the_tree_is_pale():
 def test_shape_rejects_an_unknown_form():
     with pytest.raises(ValueError, match="shape must be"):
         pt.TreeFigure(_phylum_tree()).highlight(by="group", shape="blob")
+
+
+def test_a_faint_link_is_still_on_the_page():
+    # a line has no area, so the pale end of the ordinary sequential ramp is
+    # simply not visible on white -- and opacity cannot rescue it, because even
+    # fully opaque the line is still that colour
+    from matplotlib.colors import to_rgb
+    tr = pt.datasets.random_tree(12, seed=2)
+    names = tr.leaf_names()
+    pairs = [(names[i], names[i + 6], 0.05 + 0.15 * i) for i in range(6)]
+    ctx = pt.TreeFigure(tr).connections(pairs, color="value")._build()
+    links = [p for p in ctx.scene.paths if p.zorder == 0.8]
+    assert links
+
+    def contrast_on_white(hex_colour):
+        def lin(c):
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, b = (lin(v) for v in to_rgb(hex_colour))
+        lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return 1.05 / (lum + 0.05)
+
+    worst = min(contrast_on_white(p.color) for p in links)
+    assert worst >= 3.0, "faintest link is only %.2f:1 against the page" % worst
+    # and the ramp still ranks: the strongest link is darker than the weakest
+    by_value = sorted(zip((v for _, _, v in pairs), links), key=lambda t: t[0])
+    assert (contrast_on_white(by_value[0][1].color)
+            < contrast_on_white(by_value[-1][1].color))
+
+
+def test_a_filled_scale_may_still_fade_to_near_white():
+    # the floor is a property of lines, not of colour scales: a heatmap cell has
+    # area and an edge, and pale legitimately reads as "low" there
+    from phytreon.plot.palettes import _SEQ_LOW, continuous_mapper
+    assert continuous_mapper(0.0, 1.0)(0.0) == _SEQ_LOW
