@@ -3,6 +3,8 @@ bars, node-to-node connections, scale bars and DensiTree clouds."""
 import matplotlib
 matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
+
 import pytest
 
 import phytreon as pt
@@ -516,3 +518,87 @@ def test_aligning_needs_every_group_so_one_clade_still_hugs_itself():
 def test_span_rejects_a_mode_that_does_not_exist():
     with pytest.raises(ValueError, match="span must be"):
         pt.TreeFigure(_phylum_tree()).highlight(by="group", span="sideways")
+
+
+def _band_right(fig, polar=False):
+    """``(inner edge, outer edge, where the labels end)`` for the shaded bands.
+
+    ``reach`` is a fraction of the way from a band's *inner* edge out to the
+    labels, so the inner edge has to come into the arithmetic -- measuring
+    from the origin instead reports a fraction that is simply a different
+    quantity.
+    """
+    import math
+    fig.canvas.draw()
+    ax = fig.axes[0]
+    inv = ax.transData.inverted()
+    outer, inner = 0.0, float("inf")
+    for p in ax.patches:
+        if p.get_alpha() and abs(p.get_alpha() - 0.3) < 1e-6:
+            pts = p.get_path().vertices
+            vals = ([math.hypot(x, y) for x, y in pts] if polar
+                    else [x for x, _ in pts])
+            outer = max(outer, max(vals))
+            inner = min(inner, min(vals))
+    label = 0.0
+    for t in ax.texts:
+        bb = t.get_window_extent(fig.canvas.get_renderer())
+        for c in ((bb.x0, bb.y0), (bb.x1, bb.y1), (bb.x1, bb.y0), (bb.x0, bb.y1)):
+            x, y = inv.transform(c)
+            label = max(label, math.hypot(x, y) if polar else x)
+    return inner, outer, label
+
+
+def test_a_full_reach_band_covers_the_whole_species_name():
+    # the point of reach=1.0: the colour runs out past the longest name, so no
+    # name hangs off the end of the band it belongs to
+    tr = _phylum_tree()
+    fig = (pt.TreeFigure(tr).highlight(by="group", reach=1.0)
+           .tip_labels().draw())
+    _, outer, label = _band_right(fig)
+    plt.close(fig)
+    assert outer >= label - 1e-6, "band stops %.3f short of the names" % (
+        label - outer)
+
+
+def test_reach_is_a_fraction_of_the_way_out_to_the_names():
+    tr = _phylum_tree()
+    seen = {}
+    for frac in (0.5, 0.7, 1.0):
+        fig = (pt.TreeFigure(tr).highlight(by="group", reach=frac)
+               .tip_labels().draw())
+        inner, outer, label = _band_right(fig)
+        seen[frac] = (outer - inner) / (label - inner)
+        plt.close(fig)
+    assert seen[0.5] < seen[0.7] < seen[1.0]
+    for frac, got in seen.items():
+        assert abs(got - frac) < 0.03, "asked %.1f, drew %.2f" % (frac, got)
+
+
+def test_reach_works_on_a_circular_tree():
+    tr = _phylum_tree()
+    fig = (pt.TreeFigure(tr, layout="circular").highlight(by="group", reach=1.0)
+           .tip_labels().draw())
+    _, outer, label = _band_right(fig, polar=True)
+    plt.close(fig)
+    assert outer >= label - 1e-6
+
+
+def test_a_stretched_band_is_not_clipped_away():
+    # clipping happens while drawing, so a band reaching past the axes box
+    # would be cut with no way to recover it afterwards
+    tr = _phylum_tree()
+    fig = (pt.TreeFigure(tr).highlight(by="group", reach=1.0)
+           .tip_labels().draw())
+    fig.canvas.draw()
+    bands = [p for p in fig.axes[0].patches
+             if p.get_alpha() and abs(p.get_alpha() - 0.3) < 1e-6]
+    assert bands and not any(p.get_clip_on() for p in bands)
+    plt.close(fig)
+
+
+def test_reach_rejects_a_nonsense_fraction():
+    tr = _phylum_tree()
+    for bad in (0.0, -0.5, 3.0):
+        with pytest.raises(ValueError, match="reach"):
+            pt.TreeFigure(tr).highlight(by="group", reach=bad)

@@ -363,6 +363,13 @@ class _Highlight(_Element):
     each in its own colour, with a legend. One call for the whole figure rather
     than one per clade, and a reader can tell which shade means what.
 
+    ``reach`` is how far out the colour goes, as a fraction of the distance
+    from the band's inner edge to where the tip labels actually end: ``1.0``
+    (the default) covers the whole name, ``0.7`` stops seven tenths of the way,
+    ``0.5`` halfway. It is resolved while rendering, because how much room a
+    name takes depends on the font and the figure size rather than on the tree
+    -- so the same number gives the same *proportion* whatever the figure.
+
     A group whose taxa are not monophyletic is drawn as several bands, one per
     run of adjacent tips, rather than as one band over their common ancestor.
     The ancestor of a scattered group reaches down over other groups' taxa, so
@@ -374,11 +381,15 @@ class _Highlight(_Element):
     def __init__(self, node: Optional[Node] = None, taxa=None, by=None,
                  fill="#fdbf6f", alpha: float = 0.3, extend: float = 0.0,
                  palette: str = "curated", order=None, baseline=None,
-                 span: str = "aligned"):
+                 span: str = "aligned", reach: float = 1.0):
         if span not in ("clade", "aligned", "full"):
             raise ValueError("span must be 'clade', 'aligned' or 'full', "
                              "not %r" % (span,))
+        if not 0.0 < reach <= 1.5:
+            raise ValueError("reach is a fraction of the way out to the end of "
+                             "the tip labels; got %r" % (reach,))
         self.span = span
+        self.reach = reach
         self.node = node
         self.taxa = taxa
         self.by = by
@@ -495,14 +506,16 @@ class _Highlight(_Element):
             pts = lay._arc(outer, a0 - da, a1 + da)
             pts += lay._arc(inner, a1 + da, a0 - da)
             ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
-                                  alpha=self.alpha, zorder=0))
+                                  alpha=self.alpha, zorder=0,
+                                  reach=self.reach))
         else:
             rows = [lf.y for lf in leaves]
             x1 = lay.max_x + self.extend
             y0, y1 = min(rows) - 0.45, max(rows) + 0.45
             pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
             ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
-                                  alpha=self.alpha, zorder=0, rounded=True))
+                                  alpha=self.alpha, zorder=0, rounded=True,
+                                  reach=self.reach))
 
 
 # --------------------------------------------------------------------------

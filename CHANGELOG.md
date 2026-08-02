@@ -16,6 +16,14 @@ All notable changes to phytreon are documented here. Format loosely follows
   would colour in tips that do not belong to the group — tidier, and false.
   The shades stay pale enough to read a name on (measured: the darkest leaves
   black text at 12.5:1).
+  - `reach` decides how far out the colour goes, as a fraction of the distance
+    from the band's inner edge to **where the tip labels actually end**:
+    `1.0` (the default) covers the whole species name, `0.7` stops seven tenths
+    of the way, `0.5` halfway. It is resolved during rendering, because how
+    much room a name takes depends on the font and the figure size rather than
+    on the tree — so the same number gives the same *proportion* in any figure.
+    Measured back off the rendered result, the drawn fraction matches the
+    requested one to within 3%.
   - `span` decides where the bands start. `"aligned"` (the default) lines every
     left edge up at the shallowest clade's own start: flush, and no band
     reaches further rootward than the drawing already did somewhere, so the

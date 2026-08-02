@@ -80,6 +80,12 @@ class Polygon:
     label: Optional[str] = None         # hover text
     align: bool = False                 # shift right to clear the tip-label band
     rounded: bool = False               # draw as a soft rounded rectangle
+    #: How far out to stretch this shape's outer edge, as a fraction of the
+    #: distance from its inner edge to where the tip labels actually end.
+    #: ``None`` leaves the points alone. The renderer resolves it, because only
+    #: the renderer knows how much room a name takes: that depends on the font
+    #: and the figure size, not on the tree.
+    reach: Optional[float] = None
 
 
 @dataclass

@@ -11,6 +11,7 @@ phylogenetic logic lives here.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from typing import Optional
 
@@ -89,7 +90,10 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
 
     # split "aligned" tracks (clade bars, heatmaps) from the base plot so we
     # can place them just past the tip labels after measuring label widths.
-    base_polys = [p for p in scene.polygons if not p.align]
+    base_polys = [p for p in scene.polygons if not p.align and p.reach is None]
+    # a shape whose outer edge is given as a fraction of "out to the end of the
+    # names" cannot be placed until the names have been drawn and measured
+    reach_polys = [p for p in scene.polygons if not p.align and p.reach is not None]
     al_polys = [p for p in scene.polygons if p.align]
     base_paths = [p for p in scene.paths if not p.align]
     al_paths = [p for p in scene.paths if p.align]
@@ -159,6 +163,24 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
 
     if has_tracks:
         _set_limits(ax, scene, max_x, right_pad=delta + track_w + 0.04 * max_x)
+
+    # now that the names are drawn and the scale is settled, the fraction-based
+    # shapes can be resolved. Painting order does not matter -- zorder decides
+    # what ends up behind what -- so these still sit under the branches.
+    reach_patches = []
+    if reach_polys:
+        target = (_measure_radius(fig, ax, base_text) if equal
+                  else _measure_right(fig, ax, tiplabs or base_text))
+        for poly in sorted(reach_polys, key=lambda p: p.zorder):
+            patch = _draw_polygon(ax, _stretch_reach(poly, target, equal))
+            # A band stretched out to the end of the names reaches past the
+            # axes box, and clipping happens while drawing -- no later bounds
+            # change brings back what was cut. It cannot enlarge the saved
+            # figure either: its far edge is *derived* from where the labels
+            # end, and they are in the tight box already.
+            if patch is not None:
+                patch.set_clip_on(False)
+                reach_patches.append(patch)
 
     if title:
         ax.set_title(title, fontsize=13, pad=10)
@@ -240,14 +262,14 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
         extra.append(cax)
         cb_y = top - 0.07
 
-    fig._phytreon_extra_artists = extra + base_text + al_text
+    fig._phytreon_extra_artists = extra + base_text + al_text + reach_patches
     return fig
 
 
 # -- primitive drawing helpers ---------------------------------------------
 def _draw_polygon(ax, poly):
     from matplotlib.patches import Polygon as MplPolygon
-    ax.add_patch(MplPolygon(
+    return ax.add_patch(MplPolygon(
         list(poly.points), closed=True,
         facecolor=poly.facecolor if poly.facecolor else "none",
         edgecolor=poly.edgecolor if poly.edgecolor else "none",
@@ -328,6 +350,55 @@ def _measure_right(fig, ax, artists):
             dx = inv.transform(corner)[0]
             mx = dx if mx is None else max(mx, dx)
     return mx
+
+
+def _measure_radius(fig, ax, texts):
+    """Furthest data-space radius any of these labels reaches from the centre.
+
+    The polar counterpart of :func:`_measure_right`: a circular tree's names
+    radiate outward, so what bounds them is a radius, not an x.
+    """
+    fig.canvas.draw()
+    r = fig.canvas.get_renderer()
+    inv = ax.transData.inverted()
+    out = None
+    for t in texts:
+        bb = t.get_window_extent(renderer=r)
+        for corner in ((bb.x0, bb.y0), (bb.x1, bb.y1),
+                       (bb.x1, bb.y0), (bb.x0, bb.y1)):
+            x, y = inv.transform(corner)
+            d = math.hypot(x, y)
+            out = d if out is None else max(out, d)
+    return out
+
+
+def _stretch_reach(poly, target, polar):
+    """Move a shape's outer edge out to ``target``, scaled by its ``reach``.
+
+    A clade band is asked for as a fraction -- "colour 70% of the way out" --
+    and the far end of that is where the species names stop, which only the
+    renderer can know. Points already on the inner edge stay put; the ones on
+    the outer edge move.
+    """
+    if target is None or poly.reach is None:
+        return poly
+    pts = list(poly.points)
+    if polar:
+        radii = [math.hypot(x, y) for x, y in pts]
+        inner, outer = min(radii), max(radii)
+        want = inner + poly.reach * (target - inner)
+        moved = []
+        for (x, y), rad in zip(pts, radii):
+            if rad > 1e-12 and abs(rad - outer) < 1e-9:
+                moved.append((x / rad * want, y / rad * want))
+            else:
+                moved.append((x, y))
+    else:
+        xs = [x for x, _ in pts]
+        left, right = min(xs), max(xs)
+        want = left + poly.reach * (target - left)
+        moved = [((want if abs(x - right) < 1e-9 else x), y) for x, y in pts]
+    return replace(poly, points=moved)
 
 
 def _label_bbox_data(fig, ax, texts):
