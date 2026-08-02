@@ -370,10 +370,19 @@ class _Highlight(_Element):
       way past them. The reference is the branch-length axis the tree is drawn
       on, which makes the same number mean the same width in any figure at any
       font size.
-    * ``"labels"`` (the default) runs out past the longest tip label, so no
-      species name hangs off the end of the block it belongs to. That end can
-      only be found while rendering, since how much room a name takes depends
-      on the font and the figure rather than on the tree.
+    * ``"labels"`` runs out past the longest tip label, so no species name
+      hangs off the end of the block it belongs to. That end can only be found
+      while rendering, since how much room a name takes depends on the font and
+      the figure rather than on the tree.
+
+    Left unset it picks per layout -- ``"labels"`` on a rows layout, ``1.0`` on
+    a round one, for the reason in :meth:`_reach`.
+
+    ``gap`` is the white space left between neighbouring bands, in tip rows.
+    The default ``0`` butts them together into one continuous field of colour,
+    which reads as a single stratified panel rather than a set of stripes; raise
+    it to ``0.1`` or so if two adjacent groups drew colours close enough that
+    the boundary between them stops being obvious.
 
     A group whose taxa are not monophyletic is drawn as several bands, one per
     run of adjacent tips, rather than as one band over their common ancestor.
@@ -386,12 +395,12 @@ class _Highlight(_Element):
     def __init__(self, node: Optional[Node] = None, taxa=None, by=None,
                  fill="#fdbf6f", alpha: float = 0.3, extend: float = 0.0,
                  palette: str = "curated", order=None, baseline=None,
-                 span: str = "aligned", reach="labels",
-                 anchor: str = "root"):
+                 span: str = "aligned", reach=None,
+                 anchor: str = "root", gap: float = 0.0):
         if span not in ("clade", "aligned", "full"):
             raise ValueError("span must be 'clade', 'aligned' or 'full', "
                              "not %r" % (span,))
-        if reach != "labels":
+        if reach is not None and reach != "labels":
             if not isinstance(reach, (int, float)) or not 0.0 < reach <= 5.0:
                 raise ValueError(
                     "reach is either 'labels' or a multiple of the tree's "
@@ -399,6 +408,10 @@ class _Highlight(_Element):
                     % (reach,))
         if anchor not in ("root", "tips"):
             raise ValueError("anchor must be 'root' or 'tips', not %r" % (anchor,))
+        if not 0.0 <= gap < 1.0:
+            raise ValueError("gap is the white space left between neighbouring "
+                             "bands, in tip rows; got %r" % (gap,))
+        self.gap = gap
         self.span = span
         self.reach = reach
         self.anchor = anchor
@@ -505,6 +518,21 @@ class _Highlight(_Element):
             return flush
         return own
 
+    def _reach(self, lay):
+        """The reach actually used, once the layout has had its say.
+
+        Left unset, a row-shaped layout runs the colour out past the names, so
+        none of them hangs off the block it belongs to. A round one stops at the
+        tips instead: out there a wedge's area grows with the square of its
+        radius, so carrying the colour past the names floods the whole disc and
+        leaves the tree as a smudge in the middle -- rendered side by side, the
+        version stopping at the tips is the readable one, with the names sitting
+        outside on white. Pass ``reach`` explicitly to override either default.
+        """
+        if self.reach is not None:
+            return self.reach
+        return 1.0 if lay.is_polar else "labels"
+
     def _render_kw(self, lay):
         """What the renderer still has to resolve once it has measured the
         labels, since only it knows how much room a name takes.
@@ -515,9 +543,10 @@ class _Highlight(_Element):
         names, so the width has to be subtracted from a number that is not
         known yet.
         """
-        if self.anchor == "tips" and self.reach != "labels":
-            return {"reach_width": self.reach * lay.max_x}
-        if self.reach == "labels":
+        reach = self._reach(lay)
+        if self.anchor == "tips" and reach != "labels":
+            return {"reach_width": reach * lay.max_x}
+        if reach == "labels":
             return {"reach": 1.0}
         return {}
 
@@ -532,7 +561,8 @@ class _Highlight(_Element):
         the colour at every width and what shortens is the end nearest the root.
         These are provisional whenever the renderer has the final say.
         """
-        span = lay.max_x if self.reach == "labels" else self.reach * lay.max_x
+        reach = self._reach(lay)
+        span = lay.max_x if reach == "labels" else reach * lay.max_x
         if self.anchor == "root":
             return x0, max(span + self.extend, x0 + 1e-9)
         outer = lay.max_x + self.extend
@@ -543,9 +573,8 @@ class _Highlight(_Element):
         if lay.is_polar:
             angles = [lf._angle for lf in leaves]
             a0, a1 = min(angles), max(angles)
-            da = (a1 - a0) / max(len(leaves) - 1, 1) / 2 + 1e-9
-            if len(leaves) == 1:                      # no span to divide
-                da = lay.extent / max(ctx.tree.n_leaves - 1, 1) / 2
+            step = (lay.extent / max(ctx.tree.n_leaves - 1, 1))
+            da = step * (1.0 - self.gap) / 2.0
             lo, hi = self._edges(lay, x0)
             pts = lay._arc(lay.inner_radius + hi, a0 - da, a1 + da)
             pts += lay._arc(lay.inner_radius + lo, a1 + da, a0 - da)
@@ -555,7 +584,8 @@ class _Highlight(_Element):
         else:
             rows = [lf.y for lf in leaves]
             lo, hi = self._edges(lay, x0)
-            y0, y1 = min(rows) - 0.45, max(rows) + 0.45
+            half = (1.0 - self.gap) / 2.0
+            y0, y1 = min(rows) - half, max(rows) + half
             pts = [(lo, y0), (hi, y0), (hi, y1), (lo, y1)]
             ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                   alpha=self.alpha, zorder=0, rounded=True,

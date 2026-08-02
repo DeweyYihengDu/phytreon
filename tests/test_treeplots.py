@@ -645,3 +645,51 @@ def test_anchor_rejects_an_unknown_side():
 def test_reach_rejects_a_string_that_is_not_labels():
     with pytest.raises(ValueError, match="reach"):
         pt.TreeFigure(_phylum_tree()).highlight(by="group", reach="tips")
+
+
+def test_gap_zero_butts_neighbouring_bands_together():
+    tr = _phylum_tree()
+
+    def rows(gap):
+        ctx = pt.TreeFigure(tr).highlight(by="group", gap=gap)._build()
+        return sorted((min(y for _, y in p.points), max(y for _, y in p.points))
+                      for p in ctx.scene.polygons if p.zorder == 0)
+
+    touching = rows(0.0)
+    assert all(abs(touching[i][1] - touching[i + 1][0]) < 1e-9
+               for i in range(len(touching) - 1)), "gap=0 left a seam"
+    spaced = rows(0.2)
+    assert all(spaced[i + 1][0] - spaced[i][1] > 0.1
+               for i in range(len(spaced) - 1)), "gap=0.2 left no seam"
+
+
+def test_the_default_reach_follows_the_layout():
+    # a wedge's area grows with the square of its radius, so carrying the
+    # colour out past the names floods a round figure -- it stops at the tips
+    tr = _phylum_tree()
+    rect = pt.TreeFigure(tr).highlight(by="group")._build()
+    circ = pt.TreeFigure(tr, layout="circular").highlight(by="group")._build()
+    rect_bands = [p for p in rect.scene.polygons if p.zorder == 0]
+    circ_bands = [p for p in circ.scene.polygons if p.zorder == 0]
+    # rows layout defers to the renderer to find where the names end
+    assert all(p.reach == 1.0 for p in rect_bands)
+    # round layout is settled at build time, at the tip radius
+    assert all(p.reach is None and p.reach_width is None for p in circ_bands)
+    import math
+    outer = max(max(math.hypot(x, y) for x, y in p.points) for p in circ_bands)
+    lay = circ.layout
+    assert outer == pytest.approx(lay.inner_radius + lay.max_x, rel=1e-6)
+
+
+def test_an_explicit_reach_beats_the_layout_default():
+    tr = _phylum_tree()
+    ctx = (pt.TreeFigure(tr, layout="circular")
+           .highlight(by="group", reach="labels")._build())
+    bands = [p for p in ctx.scene.polygons if p.zorder == 0]
+    assert all(p.reach == 1.0 for p in bands)      # deferred to the renderer
+
+
+def test_gap_rejects_a_value_that_would_erase_the_band():
+    for bad in (-0.1, 1.0, 2.0):
+        with pytest.raises(ValueError, match="gap"):
+            pt.TreeFigure(_phylum_tree()).highlight(by="group", gap=bad)

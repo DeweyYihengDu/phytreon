@@ -16,14 +16,24 @@ All notable changes to phytreon are documented here. Format loosely follows
   would colour in tips that do not belong to the group — tidier, and false.
   The shades stay pale enough to read a name on (measured: the darkest leaves
   black text at 12.5:1).
+  - `gap` is the white space between neighbouring bands, in tip rows. The
+    default `0` butts them together into one continuous field of colour, which
+    reads as a single stratified panel rather than a set of stripes; raise it if
+    two adjacent groups drew colours close enough that the boundary stops being
+    obvious.
   - `reach` decides how wide the colour block is. A **number** is a multiple of
     the tree's own depth — `0.5` reaches half way in from the root, `1.0` to
     the tips, `1.3` a third past them. The reference is the branch-length axis
     the tree is drawn on, so the same number means the same width in any figure
-    at any font size. `"labels"` (the default) runs out past the longest tip
-    label instead, so no species name hangs off the end of the block it belongs
-    to; that end is found while rendering, since how much room a name takes
-    depends on the font and the figure rather than on the tree.
+    at any font size. `"labels"` runs out past the longest tip label instead, so
+    no species name hangs off the end of the block it belongs to; that end is
+    found while rendering, since how much room a name takes depends on the font
+    and the figure rather than on the tree. Left unset it picks per layout:
+    `"labels"` on a rows layout, `1.0` on a round one — out past the names a
+    wedge's area grows with the square of its radius, so carrying the colour
+    there floods the whole disc and leaves the tree a smudge in the middle.
+    Rendered side by side, the version stopping at the tips is the readable one,
+    with the names outside on white.
   - `anchor` says which end holds still as the width changes. `"root"` (the
     default) pins the inner edge where the clade starts and moves the outer
     one, so the block grows outward from the tree. `"tips"` pins the outer edge
