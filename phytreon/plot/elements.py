@@ -620,7 +620,7 @@ class _BarTrack(_Element):
 
     def __init__(self, data, column, width: float = 0.4, offset: float = 0.04,
                  fill: str = "#5b7897", bar_height: float = 0.8, colname=True,
-                 colname_size: float = 9.0):
+                 colname_size: float = 9.0, axis: bool = True):
         self.data = _index_by_name(data)
         self.column = column
         self.width = width
@@ -629,6 +629,7 @@ class _BarTrack(_Element):
         self.bar_height = bar_height
         self.colname = colname
         self.colname_size = colname_size
+        self.axis = axis
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
@@ -653,6 +654,28 @@ class _BarTrack(_Element):
             ctx.scene.add(Polygon(pts, facecolor=self.fill, edgecolor=None,
                                   alpha=1.0, zorder=2, align=True,
                                   label=f"{t.name} | {self.column}: {v:g}"))
+        if self.axis:
+            # Without a scale the bars are decoration: the reader can compare
+            # two of them and read nothing off either. It matters most exactly
+            # where the bars look alike -- 16S lengths run 1238 to 1584, and
+            # against the zero baseline a bar chart owes them, every bar is
+            # between 78% and 100% of full width. The axis is what says the
+            # bars start at zero and where they end, so "nearly equal" reads
+            # as the finding it is rather than as a drawing that failed.
+            # the rectangular layout counts rows downward, so "above the
+            # bars" is the *smaller* y and the labels anchor from their
+            # bottom edge, or they hang back down over the rule they caption
+            ylo = min(t.y for t in tips) - 0.6 - h
+            ctx.scene.add(Path([(x0, ylo), (x0 + total_w, ylo)],
+                               color="#555555", width=0.6, zorder=2,
+                               align=True))
+            for frac, value, side in ((0.0, vmin, "left"), (1.0, vmax, "right")):
+                x = x0 + frac * total_w
+                ctx.scene.add(Path([(x, ylo), (x, ylo + 0.22)], color="#555555",
+                                   width=0.6, zorder=2, align=True))
+                ctx.scene.add(Label(x, ylo - 0.12, ("%g" % value),
+                                    size=self.colname_size - 2, color="#555555",
+                                    ha=side, va="bottom", align=True))
         if self.colname:
             ymax = max(t.y for t in tips)
             ctx.scene.add(Label(x0 + total_w / 2, ymax + 0.8, str(self.column),

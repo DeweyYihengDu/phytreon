@@ -17,11 +17,19 @@ tree = pt.build_tree(os.path.join(DATA, "tol_16S_aligned.fasta"),
 tree.join_data(meta.reset_index(), on="name")
 
 # 1. multi-column tracks: two categorical tiles + a bar ----------------------
+# branches carry the domain and the tip points the phylum, so neither mark is
+# just decoration -- a black dot at every tip says only "a tip is here", which
+# the tree already said
+by_domain = {}
+for tip in tree.leaves():
+    by_domain.setdefault(meta.loc[tip.name, "domain"], []).append(tip.name)
+pt.group_otu(tree, by_domain, key="domain")   # also onto internal nodes
+
 (pt.TreeFigure(tree)
-    .tip_points(size=6)
+    .branches(color="domain", size=1.4)
+    .tip_points(color="phylum", size=6)
     .tip_labels(italic=True)
-    .heatmap(meta[["domain"]], width=0.05)      # each track its own scale
-    .heatmap(meta[["phylum"]], width=0.05)
+    .heatmap(meta[["phylum"]], width=0.05)      # domain is on the branches now
     .bar_track(meta, "length", width=0.30, fill="#4c78a8")
  ).save(os.path.join(OUT, "tol_tracks.png"))
 print("[ok] tol_tracks.png  (tile + tile + bar tracks)")

@@ -46,7 +46,9 @@ print("Archaea MRCA spans", len(archaea.leaf_names()), "tips "
 (pt.TreeFigure(tree.ladderize())
     .tip_points(color="domain", size=8)
     .tip_labels(italic=True)
-    .support_labels(size=7)).save(os.path.join(OUT, "tol_rect.png"))
+    .support_labels(size=7)
+    .scale_bar()                 # branch lengths are substitutions/site, and
+    ).save(os.path.join(OUT, "tol_rect.png"))   # without a bar they read as nothing
 print("[ok] tol_rect.png")
 
 # 2. circular with metadata rings -----------------------------------------
@@ -61,9 +63,21 @@ for tip in tree.leaves():
     tip.name = abbrev[tip.name]
 meta_c = meta.rename(index=abbrev)
 
+# Domain goes on the *branches*, not into a ring of its own. Drawn as a ring
+# it was a full circle of colour carrying one bit -- and it left the tree as
+# thin black lines with no visual weight against three saturated bands, so the
+# thing the figure is about read as the faintest thing in it. On the branches
+# it costs no ring, and the two domains separate at a glance.
+by_domain = {}
+for tip in tree.leaves():
+    by_domain.setdefault(meta_c.loc[tip.name, "domain"], []).append(tip.name)
+pt.group_otu(tree, by_domain, key="domain")
+
 (pt.TreeFigure(tree, layout="circular", extent=345)
-    .tip_points(size=4)
-    .ring(meta_c, columns=["domain", "phylum", "length"], width=0.11, gap=0.022,
+    .branches(color="domain", size=1.6)
+    .tip_points(size=4, color="domain")
+    .ring(meta_c, columns=["phylum"], width=0.13, gap=0.022, colnames=False)
+    .ring(meta_c, columns=["length"], geom="bar", width=0.22, gap=0.022,
           colnames=False)                       # legend already names each ring
     .tip_labels(size=9, italic=True)).save(os.path.join(OUT, "tol_rings.png"),
                                            figsize=(12.5, 9))

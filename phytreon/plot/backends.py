@@ -175,6 +175,22 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
             legend_x = max(1.02, (r - x0) / (x1 - x0) + 0.06)
     extra = []
     y = 1.0
+    # Stack the keys by *measuring* each one and putting the next directly
+    # below it. Guessing the height from the entry count -- which is what this
+    # did -- leaves a ragged column: too tight where a title wraps, and on the
+    # tree-of-life figure it pushed the colour bar right off the bottom of the
+    # legend stack, marooned a quarter of the figure's height below the key it
+    # belonged with.
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    to_axes = ax.transAxes.inverted()
+
+    def _stack_below(artist, current, gap=0.03):
+        box = artist.get_window_extent(renderer)
+        top = to_axes.transform((0, box.y1))[1]
+        bottom = to_axes.transform((0, box.y0))[1]
+        return min(current, top) - (top - bottom) - gap
+
     from matplotlib.patches import Rectangle
     for lt, entries in scene.legends:
         handles, labels = [], []
@@ -197,7 +213,7 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
         leg._legend_box.align = "left"
         ax.add_artist(leg)
         extra.append(leg)
-        y -= 0.065 * (len(entries) + 2)
+        y = _stack_below(leg, y)
 
     # -- continuous colorbars (stacked below the legends) ----------------
     # Each title is a horizontal label *above* its bar (like the categorical
@@ -208,18 +224,21 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
     from matplotlib.colors import LinearSegmentedColormap, Normalize
     from matplotlib.cm import ScalarMappable
     cb_y = min(y, 0.92)
+    height = 0.18
     for title, vmin, vmax, stops in scene.colorbars:
         cmap = LinearSegmentedColormap.from_list(title or "cb", list(stops))
         sm = ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap)
-        top = max(cb_y - 0.20, 0.04)
-        cax = ax.inset_axes([legend_x + 0.01, top, 0.02, 0.18],
+        # its title sits above the bar, so leave room for that and no more --
+        # the old fixed 0.20 drop was a guess on top of a guess
+        top = max(cb_y - height - 0.04, 0.02)
+        cax = ax.inset_axes([legend_x + 0.01, top, 0.02, height],
                             transform=ax.transAxes)
         cb = fig.colorbar(sm, cax=cax)
         cb.outline.set_visible(False)
         cb.ax.tick_params(labelsize=7, length=2)
         cax.set_title(title, fontsize=9, loc="left", pad=3)
         extra.append(cax)
-        cb_y -= 0.34
+        cb_y = top - 0.07
 
     fig._phytreon_extra_artists = extra + base_text + al_text
     return fig

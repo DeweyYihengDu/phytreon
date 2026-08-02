@@ -18,6 +18,21 @@ All notable changes to phytreon are documented here. Format loosely follows
   black text at 12.5:1).
 
 ### Fixed
+- **Keys stack by measurement instead of by guess.** Each legend block's height
+  was estimated from its entry count, which left a ragged column and, on the
+  tree-of-life figure, pushed the colour bar a quarter of the figure's height
+  below the key it belonged with. Each block is now measured and the next sits
+  directly beneath it.
+- **A bar track has a scale.** Without one the bars were decoration — you could
+  compare two of them and read nothing off either. It matters most exactly
+  where the bars look alike: 16S lengths run 1238 to 1584, and against the zero
+  baseline a bar chart owes them every bar is between 78% and 100% of full
+  width. The axis is what makes "nearly equal" read as the finding it is rather
+  than as a drawing that failed. Turn it off with `bar_track(..., axis=False)`.
+- **A packed network centres on its bounding box**, not on the origin the
+  packer started from, so a graph with one big piece and a few stragglers is
+  not sized for the far side and margined on the near one: the content now
+  fills 92–95% of the square, against 62% before.
 - **Figures no longer print names on top of each other.** Three defects, all
   found by counting real glyph collisions rather than by eye — measured off
   glyph ink and off *oriented* boxes, since a circular tree's labels are

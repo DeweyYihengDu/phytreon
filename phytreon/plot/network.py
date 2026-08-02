@@ -256,8 +256,17 @@ def layout_by_component(nodes: Sequence[str], edges, **kwargs) -> List[XY]:
         for g, (x, y) in zip(group, pts):
             out[g] = (cx + x, cy + y)
 
-    reach = max(math.hypot(x, y) for x, y in out) or 1.0
-    return [(x / reach, y / reach) for x, y in out]
+    # Centre on the bounding box, not on the origin the packer happened to
+    # start from. Packing puts the biggest piece at the origin and rings the
+    # rest around it, so a graph with one big piece and a few stragglers ends
+    # up lopsided: normalising by distance-from-origin then sizes the frame
+    # for the far side and leaves the near side as margin.
+    xs = [x for x, _ in out]
+    ys = [y for _, y in out]
+    cx = (max(xs) + min(xs)) / 2.0
+    cy = (max(ys) + min(ys)) / 2.0
+    reach = max(math.hypot(x - cx, y - cy) for x, y in out) or 1.0
+    return [((x - cx) / reach, (y - cy) / reach) for x, y in out]
 
 
 class SequenceNetwork(_Renderable):
