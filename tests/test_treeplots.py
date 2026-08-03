@@ -828,6 +828,18 @@ def test_max_labels_zero_names_none_of_them():
     assert _named(tr, max_labels=0) == []
 
 
+def test_only_marks_the_tips_a_measurement_exists_for():
+    # a marker on every tip says the opposite of "these are the ones we tested"
+    tr = pt.datasets.random_tree(40, seed=3)
+    names = tr.leaf_names()
+    ctx = pt.TreeFigure(tr).tip_points(only=names[:3], size=9)._build()
+    assert len(ctx.scene.markers) == 3
+    marked = {(round(m.x, 9), round(m.y, 9)) for m in ctx.scene.markers}
+    assert marked == {(round(t.x, 9), round(t.y, 9))
+                      for t in tr.leaves() if t.name in names[:3]}
+    assert len(pt.TreeFigure(tr).tip_points()._build().scene.markers) == 40
+
+
 def test_a_circular_highlight_is_a_ring_not_a_sector():
     # a sector filled from the centre has area growing with the square of its
     # radius, so it swamps the drawing; iTOL draws a band, and so does this

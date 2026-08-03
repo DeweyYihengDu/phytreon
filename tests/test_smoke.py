@@ -1,4 +1,6 @@
 """Smoke + correctness tests. Run: pytest -q"""
+import math
+
 import matplotlib
 matplotlib.use("Agg")
 
@@ -568,6 +570,57 @@ def test_ring_leaders_connect_every_tip_to_the_ring():
     ring_inner = min(radius(pt_) for poly in ctx.scene.polygons if poly.label
                      for pt_ in poly.points)
     assert max(radius(p.points[1]) for p in leads) <= ring_inner + 1e-9
+
+
+def _bar_ring(n=60, lo=1238, hi=1584, **kw):
+    import pandas as pd
+    tr = pt.datasets.random_tree(n, seed=12)
+    vals = [lo + (hi - lo) * i / (n - 1) for i in range(n)]
+    df = pd.DataFrame({"name": tr.leaf_names(), "len": vals})
+    return (pt.TreeFigure(tr, layout="circular", extent=340)
+            .ring(df, columns=["len"], geom="bar", width=0.2, **kw)._build())
+
+
+def test_a_bar_ring_has_a_scale():
+    # without one the bars are decoration: two can be compared and nothing read
+    # off either. It matters most where they look alike -- 16S lengths run 1238
+    # to 1584, which against a zero baseline is a ring of near-equal bars
+    ctx = _bar_ring()
+    lay = ctx.layout
+    inner = ctx.ring_base + 0.04 * lay.max_x        # + default offset
+    circles = [p for p in ctx.scene.paths if p.color == "#b3b3b3"]
+    assert len(circles) == 3                        # 500 / 1000 / 1500
+    radius = lambda p: (p[0] ** 2 + p[1] ** 2) ** 0.5      # noqa: E731
+    for arc in circles:
+        radii = [radius(p) for p in arc.points]
+        assert max(radii) - min(radii) < 1e-9       # a circle, not a spiral
+        assert inner - 1e-9 <= radii[0] <= inner + 0.2 * lay.max_x + 1e-9
+        # over the bars, not behind them: visible where a bar falls short and
+        # where it runs past
+        assert arc.zorder > 2
+    # two numbers, at the two ends, so three of them do not stack into one blot
+    nums = sorted(lb.text for lb in ctx.scene.labels if lb.text in
+                  ("0", "500", "1000", "1500"))
+    assert nums == ["0", "1500"]
+    outer = next(lb for lb in ctx.scene.labels if lb.text == "1500")
+    base = next(lb for lb in ctx.scene.labels if lb.text == "0")
+    assert radius((outer.x, outer.y)) > radius((base.x, base.y))
+    # and they read across the spoke, since along it they would overlap
+    assert abs(outer.rotation - math.degrees(math.atan2(outer.y, outer.x))) \
+        == pytest.approx(90, abs=1e-6)
+
+
+def test_the_bar_ring_scale_can_be_turned_off():
+    ctx = _bar_ring(axis=False)
+    assert not [p for p in ctx.scene.paths if p.color == "#b3b3b3"]
+    assert not [lb for lb in ctx.scene.labels if lb.text == "1500"]
+
+
+def test_a_flat_column_gets_no_grid_it_cannot_divide():
+    ctx = _bar_ring(lo=7.0, hi=7.0)
+    assert [p for p in ctx.scene.paths if p.color == "#b3b3b3"]  # 0 -> 7 is fine
+    ctx = _bar_ring(lo=0.0, hi=0.0)              # nothing to scale at all
+    assert not [p for p in ctx.scene.paths if p.color == "#b3b3b3"]
 
 
 def _stack_fig(n=12, cols=("Archaea", "Bacteria", "Eukaryota"), **kw):

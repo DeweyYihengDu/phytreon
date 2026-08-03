@@ -367,8 +367,14 @@ class _Points(_Element):
     def __init__(self, which: str = "tip", color="black", size=6.0,
                  marker: str = "o", shape=None, edgecolor: Optional[str] = None,
                  palette: str = "curated", cmap=None, baseline=None,
-                 order=None):
+                 order=None, only=None):
         self.which = which                 # tip | node | all
+        #: Name, or names, of the only tips to mark. Papers mark the handful of
+        #: tips a measurement exists for -- a structure prediction, a validated
+        #: hit -- and a marker on every tip says the opposite of that. The
+        #: colour scale is still built from the ones drawn, so the key matches.
+        self.only = ({only} if isinstance(only, str)
+                     else set(only) if only is not None else None)
         self.color = color
         self.size = size
         self.marker = marker
@@ -381,10 +387,14 @@ class _Points(_Element):
 
     def _select(self, ctx):
         if self.which == "tip":
-            return ctx.tree.leaves()
-        if self.which == "node":
-            return [n for n in ctx.tree.traverse() if not n.is_leaf]
-        return ctx.tree.nodes()
+            nodes = ctx.tree.leaves()
+        elif self.which == "node":
+            nodes = [n for n in ctx.tree.traverse() if not n.is_leaf]
+        else:
+            nodes = ctx.tree.nodes()
+        if self.only is not None:
+            nodes = [n for n in nodes if n.name in self.only]
+        return nodes
 
     def apply(self, ctx: RenderContext) -> None:
         nodes = self._select(ctx)
@@ -1094,7 +1104,8 @@ class _Ring(_Element):
                  bar_pad: float = 0.25, colnames: bool = True,
                  colname_size: float = 8.0, separators: Optional[bool] = None,
                  leaders: bool = False, leader_color: str = "#cccccc",
-                 leader_width: float = 0.4, baseline=None, order=None):
+                 leader_width: float = 0.4, baseline=None, order=None,
+                 axis: bool = True):
         self.data = _index_by_name(data)
         self.columns = list(columns) if columns is not None else list(self.data.columns)
         if geom not in ("tile", "bar", "stack"):
@@ -1120,6 +1131,71 @@ class _Ring(_Element):
         self.leader_width = leader_width
         self.baseline = baseline       # level(s) greyed out as the default state
         self.order = order             # explicit legend order
+        #: Grid circles and their values on a ``"bar"`` ring. Without them the
+        #: bars are decoration -- you can compare two of them and read nothing
+        #: off either -- and it matters most exactly where the bars look alike,
+        #: because against a zero baseline a ring of near-equal values is a ring
+        #: of near-equal bars. Ignored by the other geoms, which have a legend.
+        self.axis = axis
+
+    @staticmethod
+    def _ticks(vmin: float, vmax: float, want: int = 3):
+        """Round values inside ``(vmin, vmax]`` -- 1, 2 or 5 times a power of ten."""
+        span = vmax - vmin
+        if span <= 0:
+            return []
+        mag = 10 ** math.floor(math.log10(span / want))
+        step = next((m * mag for m in (1.0, 2.0, 5.0)
+                     if span / (m * mag) <= want + 0.5), 10 * mag)
+        out, v = [], math.ceil(vmin / step) * step
+        while v <= vmax + 1e-9:
+            if v > vmin + 1e-9:
+                out.append(v)
+            v += step
+        return out
+
+    def _grid(self, ctx, lay, inner, w, vmin, vmax, gap_angle, half) -> None:
+        """Circles at round values behind a bar ring, and their numbers.
+
+        Without them the bars are decoration: two can be compared and nothing
+        read off either. It matters most exactly where the bars look alike --
+        16S lengths run 1238 to 1584, and against a zero baseline that is a ring
+        of near-equal bars, so the axis is what makes "nearly equal" read as the
+        finding rather than as a drawing that failed.
+        """
+        rng = (vmax - vmin) or 1.0
+        # The numbers go in the fan opening, *across* the spoke rather than
+        # along it -- the opposite of the column names, and for the same reason.
+        # A ring's name is one long string and the opening is a few degrees, so
+        # along the spoke is the only way it fits. These are several short
+        # numbers a fraction of the ring's width apart, and along the spoke they
+        # print over each other (three ticks on a ring 0.2 radii wide are 0.06
+        # radii apart, less than a four-digit number is long). Across it, what
+        # has to fit between them is only their height.
+        free = (2 * math.pi - lay.extent) / 2 - half
+        deg = math.degrees(gap_angle)
+        rot = deg - 90 if -90 <= (deg % 360) - 180 < 90 else deg + 90
+        ticks = self._ticks(vmin, vmax)
+        for val in ticks:
+            r = inner + (val - vmin) / rng * w
+            # over the bars, not behind them: the reference is wanted where a
+            # bar falls short *and* where it runs past, and behind them the
+            # circle is only visible in the half of the ring nothing reached
+            ctx.scene.add(Path(lay._arc(r, lay.start, lay.start + lay.extent),
+                               color="#b3b3b3", width=0.5, zorder=2.4))
+        # Two numbers, at the two ends: the baseline and the furthest circle.
+        # A ring is a fifth of the tree's radius wide and a 7pt number is a
+        # tenth of it tall in the same figure, so numbering every circle -- the
+        # obvious thing, and what a rectangular axis can do -- stacks three of
+        # them into one blot. The circles in between are then unlabelled, which
+        # is what a grid is for: they divide the interval the two numbers give.
+        if ticks and free > _RING_NAME_MIN_GAP:
+            for val in (vmin, ticks[-1]):
+                r = inner + (val - vmin) / rng * w
+                x, y = lay._polar_to_xy(r, gap_angle)
+                ctx.scene.add(Label(x, y, f"{val:g}", size=self.colname_size - 1,
+                                    color="#888888", ha="center", va="center",
+                                    rotation=rot))
 
     def _stack(self, ctx, lay, tips, inner, w, half) -> None:
         """Draw every column of one tip as one segment of a single bar.
@@ -1244,6 +1320,8 @@ class _Ring(_Element):
                     ctx.scene.add(Polygon(pts, facecolor=self.fill, edgecolor=None,
                                           alpha=1.0, zorder=2,
                                           label=f"{tip.name} | {col}: {val:g}"))
+                if self.axis:
+                    self._grid(ctx, lay, inner, w, vmin, vmax, gap_angle, half)
             else:
                 scale = build_color_scale(str(col), colvals,
                                           cmap=self.cmap, palette=self.palette,

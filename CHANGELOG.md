@@ -68,6 +68,20 @@ All notable changes to phytreon are documented here. Format loosely follows
   than fighting it. `max_labels=0` now means *name none of them*, which is what
   a dense circular tree wants once the ring tracks carry the story (it was
   silently read as "no limit").
+- **`tip_points(only=...)`** marks just the tips a measurement exists for — a
+  structure prediction, a validated hit — instead of every tip, which says the
+  opposite. The colour scale is still built from the ones drawn, so the key
+  matches what is on the figure.
+- **A bar ring has a scale** (`ring(geom="bar")`, off with `axis=False`):
+  circles at round values, drawn *over* the bars so the reference is there both
+  where a bar falls short and where it runs past, with the baseline and the
+  outermost circle numbered in the fan opening. Only those two are numbered, and
+  they read *across* the spoke rather than along it — a ring is a fifth of the
+  tree's radius wide and a 7 pt number a tenth of it tall in the same figure, so
+  numbering all three circles along the spoke stacks them into one blot. The
+  circles in between are what a grid is for: they divide the interval the two
+  numbers give. Same argument as the rectangular `bar_track(axis=True)`: without
+  it the bars are decoration, and it matters most exactly where they look alike.
 - **`ring(geom="stack")`** draws one ring in which every column is a *segment*
   of each tip's bar, scaled so the segments fill the ring's width — a
   composition ring: *of the sequences at this tip, what fraction came from each

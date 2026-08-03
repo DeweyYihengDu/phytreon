@@ -13,7 +13,9 @@ everything else moves out to concentric rings, each with its own key.
   * a composition ring for a mixture that no single value can carry -- what
     fraction of the sequences at this tip came from each domain
     (``ring(geom="stack")``)
-  * a bar ring for a number, with its own axis
+  * a bar ring for a number, with its own grid circles and their values
+  * markers on only the tips a measurement exists for
+    (``tip_points(only=...)``)
   * one clade called out by name, shaded behind the branches
   * a scale bar, because branch lengths in substitutions/site read as nothing
     without one
@@ -68,6 +70,7 @@ fig = (pt.TreeFigure(tree, layout="circular", extent=340)
              title="Domain of origin", width=0.16, gap=0.02)
        .ring(ann, columns=["length"], geom="bar", width=0.20, gap=0.02,
              colnames=False)
+       .tip_points(only=refs, size=9, color="#e34948")
        .tip_labels(only=refs, size=9, italic="taxa")
        .scale_bar()
        .titled("16S rRNA, 106 taxa: four annotation rings"))
