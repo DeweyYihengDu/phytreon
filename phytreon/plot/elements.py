@@ -124,7 +124,8 @@ def looks_like_a_taxon(name: str) -> bool:
 class _TipLabels(_Element):
     def __init__(self, color="black", size: float = 10.0,
                  offset: Optional[float] = None, italic=False,
-                 align: bool = False, max_labels: Optional[int] = None):
+                 align: bool = False, max_labels: Optional[int] = None,
+                 only=None):
         self.color = color
         self.size = size
         self.offset = offset
@@ -133,7 +134,16 @@ class _TipLabels(_Element):
                              "the tip name; got %r" % (italic,))
         self.italic = italic
         self.align = align
-        self.max_labels = max_labels       # show ~this many evenly-spaced labels
+        # show ~this many evenly-spaced labels; 0 names none of them, which is
+        # what a dense circular tree wants once the ring tracks carry the story
+        self.max_labels = max_labels
+        #: Name, or names, of the only tips to label. ``max_labels`` thins
+        #: *evenly*, which is right when the point is to sample a dense tree
+        #: and wrong when the point is to call out particular sequences -- a
+        #: 5,000-tip figure that names the two references the paper is about
+        #: cannot get there by thinning.
+        self.only = ({only} if isinstance(only, str)
+                     else set(only) if only is not None else None)
 
     def _italic(self, name: str) -> bool:
         """Whether this one name is slanted.
@@ -157,7 +167,9 @@ class _TipLabels(_Element):
         kind = getattr(lay, "kind", "rect")
         # thin labels on large trees so they do not overlap
         step = 1
-        if self.max_labels and len(tips) > self.max_labels:
+        if self.max_labels is not None and self.max_labels <= 0:
+            tips = []                       # max_labels=0 means name none of them
+        elif self.max_labels and len(tips) > self.max_labels:
             step = math.ceil(len(tips) / self.max_labels)
         # polar/radial labels sit at the tip radius, so they need a larger gap
         # to clear the tip marker (markers are sized in points, not data units)
@@ -171,7 +183,12 @@ class _TipLabels(_Element):
         for i, tip in enumerate(tips):
             slant = self._italic(tip.name or "")
             text = tip.name or ""
-            if not text or (step > 1 and i % step != 0):
+            if not text:
+                continue
+            if self.only is not None:
+                if text not in self.only:
+                    continue
+            elif step > 1 and i % step != 0:
                 continue
             drawn += 1
             # a collapsed clade is drawn as a triangle reaching out to its
@@ -189,7 +206,8 @@ class _TipLabels(_Element):
                 else:
                     rot, ha = deg + 180, "right"
                 ctx.scene.add(Label(x, y, text, size=self.size, color=cfunc(tip),
-                                    ha=ha, va="center", rotation=rot, italic=slant))
+                                    ha=ha, va="center", rotation=rot, italic=slant,
+                                    role="tiplab"))
             elif kind == "polar":
                 # sit outside any ring tracks (ctx.outer_radius) when present
                 rings = ctx.outer_radius > ctx.ring_base
@@ -203,12 +221,13 @@ class _TipLabels(_Element):
                 else:
                     rot, ha = deg, "left"
                 ctx.scene.add(Label(x, y, text, size=self.size, color=cfunc(tip),
-                                    ha=ha, va="center", rotation=rot, italic=slant))
+                                    ha=ha, va="center", rotation=rot, italic=slant,
+                                    role="tiplab"))
             elif kind == "dendrogram":
                 # tips along the bottom; labels drop below, rotated upright
                 ctx.scene.add(Label(tip.x, tip.y - off, text, size=self.size,
                                     color=cfunc(tip), ha="right", va="center",
-                                    rotation=90, italic=slant))
+                                    rotation=90, italic=slant, role="tiplab"))
             elif kind == "radial":
                 # Point the name away from the middle of the tree, not along
                 # its own branch. Following the branch is the prettier idea and
@@ -228,7 +247,8 @@ class _TipLabels(_Element):
                 else:
                     rot, ha = deg, "left"
                 ctx.scene.add(Label(x, y, text, size=self.size, color=cfunc(tip),
-                                    ha=ha, va="center", rotation=rot, italic=slant))
+                                    ha=ha, va="center", rotation=rot, italic=slant,
+                                    role="tiplab"))
             else:
                 x = (lay.max_x if self.align else tip.x + far) + off
                 ctx.scene.add(Label(x, tip.y, text, size=self.size, color=cfunc(tip),
@@ -735,14 +755,31 @@ class _CladeLabel(_Element):
         pad = self.offset + 0.04 * lay.max_x
         if lay.is_polar:
             angles = [lf._angle for lf in leaves]
-            r = lay.inner_radius + lay.max_x + pad
+            # Outside whatever the rings claimed, not at the tip circle: a
+            # bracket drawn at the tips lands under every ring track, and the
+            # name goes across them -- illegible, and it hides the data it was
+            # put there to point at.
+            r = max(ctx.outer_radius, lay.inner_radius + lay.max_x) + pad
             pts = lay._arc(r, min(angles), max(angles))
-            ctx.scene.add(Path(pts, color=self.color, width=self.barsize, zorder=2))
+            # ``push_out`` lets the renderer move both of these further out, to
+            # wherever the tip labels turned out to end -- a radius that depends
+            # on the font and the figure, so only it can know.
+            span = (min(angles) - 0.02, max(angles) + 0.02)
+            ctx.scene.add(Path(pts, color=self.color, width=self.barsize,
+                               zorder=2, push_out=pad, push_span=span))
             amid = 0.5 * (min(angles) + max(angles))
             x, y = lay._polar_to_xy(r + 0.03 * lay.max_x, amid)
+            # ... and reading outward, so the ones on the left half are not
+            # upside down (the same flip the tip labels do)
+            deg = math.degrees(amid)
+            if 90 < (deg % 360) < 270:
+                rot, ha = deg + 180, "right"
+            else:
+                rot, ha = deg, "left"
             ctx.scene.add(Label(x, y, self.label, size=self.size, color=self.color,
-                                ha="center", va="center",
-                                rotation=math.degrees(amid)))
+                                ha=ha, va="center", rotation=rot,
+                                push_out=pad + 0.03 * lay.max_x,
+                                push_span=span))
         else:
             rows = [lf.y for lf in leaves]
             gap = self.offset + 0.02 * lay.max_x
@@ -1050,7 +1087,8 @@ class _Ring(_Element):
     puts every tip on the same radius.
     """
 
-    def __init__(self, data, columns=None, geom: str = "tile", width: float = 0.12,
+    def __init__(self, data, columns=None, geom: str = "tile", title=None,
+                 width: float = 0.12,
                  gap: float = 0.02, offset: float = 0.04, pad_angle: float = 0.0,
                  cmap=None, palette: str = "curated", fill: str = "#5b7897",
                  bar_pad: float = 0.25, colnames: bool = True,
@@ -1059,7 +1097,13 @@ class _Ring(_Element):
                  leader_width: float = 0.4, baseline=None, order=None):
         self.data = _index_by_name(data)
         self.columns = list(columns) if columns is not None else list(self.data.columns)
-        self.geom = geom               # "tile" (heatmap ring) | "bar" (radial bars)
+        if geom not in ("tile", "bar", "stack"):
+            raise ValueError("geom must be 'tile', 'bar' or 'stack', not %r"
+                             % (geom,))
+        self.geom = geom     # "tile" | "bar" (radial bars) | "stack" (composition)
+        #: Legend title for a ``"stack"`` ring. The segments are the *columns*,
+        #: so there is no one column whose name could serve as the heading.
+        self.title = title
         self.width = width
         self.gap = gap
         self.offset = offset
@@ -1077,11 +1121,51 @@ class _Ring(_Element):
         self.baseline = baseline       # level(s) greyed out as the default state
         self.order = order             # explicit legend order
 
+    def _stack(self, ctx, lay, tips, inner, w, half) -> None:
+        """Draw every column of one tip as one segment of a single bar.
+
+        The parts are scaled to sum to the ring's width, so the ring reads as a
+        composition however the raw numbers are scaled -- and a tip whose parts
+        are all zero is left blank rather than silently normalised to
+        something.
+        """
+        scale = build_color_scale(self.title or "composition",
+                                  list(self.columns), palette=self.palette,
+                                  swatch="patch")
+        hbar = half * (1.0 - self.bar_pad)
+        for tip in tips:
+            if tip.name not in self.data.index:
+                continue
+            parts = []
+            for col in self.columns:
+                try:
+                    parts.append(max(0.0, float(self.data.loc[tip.name, col])))
+                except (TypeError, ValueError):
+                    parts.append(0.0)
+            total = sum(parts)
+            if total <= 0:
+                continue
+            a = tip._angle
+            edge = inner
+            for col, part in zip(self.columns, parts):
+                step = part / total * w
+                if step <= 0:
+                    continue
+                pts = lay._arc(edge + step, a - hbar, a + hbar) +                     lay._arc(edge, a + hbar, a - hbar)
+                ctx.scene.add(Polygon(pts, facecolor=scale.color(col),
+                                      edgecolor=None, alpha=1.0, zorder=2,
+                                      label="%s | %s: %.3g%%"
+                                      % (tip.name, col, 100 * part / total)))
+                edge += step
+        ctx.add_scale(scale)
+        ctx.scene.legend_swatch[scale.title] = scale.swatch
+
     def reserved_extent(self, layout) -> float:
         """Radial space (data units) this element claims, for the label pre-pass."""
         if not getattr(layout, "is_polar", False):
             return 0.0
-        return (self.offset + len(self.columns) * (self.width + self.gap)) * layout.max_x
+        slots = 1 if self.geom == "stack" else len(self.columns)
+        return (self.offset + slots * (self.width + self.gap)) * layout.max_x
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
@@ -1126,6 +1210,17 @@ class _Ring(_Element):
                                    color=self.leader_color,
                                    width=self.leader_width, dash="dot",
                                    zorder=0.3))
+
+        if self.geom == "stack":
+            # One ring, not one per column: every column is a *segment* of each
+            # tip's single bar, scaled so the segments fill the ring's width.
+            # That is what a taxonomic-distribution ring is -- "of the sequences
+            # here, what fraction came from each domain" -- and neither a
+            # single-value bar nor a tile ring can say it: the bar carries one
+            # number, the tile only which category won.
+            self._stack(ctx, lay, tips, r0, w, half)
+            ctx.ring_cursor = r0 + w + g
+            return
 
         for ci, col in enumerate(self.columns):
             inner = r0 + ci * (w + g)
@@ -1701,22 +1796,65 @@ class _ScaleBar(_Element):
 
     def apply(self, ctx: RenderContext) -> None:
         lay = ctx.layout
+        # a tenth of what the tree *spans*. In a circular tree the radius is
+        # only half the span, so a tenth of the radius comes out a twentieth of
+        # the drawing -- a stub shorter than the number printed above it.
+        reach = 2 * lay.max_x if lay.is_polar else lay.max_x
         length = self.length if self.length is not None \
-            else self._nice(lay.max_x / 10.0)
+            else self._nice(reach / 10.0)
         xmin, ymin, xmax, ymax = ctx.scene.bounds()
         span = (ymax - ymin) or 1.0
-        x0 = self.x if self.x is not None else xmin
-        y0 = self.y if self.y is not None else ymax + 0.05 * span
+        # which way the number sits relative to the rule. The rectangular
+        # layout numbers its rows downward, so there +y is down on screen and
+        # va="top" is already the away-from-the-tree side.
+        side, valign = 1.0, "top"
+        if lay.is_polar:
+            # Measured against the tree's own radius, not the whole drawing's
+            # bounding box: on a circular figure the box is several times the
+            # tree's radius (rings, keys), and a box-sized tick and offset make
+            # the bar look like a typo and drop the number on top of the rule
+            # it labels.
+            span = lay.max_x
+            tick = 0.012 * span
+            lift = max(0.03 * span, 2.2 * tick)
+            # Put it in the fan opening when the layout leaves one: that wedge
+            # holds no tips, no branches and no ring segments, so the bar
+            # cannot land across a branch, which is what happens anywhere else
+            # in a tree of a few hundred leaves. Sit just *outside* the tip
+            # circle -- the wedge widens with radius, and the number needs that
+            # room; near the centre the wedge is narrower than the number and
+            # its two ends spill over the leaves flanking the opening.
+            gap = 2 * math.pi - lay.extent
+            if gap > math.radians(8):
+                mid = lay.start - gap / 2.0
+                cx, cy = lay._polar_to_xy(1.06 * lay.max_x, mid)
+                cy -= 0.5 * lift          # bar and number straddle the bisector
+                valign = "bottom"
+            else:
+                # closed circle: no empty wedge anywhere, so go below the whole
+                # drawing -- past the outermost ring, not merely past the tips,
+                # or it lands among the ring segments at the bottom.
+                outer = max(getattr(ctx, "ring_cursor", 0.0), lay.max_x)
+                cx, cy = 0.0, -outer - 2 * lift
+                side = -1.0               # further down, away from the rings
+            x0 = self.x if self.x is not None else cx - length / 2.0
+            y0 = self.y if self.y is not None else cy
+        else:
+            tick = 0.012 * span
+            lift = 0.03 * span
+            x0 = self.x if self.x is not None else xmin
+            y0 = self.y if self.y is not None else ymax + 0.05 * span
         ctx.scene.add(Path([(x0, y0), (x0 + length, y0)], color=self.color,
                            width=self.width, zorder=4))
-        tick = 0.012 * span
         for xt in (x0, x0 + length):                 # end ticks
             ctx.scene.add(Path([(xt, y0 - tick), (xt, y0 + tick)],
                                color=self.color, width=self.width, zorder=4))
         text = self.label if self.label is not None else f"{length:g}"
-        ctx.scene.add(Label(x0 + length / 2, y0 + 0.03 * span, text,
+        # the number goes on the side of the rule that faces away from the
+        # tree, clear of the end ticks either way.
+        ctx.scene.add(Label(x0 + length / 2, y0 + side * lift, text,
                             size=self.fontsize, color=self.color,
-                            ha="center", va="top"))
+                            ha="center", va=valign))
 
 
 # --------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 """Drawing styles beyond the plain tree: collapsed clades, node interval
 bars, node-to-node connections, scale bars and DensiTree clouds."""
+import math
+
 import matplotlib
 matplotlib.use("Agg")
 
@@ -328,6 +330,53 @@ def test_scale_bar_draws_a_bar_of_the_requested_length():
     x0, x1 = horiz[0].points[0][0], horiz[0].points[1][0]
     assert (x1 - x0) == pytest.approx(0.05)
     assert any(lb.text == "0.05" for lb in ctx.scene.labels)
+
+
+def test_scale_bar_sits_in_the_fan_opening():
+    """The one wedge of a fan tree with no tips, branches or ring segments."""
+    tr = pt.datasets.random_tree(60, seed=4)
+    fig = pt.TreeFigure(tr, layout="circular", start=0, extent=330)
+    ctx = fig.scale_bar()._build()
+    lay = ctx.layout
+    bar = next(p for p in ctx.scene.paths
+               if p.width == 1.4 and p.points[0][1] == p.points[1][1])
+    label = next(lb for lb in ctx.scene.labels if lb.text)
+    # every point of the bar, its ticks and its number is in the opening
+    inside = []
+    for x, y in [bar.points[0], bar.points[1], (label.x, label.y)]:
+        ang = math.degrees(math.atan2(y, x)) % 360
+        inside.append(0.0 <= ang <= 330.0)
+    assert not any(inside), inside
+    # and it is out past the tips, where the wedge is widest
+    mid = [(a + b) / 2 for a, b in zip(*bar.points)]
+    assert math.hypot(*mid) > lay.max_x
+
+
+def test_scale_bar_length_is_a_tenth_of_what_the_tree_spans():
+    """A circular tree spans two radii, so a tenth of the radius is a stub."""
+    tr = pt.datasets.primates()
+    rect = pt.TreeFigure(tr).scale_bar()._build()
+    circ = pt.TreeFigure(tr, layout="circular").scale_bar()._build()
+    depth = rect.layout.max_x
+    from phytreon.plot.elements import _ScaleBar
+    assert next(lb for lb in rect.scene.labels
+                if lb.text).text == f"{_ScaleBar._nice(depth / 10):g}"
+    assert next(lb for lb in circ.scene.labels
+                if lb.text).text == f"{_ScaleBar._nice(depth / 5):g}"
+
+
+def test_closed_fan_does_not_seat_the_last_leaf_on_the_first():
+    tr = pt.datasets.random_tree(24, seed=9)
+    ctx = pt.TreeFigure(tr, layout="circular", extent=360).branches()._build()
+    angles = sorted(t._angle for t in ctx.tree.leaves())
+    assert len(angles) == 24
+    step = 2 * math.pi / 24
+    assert (angles[-1] - angles[0]) == pytest.approx(2 * math.pi - step)
+    # an open fan still puts a leaf on each end of the arc it was given
+    open_ctx = pt.TreeFigure(tr, layout="circular", extent=340)\
+        .branches()._build()
+    span = [t._angle for t in open_ctx.tree.leaves()]
+    assert (max(span) - min(span)) == pytest.approx(math.radians(340))
 
 
 # --------------------------------------------------------------------------
@@ -746,6 +795,37 @@ def test_the_taxon_test_is_shallow_but_predictable():
 def test_italic_rejects_a_word_it_does_not_know():
     with pytest.raises(ValueError, match="italic"):
         pt.TreeFigure(_mixed_tree()).tip_labels(italic="species")
+
+
+# --------------------------------------------------------------------------
+# naming only a few tips out of many
+# --------------------------------------------------------------------------
+def _named(tr, **kw):
+    ctx = pt.TreeFigure(tr, layout="circular").tip_labels(**kw)._build()
+    return sorted(lb.text for lb in ctx.scene.labels if lb.text)
+
+
+def test_only_names_the_tips_asked_for_and_nothing_else():
+    # what a dense published tree does: thousands of unlabelled tips and two
+    # named reference sequences the reader is meant to find
+    tr = pt.datasets.random_tree(40, seed=3)
+    names = tr.leaf_names()
+    assert _named(tr, only=[names[0], names[17]]) == sorted(
+        [names[0], names[17]])
+    assert _named(tr, only=names[5]) == [names[5]]     # a bare string too
+
+
+def test_only_beats_the_thinning_that_would_have_dropped_the_tip():
+    tr = pt.datasets.random_tree(40, seed=3)
+    wanted = tr.leaf_names()[7]
+    # max_labels alone keeps every 20th tip, which does not include this one
+    assert wanted not in _named(tr, max_labels=2)
+    assert _named(tr, only=wanted, max_labels=2) == [wanted]
+
+
+def test_max_labels_zero_names_none_of_them():
+    tr = pt.datasets.random_tree(40, seed=3)
+    assert _named(tr, max_labels=0) == []
 
 
 def test_a_circular_highlight_is_a_ring_not_a_sector():

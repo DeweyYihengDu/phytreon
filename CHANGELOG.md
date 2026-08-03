@@ -59,6 +59,25 @@ All notable changes to phytreon are documented here. Format loosely follows
     Aligning needs to know every group at once, so a lone `node=`/`taxa=`
     highlight still hugs its clade whatever the default.
 
+- **`tip_labels(only=...)`** names just the tips you ask for and leaves the rest
+  unlabelled. `max_labels` thins *evenly*, which is right when the point is to
+  sample a dense tree and wrong when the point is to call out particular
+  sequences — a 5,000-tip figure that names the two references the paper is
+  about cannot get there by thinning, because the tip it needs is not on the
+  every-*n*th grid. Takes one name or a list; it overrides the thinning rather
+  than fighting it. `max_labels=0` now means *name none of them*, which is what
+  a dense circular tree wants once the ring tracks carry the story (it was
+  silently read as "no limit").
+- **`ring(geom="stack")`** draws one ring in which every column is a *segment*
+  of each tip's bar, scaled so the segments fill the ring's width — a
+  composition ring: *of the sequences at this tip, what fraction came from each
+  domain*. Neither of the other geoms can say that: a `"bar"` carries one
+  number and a `"tile"` only which category won. The parts are normalised per
+  tip, so the ring reads as a composition however the raw counts are scaled, and
+  a tip whose parts are all zero is left blank rather than normalised to
+  something. `title=` names the key, since the columns are its entries and none
+  of them can double as its heading.
+
 - **`tip_labels(italic=...)` decides per name, not per figure.** Genus and
   species are italicised by convention and a catch-all label like `others` or
   `unclassified` is not, so one flag for the whole figure is wrong wherever both
@@ -71,6 +90,37 @@ All notable changes to phytreon are documented here. Format loosely follows
   read off the name is easier to predict than a clever one.
 
 ### Fixed
+- **A clade bracket on a circular tree goes outside the rings and the names.**
+  It was drawn at the tip circle, so on any figure with ring tracks the bracket
+  ran *under* them and its name across them — illegible, and it hid the data it
+  was put there to point at. It now sits outside whatever the rings claimed and
+  outside the tip labels **in its own sector**, and reads outward so the clades
+  on the left half are not upside down. Per-sector rather than per-figure on
+  purpose: measured against the whole drawing, one long name on the far side
+  pushes every bracket out to that radius and leaves the rest floating in white
+  space. Where the names end depends on the font and the figure size, so the
+  renderer resolves it after drawing them (`push_out`/`push_span` on a scene
+  item — the radial counterpart of the `align` shift the right-side tracks use).
+- **A closed fan no longer seats its last leaf on its first.** At `extent=360`
+  the two ends of the arc are the same angle, and spacing the leaf rows over
+  `n-1` gaps put leaf *n* exactly where leaf 1 already was — one branch, one
+  label and one stack of ring tiles drawn over another, at the seam, in every
+  full circle. A closed fan now spaces over `n` gaps, so the last leaf lands one
+  slot short of coming round; an open fan keeps `n-1`, which is what puts a leaf
+  on each end of the arc it was given.
+- **The scale bar on a circular tree sits in the fan opening.** It was placed
+  from the whole drawing's bounding box, which on a round figure is several
+  times the tree's radius: the tick marks and the label offset came out
+  bounding-box sized, so the number landed on the rule it labels, and the bar
+  itself — correct in branch-length units — read as a typo next to a figure that
+  wide. It now measures against the tree's radius and goes in the one wedge a
+  fan leaves empty of tips, branches and ring segments, just outside the tip
+  circle where that wedge is widest (near the centre it is narrower than the
+  number, and the two ends of the number spill over the leaves flanking the
+  opening). A closed circle has no such wedge, so there it goes below the
+  outermost ring. The default length is now a tenth of what the tree *spans*
+  rather than of its radius — on a circle the radius is half the span, which
+  made the default bar a stub shorter than its own label.
 - **Keys stack by measurement instead of by guess.** Each legend block's height
   was estimated from its entry count, which left a ragged column and, on the
   tree-of-life figure, pushed the colour bar a quarter of the figure's height

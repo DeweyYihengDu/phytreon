@@ -38,7 +38,14 @@ class CircularLayout(Layout):
         return (r * math.cos(a), r * math.sin(a))
 
     def _angle_of_row(self, row: float) -> float:
-        denom = max(self.n_leaves - 1, 1)
+        # A *closed* fan must not seat the last leaf on top of the first: at
+        # extent=360 the two ends of the arc are the same angle, so spacing the
+        # rows over n-1 gaps draws the last leaf, its label and its ring tiles
+        # over the first. Space them over n gaps instead and the last leaf lands
+        # one slot short of coming round. An open fan keeps n-1, which puts a
+        # leaf on each end of the arc it was given.
+        closed = self.extent >= 2 * math.pi - 1e-9
+        denom = max(self.n_leaves - (0 if closed else 1), 1)
         return self.start + (row / denom) * self.extent
 
     def _radius_of(self, node: Node) -> float:

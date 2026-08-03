@@ -152,6 +152,53 @@ def test_a_circular_tree_with_a_ring_still_prints_every_name(big):
            .tip_labels().ring(meta, columns=["domain"]).titled("ring").draw())
 
 
+def test_a_circular_clade_bracket_clears_the_rings_and_the_names(big):
+    # drawn at the tip circle -- which is where it used to go -- the bracket
+    # lands under every ring track and its name runs across them, hiding the
+    # data it was put there to point at
+    import os
+    import pandas as pd
+    here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "examples", "data")
+    meta = pd.read_csv(os.path.join(here, "big16S_metadata.csv"))
+    by = meta.set_index("name")
+    cyanos = [n for n in big.leaf_names()
+              if by.loc[n, "phylum"] == "Cyanobacteriota"]
+    named = [n for n in big.leaf_names() if n in ("Escherichia_coli", cyanos[0])]
+    fig = (pt.TreeFigure(big, layout="circular", extent=340)
+           .ring(meta, columns=["domain"], width=0.1, colnames=False)
+           .ring(meta, columns=["phylum"], width=0.1, colnames=False)
+           .tip_labels(only=named, size=9)
+           .clade_label("Cyanobacteriota", taxa=cyanos)
+           .draw())
+    fig.canvas.draw()
+    ax = fig.axes[0]
+    inv = ax.transData.inverted()
+    radius = lambda x, y: math.hypot(x, y)                 # noqa: E731
+    # the ring tiles are the filled polygons; the bracket must be outside them
+    ring_out = max(radius(x, y) for patch in ax.patches
+                   for x, y in patch.get_path().vertices)
+    bracket = [ln for ln in ax.lines if ln.get_linewidth() == 2.0
+               and len(ln.get_xydata()) > 2]
+    assert bracket, "no clade bracket drawn"
+    arc = max(radius(x, y) for ln in bracket for x, y in ln.get_xydata())
+    assert arc > ring_out, "bracket sits under the rings"
+    # and past the one tip label inside its own sector
+    span = [ln for ln in bracket][0].get_xydata()
+    a0 = min(math.atan2(y, x) for x, y in span)
+    a1 = max(math.atan2(y, x) for x, y in span)
+    for t in _all_text(fig):
+        if t.get_text() != cyanos[0]:
+            continue
+        bb = t.get_window_extent(renderer=fig.canvas.get_renderer())
+        far = max(radius(*inv.transform(c)) for c in
+                  ((bb.x0, bb.y0), (bb.x1, bb.y1), (bb.x1, bb.y0), (bb.x0, bb.y1)))
+        ang = math.atan2(*reversed(inv.transform((bb.x0, bb.y0))))
+        if a0 <= ang <= a1:
+            assert arc > far, "bracket runs through the name it spans"
+    _clean(fig)
+
+
 def test_thinning_the_labels_shrinks_the_canvas_instead_of_wasting_it():
     # asking for fewer names means fewer to seat, so the figure should not be
     # sized for names that are never drawn

@@ -97,10 +97,16 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
     reach_polys = [p for p in scene.polygons if not p.align
                    and (p.reach is not None or p.reach_width is not None)]
     al_polys = [p for p in scene.polygons if p.align]
-    base_paths = [p for p in scene.paths if not p.align]
+    base_paths = [p for p in scene.paths if not p.align and p.push_out is None]
     al_paths = [p for p in scene.paths if p.align]
-    base_labels = [lb for lb in scene.labels if not lb.align]
+    base_labels = [lb for lb in scene.labels
+                   if not lb.align and lb.push_out is None]
     al_labels = [lb for lb in scene.labels if lb.align]
+    # the radial counterpart of the aligned tracks: held back until the names
+    # are drawn, then moved out past the radius they actually reach
+    push_paths = [p for p in scene.paths if not p.align and p.push_out is not None]
+    push_labels = [lb for lb in scene.labels
+                   if not lb.align and lb.push_out is not None]
     base_rasters = [r for r in scene.rasters if not r.align]
     al_rasters = [r for r in scene.rasters if r.align]
 
@@ -117,7 +123,13 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
                 markeredgecolor=m.edgecolor or m.color, markeredgewidth=0.6,
                 zorder=m.zorder, alpha=m.opacity)
     base_text = [_draw_label(ax, lb) for lb in base_labels]
-    tiplabs = [t for t, lb in zip(base_text, base_labels) if lb.role == "tiplab"]
+    # ``role == "tiplab"`` marks every tip name in any layout, but this list
+    # drives the *rightward* measurements (aligned tracks, where the legend
+    # column starts), which only mean something where x is depth. A round
+    # layout's names radiate, so what bounds them is a radius per direction --
+    # see :func:`_label_seats`.
+    tiplabs = [] if equal else [t for t, lb in zip(base_text, base_labels)
+                                if lb.role == "tiplab"]
 
     # frame
     ax.set_axis_off()
@@ -170,9 +182,27 @@ def render_mpl(ctx: RenderContext, title: Optional[str] = None,
     # shapes can be resolved. Painting order does not matter -- zorder decides
     # what ends up behind what -- so these still sit under the branches.
     reach_patches = []
+    target = None
     if reach_polys:
         target = (_measure_radius(fig, ax, base_text) if equal
                   else _measure_right(fig, ax, tiplabs or base_text))
+    if push_paths or push_labels:
+        # A clade bracket outside a circular tree has to clear the names it
+        # passes over, and how far those reach depends on the font and the
+        # figure -- the same thing the aligned right-side tracks solve along x.
+        # Only the names *in its own sector* count: measured against the whole
+        # figure, one long name on the far side pushes every bracket out to that
+        # radius and leaves the rest floating in white space.
+        seats = _label_seats(fig, ax, base_text, base_labels)
+        for p in push_paths:
+            for line in _draw_path(ax, _push_radius(p, seats)) or []:
+                line.set_clip_on(False)
+                reach_patches.append(line)
+        for lb in push_labels:
+            art = _draw_label(ax, _push_radius(lb, seats))
+            art.set_clip_on(False)
+            reach_patches.append(art)
+    if reach_polys:
         for poly in sorted(reach_polys, key=lambda p: p.zorder):
             patch = _draw_polygon(ax, _stretch_reach(poly, target, equal))
             # A band stretched out to the end of the names reaches past the
@@ -291,9 +321,9 @@ def _draw_path(ax, p):
     # all, so whatever an element or a user asked for, it does not leave here
     # invisible. Elements that scale width by data already map into a range
     # that starts above it, so this floor should never be the thing deciding.
-    ax.plot(xs, ys, color=p.color, linewidth=max(p.width, MIN_STROKE_PT),
-            linestyle=_DASH_MPL.get(p.dash, "-"), solid_capstyle="round",
-            solid_joinstyle="round", zorder=p.zorder, alpha=p.opacity)
+    return ax.plot(xs, ys, color=p.color, linewidth=max(p.width, MIN_STROKE_PT),
+                   linestyle=_DASH_MPL.get(p.dash, "-"), solid_capstyle="round",
+                   solid_joinstyle="round", zorder=p.zorder, alpha=p.opacity)
 
 
 def _draw_raster(ax, r):
@@ -352,6 +382,57 @@ def _measure_right(fig, ax, artists):
             dx = inv.transform(corner)[0]
             mx = dx if mx is None else max(mx, dx)
     return mx
+
+
+def _label_seats(fig, ax, artists, specs):
+    """``(angle, radius)`` for every tip label actually drawn.
+
+    Where a circular tree's names end is a radius per *direction*, not one
+    number: the tips carry names of very different lengths, and a bracket over
+    one clade only has to clear the ones it passes over.
+    """
+    fig.canvas.draw()
+    rend = fig.canvas.get_renderer()
+    inv = ax.transData.inverted()
+    seats = []
+    for art, spec in zip(artists, specs):
+        if spec.role != "tiplab":
+            continue
+        bb = art.get_window_extent(renderer=rend)
+        far = max(math.hypot(*inv.transform(c)) for c in
+                  ((bb.x0, bb.y0), (bb.x1, bb.y1), (bb.x1, bb.y0), (bb.x0, bb.y1)))
+        seats.append((math.atan2(spec.y, spec.x), far))
+    return seats
+
+
+def _push_radius(item, seats):
+    """Move a path's points (or a label's anchor) outward, same angle.
+
+    The radial counterpart of :func:`_shift_path`: out to whichever is further,
+    the item's own radius or the tip labels inside its ``push_span``, plus its
+    ``push_out`` clearance.
+    """
+    if hasattr(item, "points"):
+        radii = [math.hypot(x, y) for x, y in item.points]
+        own = max(radii) if radii else 0.0
+    else:
+        own = math.hypot(item.x, item.y)
+    span = item.push_span
+    if span is not None:
+        a0, a1 = span
+        width = (a1 - a0) % (2 * math.pi)
+        for ang, far in seats:
+            if (ang - a0) % (2 * math.pi) <= width and far > own:
+                own = far
+    radius = own + item.push_out
+    if hasattr(item, "points"):
+        moved = [(x / r * radius, y / r * radius) if r > 1e-12 else (x, y)
+                 for (x, y), r in zip(item.points, radii)]
+        return replace(item, points=moved)
+    r = math.hypot(item.x, item.y)
+    if r <= 1e-12:
+        return item
+    return replace(item, x=item.x / r * radius, y=item.y / r * radius)
 
 
 def _measure_radius(fig, ax, texts):

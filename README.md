@@ -192,7 +192,11 @@ Every figure below is produced by a script in [`examples/`](examples/)
       <b>Groups as a ring</b><br>
       <sub>The same grouping on a circular tree: a ring outside it, not sectors filled from the middle, so the tree stays readable — <code>tree_styles_demo.py</code></sub>
     </td>
-    <td width="50%"></td>
+    <td width="50%">
+      <img src="assets/gallery/dense_circular.png" alt="Circular tree with four annotation rings, two named reference tips, a bracketed clade and a scale bar"><br>
+      <b>Layered circular tree</b><br>
+      <sub>What a large family looks like in print: no tip labels except the references, a tile ring, a composition ring, a bar ring, one clade bracketed — <code>dense_circular_demo.py</code></sub>
+    </td>
   </tr>
 </table>
 
@@ -553,10 +557,11 @@ python examples/pipeline_demo.py      # raw sequences -> align -> trim -> NJ -> 
 python examples/tree_of_life_demo.py  # real 16S -> tree + circular metadata rings
 python examples/showcase_circular.py  # lineage colors + tile + bar rings + shapes
 python examples/tracks_demo.py        # rectangular tile / bar tracks + alignment track
+python examples/dense_circular_demo.py # the layered style journals use for big families
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 37 tests
+pytest -q                             # 296 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

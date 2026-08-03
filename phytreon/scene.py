@@ -35,6 +35,16 @@ class Path:
     zorder: float = 1.0
     opacity: float = 1.0
     align: bool = False                 # shift right to clear the tip-label band
+    #: Radial counterpart of ``align`` for round layouts: move every point out
+    #: to the radius the drawn text actually reaches, plus this much clearance
+    #: (data units). Only the renderer can know that radius, since how much
+    #: room a name takes depends on the font and the figure size.
+    push_out: Optional[float] = None
+    #: Angles (radians, ``(from, to)``) this item spans. Only the tip labels
+    #: inside that range are allowed to push it outward -- a bracket over one
+    #: clade should clear the names it passes over, not the longest name
+    #: anywhere in the figure.
+    push_span: Optional[Tuple[float, float]] = None
 
 
 @dataclass
@@ -66,6 +76,8 @@ class Label:
     italic: bool = False
     align: bool = False                 # shift right to clear the tip-label band
     role: str = ""                      # "tiplab" labels drive alignment measurement
+    push_out: Optional[float] = None                   # see :class:`Path`
+    push_span: Optional[Tuple[float, float]] = None    # see :class:`Path`
 
 
 @dataclass

@@ -2,6 +2,8 @@
 import matplotlib
 matplotlib.use("Agg")
 
+import pytest
+
 import phytreon as pt
 
 
@@ -566,3 +568,64 @@ def test_ring_leaders_connect_every_tip_to_the_ring():
     ring_inner = min(radius(pt_) for poly in ctx.scene.polygons if poly.label
                      for pt_ in poly.points)
     assert max(radius(p.points[1]) for p in leads) <= ring_inner + 1e-9
+
+
+def _stack_fig(n=12, cols=("Archaea", "Bacteria", "Eukaryota"), **kw):
+    import pandas as pd
+    tr = pt.datasets.random_tree(n, seed=11)
+    rows = {"name": tr.leaf_names()}
+    for i, col in enumerate(cols):
+        rows[col] = [i + 1.0] * n            # 1:2:3, so the shares are fixed
+    df = pd.DataFrame(rows)
+    return tr, (pt.TreeFigure(tr, layout="circular")
+                .ring(df, columns=list(cols), geom="stack", **kw))
+
+
+def test_a_stacked_ring_is_one_ring_of_composition_segments():
+    # "of the sequences at this tip, what fraction came from each domain" --
+    # a value ring carries one number and a tile ring only which category won
+    tr, fig = _stack_fig(width=0.3, gap=0.0)
+    ctx = fig._build()
+    cells = [p for p in ctx.scene.polygons if p.label and "|" in p.label]
+    assert len(cells) == 12 * 3                     # three segments per tip
+    radius = lambda p: (p[0] ** 2 + p[1] ** 2) ** 0.5      # noqa: E731
+    radii = [radius(pt_) for c in cells for pt_ in c.points]
+    band = max(radii) - min(radii)
+    # one ring wide, not three stacked outward
+    assert band == pytest.approx(0.3 * ctx.layout.max_x, rel=1e-6)
+    # one slot is reserved for it, so tip labels do not clear three ring widths
+    tiles = _stack_fig(width=0.3, gap=0.0)[1]._elements[-1]
+    tiles.geom = "tile"
+    spare = tiles.reserved_extent(ctx.layout) - (ctx.outer_radius - ctx.ring_base)
+    assert spare == pytest.approx(2 * band)          # the two slots not taken
+    # and the shares are 1:2:3 of that width, in column order
+    for tip in tr.leaf_names()[:1]:
+        mine = [c for c in cells if c.label.startswith(tip + " |")]
+        thick = sorted(round(max(radius(p) for p in c.points)
+                             - min(radius(p) for p in c.points), 9)
+                       for c in mine)
+        assert [t / thick[0] for t in thick] == pytest.approx([1, 2, 3], rel=1e-6)
+
+
+def test_a_stacked_ring_takes_its_own_legend_title():
+    _, fig = _stack_fig(title="Taxonomic distribution")
+    ctx = fig._build()
+    entries = dict(ctx.scene.legends)["Taxonomic distribution"]
+    assert ctx.scene.legend_swatch["Taxonomic distribution"] == "patch"
+    # the columns are the keys -- none of them is spent on the title
+    assert {label for label, _ in entries} == {"Archaea", "Bacteria",
+                                               "Eukaryota"}
+
+
+def test_a_tip_with_nothing_in_it_stays_blank():
+    import pandas as pd
+    tr = pt.datasets.random_tree(6, seed=11)
+    names = tr.leaf_names()
+    df = pd.DataFrame({"name": names,
+                       "a": [1.0, 0.0, 1, 1, 1, 1],
+                       "b": [1.0, 0.0, 1, 1, 1, 1]})
+    ctx = (pt.TreeFigure(tr, layout="circular")
+           .ring(df, columns=["a", "b"], geom="stack")._build())
+    cells = [p for p in ctx.scene.polygons if p.label and "|" in p.label]
+    assert not any(c.label.startswith(names[1] + " |") for c in cells)
+    assert len(cells) == 5 * 2
