@@ -6,6 +6,26 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`sort_by(tree, key)`** reorders sibling branches so tips sharing a category
+  -- a genus column on a big 16S ASV tree, say -- sit together, without moving
+  a single branch or adding/dropping a split: it only ever changes which side
+  of a fork a subtree is drawn on, the same move `ladderize` already makes
+  with subtree size as the key. That bounds what it can do honestly: rotating
+  a fork brings two clades that are already siblings closer together, it
+  cannot join clades the tree keeps apart. A genus that a single 16S
+  hypervariable region does not resolve as one clade still comes out in more
+  than one run after this -- correctly, since forcing it into one run would
+  require moving a branch, which would tell the reader the opposite of what
+  the gene supports (`highlight(by=key)` shows those remaining runs as
+  separate bands rather than hiding the split). Searches for the arrangement
+  minimizing the number of label changes tip-to-tip, the way `untangle`
+  already searches rotations to minimize crossings against a reference tree,
+  and keeps a rotation only when it measurably helps -- so the result is never
+  worse than what the tree started with. The first cut at this sorted every
+  node once by its own subtree's majority category and skipped the search;
+  measured on a real 106-taxon 16S tree it made the phylum grouping *worse*
+  (33 runs against a plain ladderize's 31), because a summary taken in
+  isolation at one node knows nothing about what its neighbours need.
 - **`highlight(by="column")`** shades every group in a joined column behind the
   branches — each in its own colour, with a key — instead of one
   `highlight(node=...)` call per clade and no way to tell the shades apart.

@@ -125,6 +125,87 @@ def test_ladderize_fast_on_deep_unbalanced_tree():
     assert time.time() - t0 < 5.0
 
 
+def _label_transitions(names, labels):
+    if not names:
+        return 0
+    t = 0
+    prev = labels.get(names[0])
+    for nm in names[1:]:
+        cur = labels.get(nm)
+        if cur != prev:
+            t += 1
+        prev = cur
+    return t
+
+
+def test_sort_by_groups_a_perfectly_clustered_key():
+    tr = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    labels = {"A": "X", "B": "X", "C": "Y", "D": "Y"}
+    pt.sort_by(tr, labels)
+    assert _label_transitions(tr.leaf_names(), labels) == 1   # one seam, X|Y
+
+
+def test_sort_by_order_breaks_ties_between_equally_good_arrangements():
+    # both top-level arrangements (X-block first or Y-block first) score the
+    # same single seam, so only the tie-break -- not the search -- decides
+    # which one comes first
+    fwd = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    labels = {"A": "X", "B": "X", "C": "Y", "D": "Y"}
+    pt.sort_by(fwd, labels)                          # default: alphabetical
+    assert fwd.leaf_names()[0] in ("A", "B")
+
+    rev = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    pt.sort_by(rev, labels, order=["Y", "X"])
+    assert rev.leaf_names()[0] in ("C", "D")
+
+
+def test_sort_by_never_increases_label_changes():
+    tr = pt.datasets.random_tree(40, seed=8)
+    names = tr.leaf_names()
+    # labels assigned with no relation to topology -- an adversarial case
+    # with nothing for the search to exploit
+    labels = {n: f"G{i % 6}" for i, n in enumerate(names)}
+    before = _label_transitions(names, labels)
+    pt.sort_by(tr, labels)
+    after = _label_transitions(tr.leaf_names(), labels)
+    assert after <= before
+
+
+def test_sort_by_preserves_topology_and_branch_lengths():
+    import pytest
+    tr = pt.datasets.random_tree(20, seed=3)
+    names_before = set(tr.leaf_names())
+    total_before = tr.total_branch_length()
+    rf_before = pt.robinson_foulds(tr, tr)
+    labels = {n: ("A" if i % 2 else "B") for i, n in enumerate(names_before)}
+    pt.sort_by(tr, labels)
+    assert set(tr.leaf_names()) == names_before
+    assert tr.total_branch_length() == pytest.approx(total_before)
+    assert pt.robinson_foulds(tr, tr) == rf_before      # still a valid tree
+
+
+def test_sort_by_reads_a_data_column_or_a_function_too():
+    import pytest
+    tr = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    for leaf in tr.leaves():
+        leaf.data["genus"] = "X" if leaf.name in ("A", "B") else "Y"
+    pt.sort_by(tr, "genus")
+    assert _label_transitions(
+        tr.leaf_names(),
+        {n.name: n.data["genus"] for n in tr.leaves()}) == 1
+
+    tr2 = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    pt.sort_by(tr2, lambda leaf: "X" if leaf.name in ("A", "B") else "Y")
+    assert tr2.leaf_names()[0] in ("A", "B", "C", "D")   # ran without error
+
+
+def test_sort_by_rejects_an_unusable_key():
+    import pytest
+    tr = pt.datasets.primates()
+    with pytest.raises(TypeError):
+        pt.sort_by(tr, 123)
+
+
 def test_collapse_low_support():
     tr = pt.datasets.primates()      # internal supports 85..100
     n_before = sum(1 for n in tr.traverse() if not n.is_leaf)

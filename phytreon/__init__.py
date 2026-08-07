@@ -37,7 +37,7 @@ from .infer import (
 )
 from .comparative import ace_parsimony, ace_ml, ace_continuous, stochastic_map
 from .treeops import (
-    rotate, flip, swap_children, ladderize, collapse_low_support,
+    rotate, flip, swap_children, ladderize, sort_by, collapse_low_support,
     scale_clade, cut_tree, midpoint_root, group_clade, group_otu,
     robinson_foulds, prune_to_taxa, untangle, crossing_number,
     collapse_clade,
@@ -59,7 +59,7 @@ __all__ = [
     "reconstruct_ancestral_mutations",
     "expression_distance_matrix", "expression_dendrogram",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
-    "rotate", "flip", "swap_children", "ladderize", "collapse_low_support",
+    "rotate", "flip", "swap_children", "ladderize", "sort_by", "collapse_low_support",
     "scale_clade", "cut_tree", "midpoint_root", "group_clade", "group_otu",
     "prune_to_taxa", "untangle", "crossing_number", "collapse_clade",
 ]

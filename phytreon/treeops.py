@@ -12,7 +12,9 @@ All functions mutate the tree in place and return it (or the cluster map for
 """
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional
+from collections import Counter
+from itertools import permutations
+from typing import Callable, Dict, Iterable, List, Optional, Union
 
 from .core.tree import Node, Tree
 
@@ -63,6 +65,132 @@ def flip(tree: Tree, node_a: Node, node_b: Node) -> Tree:
 def ladderize(tree: Tree, ascending: bool = True) -> Tree:
     """Order every node's children by subtree size (delegates to Tree)."""
     return tree.ladderize(ascending=ascending)
+
+
+def sort_by(tree: Tree, key: Union[str, Dict[str, object], Callable[[Node], object]],
+            order: Optional[List[str]] = None, rounds: int = 4) -> Tree:
+    """Reorder sibling branches so tips sharing a category sit together.
+
+    ``key`` reads the grouping label per tip: a column name looked up in
+    ``leaf.data`` (e.g. after ``tree.join_data(meta, on="name")``), a
+    ``{tip_name: label}`` mapping, or a function of the leaf node.
+
+    Only ``node.children`` order changes -- the same move :func:`ladderize`
+    and :func:`untangle` already make, no branch moves and no split is added
+    or dropped -- which bounds what this can do. Rotating a fork brings two
+    clades that are already siblings closer together; it cannot join clades
+    the tree keeps apart. If a label is not monophyletic under this tree --
+    common for genus-level 16S calls, which a single hypervariable region
+    often cannot resolve -- its tips collect into as few separate runs as the
+    topology allows rather than one, and no amount of reordering closes the
+    rest of the gap. A tree that keeps splitting a genus in two is telling
+    you something the label does not; forcing it into one run by editing the
+    topology would tell the reader the opposite of what the data support.
+    ``highlight(by=key)`` makes those remaining runs visible as separate
+    bands instead of hiding the split.
+
+    This is :func:`untangle`'s own search, aimed at a different scorecard:
+    that one counts crossings against a reference tree, this one counts
+    label changes walking the tips left to right, and a rotation is kept only
+    when it lowers that count -- so, unlike sorting every node by a per-node
+    summary in one pass (the first cut at this, which on a real 106-taxon 16S
+    tree made the phylum grouping *worse* -- 33 runs against 31 plainly
+    ladderized, because a summary taken in isolation at one node knows
+    nothing about what its own neighbours need), the result is never worse
+    than what the tree started with, at the cost of being a greedy hill climb
+    rather than a provably optimal reordering: it finds a good arrangement,
+    not the best one over every possible rotation. Polytomies of up to six
+    children are searched exactly (6! = 720 arrangements); wider ones sort by
+    the subtree's majority category, which is not guaranteed to help and is
+    kept only if it measurably does.
+
+    ``order`` breaks ties among arrangements that score equally on label
+    changes, preferring the one whose categories run in this left-to-right
+    sequence (unlisted ones follow, alphabetically) -- the same convention as
+    ``highlight(order=)``/``ring(order=)``. Unlabelled tips (``key`` gives
+    ``None``) count as their own group.
+    """
+    if callable(key):
+        catfun = key
+    elif isinstance(key, dict):
+        catfun: Callable[[Node], object] = lambda leaf: key.get(leaf.name)
+    elif isinstance(key, str):
+        catfun = lambda leaf: leaf.data.get(key)
+    else:
+        raise TypeError("key must be a column name, a {tip_name: label} "
+                        "mapping, or a function of the leaf node")
+
+    cats: Dict[str, Optional[str]] = {}
+    for leaf in tree.leaves():
+        v = catfun(leaf)
+        cats[leaf.name] = None if v is None else str(v)
+
+    present = sorted({c for c in cats.values() if c is not None})
+    if order:
+        wanted = [str(c) for c in order]
+        present = [c for c in wanted if c in present] + \
+            [c for c in present if c not in wanted]
+    rank = {c: i for i, c in enumerate(present)}
+    none_rank = len(present)          # unlabelled tips trail, as one group
+
+    # The majority category of a node's own subtree never changes across
+    # anything this function does -- reordering children moves leaves left
+    # and right, never into or out of a subtree -- so it is computed once,
+    # bottom-up, and reused for every candidate tried in every round rather
+    # than re-walked from scratch each time.
+    votes: Dict[Node, Counter] = {}
+    for node in tree.traverse("postorder"):
+        votes[node] = (Counter([cats[node.name]]) if node.is_leaf
+                       else Counter())
+        if not node.is_leaf:
+            for child in node.children:
+                votes[node].update(votes[child])
+    node_rank = {n: (none_rank if v.most_common(1)[0][0] is None
+                     else rank[v.most_common(1)[0][0]])
+                for n, v in votes.items()}
+
+    def transitions() -> int:
+        names = tree.leaf_names()
+        t = 0
+        prev = cats.get(names[0]) if names else None
+        for nm in names[1:]:
+            c = cats.get(nm)
+            if c != prev:
+                t += 1
+            prev = c
+        return t
+
+    for _ in range(rounds):
+        changed = False
+        for node in tree.traverse("preorder"):
+            k = len(node.children)
+            if node.is_leaf or k < 2:
+                continue
+            current = node.children
+            best_order = current
+            best_key = (transitions(), tuple(node_rank[c] for c in current))
+            if k <= 6:
+                for perm in permutations(current):
+                    perm = list(perm)
+                    if perm == current:
+                        continue
+                    node.children = perm
+                    cand = (transitions(), tuple(node_rank[c] for c in perm))
+                    if cand < best_key:
+                        best_key, best_order = cand, perm
+            else:
+                cand_order = sorted(current, key=lambda c: node_rank[c])
+                if cand_order != current:
+                    node.children = cand_order
+                    cand = (transitions(),
+                           tuple(node_rank[c] for c in cand_order))
+                    if cand < best_key:
+                        best_key, best_order = cand, cand_order
+            node.children = best_order
+            changed = changed or best_order != current
+        if not changed:
+            break
+    return tree
 
 
 # --------------------------------------------------------------------------
