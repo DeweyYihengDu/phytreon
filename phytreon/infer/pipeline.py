@@ -33,6 +33,7 @@ def build_tree(sequences: SeqInput, *,
                trim_kw: Optional[Dict] = None,
                method: str = "nj",
                dist_model: str = "jc69",
+               constraint: Optional[Union[Dict[str, object], Tree, str]] = None,
                root: str = "none",
                bootstrap: int = 0,
                ml_engine: str = "native",
@@ -58,6 +59,29 @@ def build_tree(sequences: SeqInput, *,
                 ``min_occupancy``, ``min_conservation`` ...).
     method      ``"nj"`` | ``"upgma"`` | ``"ml"`` | ``"parsimony"``/``"mp"``.
     bootstrap   number of bootstrap replicates (0 = none; distance methods).
+    constraint  Force a taxonomy grouping (e.g. genus) to come out
+                monophyletic, as a ``{tip_name: label}`` mapping (a tip
+                missing or mapped to ``None`` is left free). Two different
+                strengths, depending on ``method``:
+
+                * ``method="nj"`` runs :func:`phytreon.infer.distance.
+                  constrained_nj`: NJ inside each group, then NJ again to
+                  place the groups (and any free tip) relative to each
+                  other. This *forces* every group monophyletic -- there is
+                  no way for the result to disagree, even where the
+                  sequence data would.
+                * ``method="ml"`` with ``ml_engine`` set to an external
+                  engine (not ``"native"``) instead runs a *constrained*
+                  search: the mapping is turned into polytomies (see
+                  :func:`phytreon.infer.constraint.constraint_tree`) and
+                  passed to IQ-TREE's ``-g``, which still resolves
+                  everything -- within a group, between groups, where an
+                  unlisted tip goes -- by likelihood, and only refuses to
+                  break the groups named. Pass a :class:`~phytreon.core.
+                  tree.Tree` or a constraint-file path here directly to
+                  skip that conversion. Native ML and the distance/
+                  parsimony methods other than NJ have no constrained
+                  search to hook into and reject ``constraint``.
 
     Protein sequences work the same way -- pass ``ml_model="JTT"``/``"WAG"``/
     ``"LG"`` for ``method="ml"`` (:func:`phytreon.infer.ml_native.ml_tree`
@@ -94,12 +118,30 @@ def build_tree(sequences: SeqInput, *,
     # 3. inference ------------------------------------------------------
     if method == "ml":
         if ml_engine == "native":
+            if constraint is not None:
+                raise ValueError(
+                    "the native ML engine has no constrained search to hook "
+                    "into -- use ml_engine='iqtree' for a constrained search, "
+                    "or method='nj' to force the grouping outright"
+                )
             from .ml_native import ml_tree as _native_ml
             tree = _native_ml(aln, model=ml_model, gamma=ml_gamma, search=ml_search)
         else:                                   # external engine (iqtree/fasttree)
             from .ml import infer_ml
-            tree = infer_ml(aln, tool=ml_engine)
+            if constraint is None:
+                tree = infer_ml(aln, tool=ml_engine)
+            else:
+                if isinstance(constraint, dict):
+                    from .constraint import constraint_tree
+                    constraint = constraint_tree(constraint)
+                tree = infer_ml(aln, tool=ml_engine, constraint=constraint)
     elif method in ("parsimony", "mp"):
+        if constraint is not None:
+            raise ValueError(
+                "parsimony search has no constrained mode here -- use "
+                "method='nj' to force the grouping outright, or "
+                "method='ml' with ml_engine='iqtree' for a constrained search"
+            )
         if parsimony_model == "camin_sokal":
             from .lineage import lineage_tree
             tree = lineage_tree(aln, search=ml_search)
@@ -110,7 +152,24 @@ def build_tree(sequences: SeqInput, *,
         from .bootstrap import distance_matrix_model
         from .distance import neighbor_joining, upgma
         names, D = distance_matrix_model(aln, dist_model)
-        tree = neighbor_joining(names, D) if method == "nj" else upgma(names, D)
+        if constraint is None:
+            tree = neighbor_joining(names, D) if method == "nj" else upgma(names, D)
+        elif method == "upgma":
+            raise ValueError(
+                "constrained UPGMA is not implemented -- use method='nj' to "
+                "force the grouping outright, or method='ml' with "
+                "ml_engine='iqtree' for a constrained search"
+            )
+        elif not isinstance(constraint, dict):
+            raise TypeError(
+                "constrained_nj needs a {tip_name: label} mapping, not a "
+                "constraint tree/file -- build the grouping dict yourself, "
+                "or use method='ml' with ml_engine='iqtree' to search under "
+                "an existing constraint tree"
+            )
+        else:
+            from .distance import constrained_nj
+            tree = constrained_nj(names, D, constraint)
 
     # 3b. rooting -------------------------------------------------------
     if root == "midpoint":

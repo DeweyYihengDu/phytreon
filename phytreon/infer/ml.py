@@ -29,9 +29,19 @@ def _require(tool: str, path: Optional[str]) -> str:
 
 
 def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
-                 path: Optional[str] = None, extra_args: Optional[List[str]] = None
-                 ) -> Tree:
-    """ML tree with IQ-TREE. ``model='MFP'`` runs ModelFinder Plus."""
+                 path: Optional[str] = None, extra_args: Optional[List[str]] = None,
+                 constraint=None) -> Tree:
+    """ML tree with IQ-TREE. ``model='MFP'`` runs ModelFinder Plus.
+
+    ``constraint`` asks IQ-TREE to only search trees that respect a set of
+    clades (``-g``) -- typically the polytomies :func:`~phytreon.infer.
+    constraint.constraint_tree` builds from a taxonomy column, one per group,
+    each left internally unresolved so IQ-TREE still picks the topology
+    *within* every group and *between* groups by likelihood; only "no other
+    tip may land inside this group" is fixed. Pass the :class:`~phytreon.
+    core.tree.Tree` it returns directly, or a path to an existing constraint
+    Newick file.
+    """
     exe = _require("iqtree2", path) if (path or shutil.which("iqtree2")) else _require("iqtree", path)
     with tempfile.TemporaryDirectory() as tmp:
         infile = os.path.join(tmp, "aln.fasta")
@@ -39,6 +49,13 @@ def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
         cmd = [exe, "-s", infile, "-m", model, "-redo", "-quiet"]
         if bootstrap:
             cmd += ["-bb", str(max(bootstrap, 1000))]
+        if constraint is not None:
+            if isinstance(constraint, str):
+                gfile = constraint
+            else:
+                gfile = os.path.join(tmp, "constraint.tre")
+                constraint.write(gfile)
+            cmd += ["-g", gfile]
         cmd += extra_args or []
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         with open(infile + ".treefile") as f:

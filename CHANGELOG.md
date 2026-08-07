@@ -6,6 +6,40 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`build_tree(..., constraint={tip: label})`** forces a taxonomy grouping --
+  a genus column, say -- to come out monophyletic in the tree itself, at two
+  different strengths depending on `method`, rather than only rearranging a
+  tree already built (`sort_by`, above, is display-only and cannot do this: it
+  can bring two clades a tree already keeps apart no closer, it can only
+  rotate what is already a fork). A tip left out of the mapping, or mapped to
+  `None`, is placed exactly as if there were no constraint for it.
+  - `method="ml"` with `ml_engine` set to an external engine turns the mapping
+    into a **constrained search**: `constraint_tree()` builds one polytomy per
+    label -- unresolved internally, so nothing about *how* those tips relate
+    is dictated -- and IQ-TREE's `-g` (RAxML-NG's `--tree-constraint` is the
+    same idea, not wrapped here) still picks the topology within and between
+    groups by likelihood; only "no other tip may land inside this group" is
+    fixed. Pass a path to an existing constraint file, or a `Tree`, instead of
+    a mapping to skip that conversion.
+  - `method="nj"` instead runs **`constrained_nj`**, two plain NJ passes with
+    no search or external engine involved: once inside each group on only
+    that group's own tips, then again on a reduced matrix (each pair of
+    groups averaged over the real distances between their tips) to place the
+    groups -- and any free tip -- against each other, grafting each group's
+    own midpoint-rooted subtree onto its slot on that backbone. This *forces*
+    monophyly outright: there is no way for the result to disagree, even
+    where NJ run without a constraint would put two of a group's tips on
+    opposite sides of a split (verified against a real case in the bundled
+    16S data: *Bacillus subtilis* and *B. cereus* do not come out sister
+    under plain NJ -- four other genera's tips fall between them -- and do
+    under `constrained_nj`, every other leaf unmoved).
+  - Reach for the constrained search when the sequence data should still have
+    the final word on whether a genus really is monophyletic and the
+    constraint only needs to settle the ties it leaves open; reach for
+    `constrained_nj` when the taxonomy should win outright, such as a display
+    tree organised by genus. Native ML and the distance/parsimony methods
+    other than NJ have no constrained search to hook into and raise rather
+    than silently ignore `constraint`.
 - **`sort_by(tree, key)`** reorders sibling branches so tips sharing a category
   -- a genus column on a big 16S ASV tree, say -- sit together, without moving
   a single branch or adding/dropping a split: it only ever changes which side

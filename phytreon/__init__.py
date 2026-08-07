@@ -28,6 +28,7 @@ from .plot import (TreeFigure, TangleFigure, DensiTreeFigure,
                    looks_like_a_taxon)
 from .infer import (
     neighbor_joining, upgma, tree_from_alignment, distance_matrix,
+    constrained_nj, constraint_tree,
     Alignment, align, read_fasta, read_character_matrix, trim, bootstrap_support,
     build_tree, infer_ml, ml_tree, log_likelihood, model_finder,
     parsimony_tree, parsimony_score,
@@ -52,6 +53,7 @@ __all__ = [
     "PanelFigure", "panels", "SplitNetwork", "neighbor_net",
     "neighbornet_ordering", "looks_like_a_taxon",
     "neighbor_joining", "upgma", "tree_from_alignment", "distance_matrix",
+    "constrained_nj", "constraint_tree",
     "Alignment", "align", "read_fasta", "read_character_matrix", "trim", "bootstrap_support",
     "build_tree", "infer_ml", "ml_tree", "log_likelihood", "model_finder",
     "parsimony_tree", "parsimony_score", "robinson_foulds",

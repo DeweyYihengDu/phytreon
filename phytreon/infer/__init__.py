@@ -7,7 +7,9 @@ from .distance import (
     upgma,
     distance_matrix,
     tree_from_alignment,
+    constrained_nj,
 )
+from .constraint import constraint_tree
 from .bootstrap import (bootstrap_support, p_distance_matrix, distance_matrix_model,
                         nj_builder, upgma_builder)
 from .ml import infer_ml, infer_iqtree, infer_fasttree
@@ -23,6 +25,7 @@ __all__ = [
     "Alignment", "align", "align_external", "read_fasta", "read_character_matrix",
     "trim", "trim_terminal_gaps", "column_gap_fraction", "column_conservation",
     "neighbor_joining", "upgma", "distance_matrix", "tree_from_alignment",
+    "constrained_nj", "constraint_tree",
     "bootstrap_support", "p_distance_matrix", "nj_builder", "upgma_builder",
     "infer_ml", "infer_iqtree", "infer_fasttree",
     "ml_tree", "log_likelihood", "model_finder",
