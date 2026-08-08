@@ -402,6 +402,48 @@ def test_plotly_shifts_aligned_paths():
     assert shifted, "aligned Path was not shifted in the plotly backend"
 
 
+def test_clade_label_without_leader_draws_no_extra_line():
+    tr = pt.datasets.primates()
+    apes = tr.get_mrca(["Human", "Gibbon"])
+    ctx = pt.TreeFigure(tr).clade_label("Apes", node=apes)._build()
+    assert not [p for p in ctx.scene.paths if p.dash == "dot"]
+
+
+def test_rectangular_leader_connects_the_normal_spot_to_the_pushed_label():
+    tr = pt.datasets.primates()
+    apes = tr.get_mrca(["Human", "Gibbon"])
+    plain = pt.TreeFigure(tr).clade_label("Apes", node=apes)._build()
+    led = pt.TreeFigure(tr).clade_label("Apes", node=apes, leader=0.3)._build()
+    plain_lb = next(lb for lb in plain.scene.labels if lb.text == "Apes")
+    led_lb = next(lb for lb in led.scene.labels if lb.text == "Apes")
+    assert led_lb.x > plain_lb.x                # pushed further right
+    leader_path = next(p for p in led.scene.paths if p.dash == "dot")
+    assert leader_path.points[0][0] == pytest.approx(plain_lb.x)
+    assert leader_path.points[1][0] == pytest.approx(led_lb.x)
+    assert leader_path.align and plain_lb.align  # both ride the same shift
+
+
+def test_polar_leader_connects_the_normal_spot_to_the_pushed_label():
+    tr = pt.datasets.primates()
+    apes = ["Human", "Chimp", "Gorilla"]
+    plain = (pt.TreeFigure(tr, layout="circular")
+            .clade_label("Great Apes", taxa=apes)._build())
+    led = (pt.TreeFigure(tr, layout="circular")
+          .clade_label("Great Apes", taxa=apes, leader=0.2)._build())
+    plain_lb = next(lb for lb in plain.scene.labels if lb.text == "Great Apes")
+    led_lb = next(lb for lb in led.scene.labels if lb.text == "Great Apes")
+    r = lambda lb: math.hypot(lb.x, lb.y)          # noqa: E731
+    assert r(led_lb) > r(plain_lb)
+    leader_path = next(p for p in led.scene.paths if p.dash == "dot")
+    assert math.hypot(*leader_path.points[0]) == pytest.approx(r(plain_lb))
+    assert math.hypot(*leader_path.points[1]) == pytest.approx(r(led_lb))
+    # both share the label's own push_out/push_span, so a leader still lands
+    # correctly however far out the renderer ends up moving the label to
+    # clear the tip names -- not just at build time before that happens
+    assert leader_path.push_out == pytest.approx(led_lb.push_out)
+    assert leader_path.push_span == led_lb.push_span
+
+
 def _ring_cells(fig):
     # ring/heatmap cells are the polygons carrying a per-tip hover label
     return [p for p in fig._build().scene.polygons if p.label and "|" in p.label]

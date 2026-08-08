@@ -165,6 +165,84 @@ def test_build_tree_constrained_nj_forces_the_grouping():
         {"Bb1", "Bb2", "Bb3"}
 
 
+def test_bootstrap_with_constraint_forces_every_replicate_too():
+    # every replicate is rebuilt with constrained_nj, not plain NJ, so the
+    # constrained split's support measures whether the resampled *data*
+    # still agrees with everything else once the grouping is enforced --
+    # not whether an unconstrained rebuild would have found the grouping at
+    # all, which the constraint already decided regardless of the data
+    tree = pt.build_tree(SEQS_TWO_GENERA, method="nj", constraint=GENUS,
+                         bootstrap=100, seed=0)
+    a_clade = tree.get_mrca(["Aa1", "Aa2", "Aa3"])
+    b_clade = tree.get_mrca(["Bb1", "Bb2", "Bb3"])
+    assert a_clade.support == 100.0
+    assert b_clade.support == 100.0
+    # and it is still a real bootstrap: an unrelated, unconstrained split
+    # inside one group is free to come out below 100
+    assert any(n.support is not None and n.support < 100.0
+              for n in tree.traverse() if not n.is_leaf)
+
+
+def test_bootstrap_without_constraint_is_unaffected():
+    # same call with constraint=None must keep using the plain nj_builder
+    tree = pt.build_tree(SEQS_TWO_GENERA, method="nj", bootstrap=50, seed=0)
+    sups = [n.support for n in tree.traverse()
+           if not n.is_leaf and n.support is not None]
+    assert sups and all(0 <= s <= 100 for s in sups)
+
+
+def test_iqtree_bootstrap_flag_is_forwarded_at_build_time(monkeypatch):
+    # Regression: build_tree(method="ml", ml_engine="iqtree", bootstrap=N)
+    # built the tree successfully but silently produced no support values --
+    # bootstrap was only ever wired into the *generic* resampling loop
+    # (skipped for every external ML engine, since one subprocess search per
+    # replicate is a non-starter), never into IQ-TREE's own -bb.
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: None if tool == "iqtree2" else "/fake/iqtree")
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        with open(cmd[2] + ".treefile", "w") as f:
+            f.write("(a1:0.1,a2:0.1,(b1:0.1,b2:0.1)95:0.1);")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ml_mod.subprocess, "run", fake_run)
+    aln = Alignment(["a1", "a2", "b1", "b2"],
+                    ["ACGT", "ACGA", "TTGT", "TTGA"])
+    tree = pt.build_tree(aln, method="ml", ml_engine="iqtree", bootstrap=100)
+    assert "-bb" in calls[0]
+    assert calls[0][calls[0].index("-bb") + 1] == "1000"    # UFBoot's own floor
+    sups = [n.support for n in tree.traverse()
+           if not n.is_leaf and n.support is not None]
+    assert sups == [95.0]
+
+
+def test_fasttree_bootstrap_request_does_not_crash(monkeypatch):
+    # FastTree has no -bb-equivalent replicate count -- it reports its own
+    # per-branch support automatically -- so bootstrap= must be a no-op here
+    # rather than an unexpected-keyword crash
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: "/fake/fasttree" if "ast" in tool.lower()
+                        else None)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0,
+                              stdout="(a1:0.1,a2:0.1,(b1:0.1,b2:0.1)0.9:0.1);",
+                              stderr="")
+
+    monkeypatch.setattr(ml_mod.subprocess, "run", fake_run)
+    aln = Alignment(["a1", "a2", "b1", "b2"],
+                    ["ACGT", "ACGA", "TTGT", "TTGA"])
+    tree = pt.build_tree(aln, method="ml", ml_engine="fasttree", bootstrap=100)
+    assert not any("-bb" in c for c in calls[0])
+    assert set(tree.leaf_names()) == {"a1", "a2", "b1", "b2"}
+
+
 def test_build_tree_rejects_constraint_on_native_ml():
     with pytest.raises(ValueError, match="native"):
         pt.build_tree(SEQS_TWO_GENERA, method="ml", ml_engine="native",
@@ -253,6 +331,93 @@ def test_infer_iqtree_accepts_a_constraint_file_path_directly(monkeypatch, tmp_p
                     reason="iqtree not installed")
 def test_build_tree_constrained_ml_via_real_iqtree():
     tree = pt.build_tree(SEQS_TWO_GENERA, method="ml", ml_engine="iqtree",
+                         constraint=GENUS)
+    assert set(tree.get_mrca(["Aa1", "Aa2", "Aa3"]).leaf_names()) == \
+        {"Aa1", "Aa2", "Aa3"}
+    assert set(tree.get_mrca(["Bb1", "Bb2", "Bb3"]).leaf_names()) == \
+        {"Bb1", "Bb2", "Bb3"}
+
+
+# --------------------------------------------------------------------------
+# RAxML-NG: IQ-TREE's other standard alternative, --tree-constraint / --all
+# --------------------------------------------------------------------------
+def _fake_raxmlng(monkeypatch, treefile_content, seen_constraint=None):
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: "/fake/raxml-ng" if "raxml" in tool else None)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        # the constraint file only exists inside infer_raxmlng's own
+        # TemporaryDirectory, so it has to be read here, before that context
+        # manager tears it down on return -- same as the IQ-TREE -g test.
+        if seen_constraint is not None and "--tree-constraint" in cmd:
+            gfile = cmd[cmd.index("--tree-constraint") + 1]
+            seen_constraint["exists"] = os.path.exists(gfile)
+            seen_constraint["tree"] = pt.Tree.read(gfile)
+        prefix = cmd[cmd.index("--prefix") + 1]
+        suffix = ".raxml.support" if "--all" in cmd else ".raxml.bestTree"
+        with open(prefix + suffix, "w") as f:
+            f.write(treefile_content)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ml_mod.subprocess, "run", fake_run)
+    return calls
+
+
+def test_infer_raxmlng_search_reads_besttree(monkeypatch):
+    calls = _fake_raxmlng(monkeypatch, "(a1,a2,(b1,b2));")
+    from phytreon.infer import ml as ml_mod
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    tree = ml_mod.infer_raxmlng(aln)
+    cmd = calls[0]
+    assert "--search" in cmd and "--all" not in cmd
+    assert "--model" in cmd and cmd[cmd.index("--model") + 1] == "GTR+G"
+    assert set(tree.leaf_names()) == {"a1", "a2", "b1", "b2"}
+
+
+def test_infer_raxmlng_bootstrap_reads_support_file_instead(monkeypatch):
+    calls = _fake_raxmlng(monkeypatch, "(a1,a2,(b1,b2)95:0.1);")
+    from phytreon.infer import ml as ml_mod
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    tree = ml_mod.infer_raxmlng(aln, bootstrap=100)
+    cmd = calls[0]
+    assert "--all" in cmd
+    assert cmd[cmd.index("--bs-trees") + 1] == "100"
+    assert [n.support for n in tree.traverse()
+           if not n.is_leaf and n.support is not None] == [95.0]
+
+
+def test_infer_raxmlng_passes_the_constraint(monkeypatch):
+    seen = {}
+    calls = _fake_raxmlng(monkeypatch, "(a1,a2,(b1,b2));", seen_constraint=seen)
+    from phytreon.infer import ml as ml_mod
+    ct = constraint_tree({"a1": "A", "a2": "A", "b1": "B", "b2": "B"})
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    ml_mod.infer_raxmlng(aln, constraint=ct)
+    assert "--tree-constraint" in calls[0]
+    assert seen["exists"]
+    assert set(seen["tree"].get_mrca(["a1", "a2"]).leaf_names()) == {"a1", "a2"}
+
+
+def test_build_tree_constrained_ml_via_raxmlng(monkeypatch):
+    _fake_raxmlng(monkeypatch, "(Aa1,Aa2,Aa3,(Bb1,Bb2,Bb3)95:0.1);")
+    tree = pt.build_tree(SEQS_TWO_GENERA, method="ml", ml_engine="raxml-ng",
+                         constraint=GENUS, bootstrap=100)
+    assert set(tree.get_mrca(["Bb1", "Bb2", "Bb3"]).leaf_names()) == \
+        {"Bb1", "Bb2", "Bb3"}
+
+
+def test_build_tree_rejects_constraint_on_fasttree():
+    with pytest.raises(ValueError, match="fasttree"):
+        pt.build_tree(SEQS_TWO_GENERA, method="ml", ml_engine="fasttree",
+                      constraint=GENUS)
+
+
+@pytest.mark.skipif(not shutil.which("raxml-ng"), reason="raxml-ng not installed")
+def test_build_tree_constrained_ml_via_real_raxmlng():
+    tree = pt.build_tree(SEQS_TWO_GENERA, method="ml", ml_engine="raxml-ng",
                          constraint=GENUS)
     assert set(tree.get_mrca(["Aa1", "Aa2", "Aa3"]).leaf_names()) == \
         {"Aa1", "Aa2", "Aa3"}

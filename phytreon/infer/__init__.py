@@ -12,7 +12,7 @@ from .distance import (
 from .constraint import constraint_tree
 from .bootstrap import (bootstrap_support, p_distance_matrix, distance_matrix_model,
                         nj_builder, upgma_builder)
-from .ml import infer_ml, infer_iqtree, infer_fasttree
+from .ml import infer_ml, infer_iqtree, infer_fasttree, infer_raxmlng, infer_rapidnj
 from .ml_native import ml_tree, log_likelihood, model_finder
 from .aa_models import AA_MODELS, AA_STATES
 from .parsimony import parsimony_tree, parsimony_score
@@ -27,7 +27,7 @@ __all__ = [
     "neighbor_joining", "upgma", "distance_matrix", "tree_from_alignment",
     "constrained_nj", "constraint_tree",
     "bootstrap_support", "p_distance_matrix", "nj_builder", "upgma_builder",
-    "infer_ml", "infer_iqtree", "infer_fasttree",
+    "infer_ml", "infer_iqtree", "infer_fasttree", "infer_raxmlng", "infer_rapidnj",
     "ml_tree", "log_likelihood", "model_finder",
     "AA_MODELS", "AA_STATES",
     "parsimony_tree", "parsimony_score",

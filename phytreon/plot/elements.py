@@ -18,7 +18,7 @@ from ..core.tree import Node
 from ..scene import Label, Marker, Path, Polygon, Raster
 from .figure import _Element, RenderContext, build_color_scale, is_numeric
 
-def readable_on(fill) -> str:
+def readable_on(fill, alpha: float = 1.0) -> str:
     """Black or white, whichever actually reads on ``fill``.
 
     A name printed inside its own coloured block was always white, which is
@@ -26,13 +26,25 @@ def readable_on(fill) -> str:
     2.2:1 against some of the palette, where 3:1 is the floor for large text
     and 4.5:1 for body text. Picking by the background's luminance keeps every
     block above 4.5:1 whatever colour it lands on.
+
+    ``alpha`` matters: a highlight band is deliberately drawn as a pale wash
+    (0.3) so branches and text stay visible *through* it, and judging ink
+    against the fill's own saturated hex rather than what a reader's eye
+    actually sees -- that colour composited over the white page underneath --
+    measures the wrong thing entirely (a wash that reads as near-white can
+    still score "use white text" if alpha is ignored).
     """
     from matplotlib.colors import to_rgba
 
     def channel(c):
         return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
-    r, g, b, _ = to_rgba(fill)
+    r, g, b, a = to_rgba(fill)
+    a *= alpha
+    if a < 1.0:                              # composite over white paper
+        r = r * a + (1.0 - a)
+        g = g * a + (1.0 - a)
+        b = b * a + (1.0 - a)
     lum = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
     # Compare the two inks actually used, not white against an idealised black:
     # a near-black at #1a1a1a is itself luminous enough to lose a comparison it
@@ -476,6 +488,20 @@ class _Highlight(_Element):
     a single band there would colour in tips that do not belong to it -- it
     would look tidier and say something false. Several bands say what is
     actually there.
+
+    ``label`` prints the clade's own name centred inside its band, instead of
+    (or alongside) a separate :meth:`~phytreon.plot.figure.TreeFigure.
+    clade_label` outside the tree -- the way a dense published tree names a
+    filled sector directly, since there is no room to spare on naming every
+    tip. A single ``node=``/``taxa=`` highlight takes the text itself;
+    ``by=`` takes ``label=True`` instead and uses each group's own value, one
+    label per band including every run of a scattered group. Ink is chosen
+    for contrast against the band as actually rendered -- its pale wash, not
+    the saturated fill colour -- so it stays legible whichever colour it
+    lands on. On a circular tree this only draws for ``shape="wedge"``: a
+    ring is thin and curved, and a label centred on it would need to run
+    tangentially, which nothing here typesets; asking for one on a ring
+    warns and falls back to leaving it out.
     """
 
     def __init__(self, node: Optional[Node] = None, taxa=None, by=None,
@@ -485,7 +511,8 @@ class _Highlight(_Element):
                  span: str = "aligned", reach=None,
                  anchor: str = "root", gap: float = 0.0,
                  shape: str = "auto", width: float = 0.11,
-                 offset: float = 0.03):
+                 offset: float = 0.03, label=None, label_size: float = 9.0,
+                 label_color=None):
         if span not in ("clade", "aligned", "full"):
             raise ValueError("span must be 'clade', 'aligned' or 'full', "
                              "not %r" % (span,))
@@ -503,6 +530,21 @@ class _Highlight(_Element):
         if shape not in ("auto", "ring", "wedge"):
             raise ValueError("shape must be 'auto', 'ring' or 'wedge', not %r"
                              % (shape,))
+        if label is True and by is None:
+            raise ValueError(
+                "label=True only makes sense with highlight(by=...), where "
+                "each band takes its own group's value as its label -- pass "
+                "the text itself (a string) for a single node=/taxa= clade"
+            )
+        if isinstance(label, str) and by is not None:
+            raise ValueError(
+                "highlight(by=...) draws one band per group and each needs "
+                "its own label -- pass label=True to use each group's own "
+                "value, not one fixed string for all of them"
+            )
+        self.label = label
+        self.label_size = label_size
+        self.label_color = label_color
         self.gap = gap
         self.shape = shape
         self.width = width
@@ -590,8 +632,9 @@ class _Highlight(_Element):
         if node is not None:
             leaves = node.get_leaves()
             own = self._own_start(leaves, node)
+            text = self.label if isinstance(self.label, str) else None
             self._band(ctx, leaves, self.fill, node,
-                       self._left_edge(own, None))
+                       self._left_edge(own, None), text)
 
     def _apply_by_column(self, ctx: RenderContext) -> None:
         tips = ctx.tree.leaves()
@@ -615,8 +658,9 @@ class _Highlight(_Element):
                 plan.append((run, node, value, self._own_start(run, node)))
         flush = min((own for *_, own in plan), default=None)
         for run, node, value, own in plan:
+            text = str(value) if self.label is True else None
             self._band(ctx, run, scale.color(value), node,
-                       self._left_edge(own, flush))
+                       self._left_edge(own, flush), text)
         ctx.add_scale(scale)
         ctx.scene.legend_swatch[scale.title] = scale.swatch
 
@@ -704,7 +748,7 @@ class _Highlight(_Element):
         outer = lay.max_x + self.extend
         return max(0.0, min(outer - span, outer - 1e-9)), outer
 
-    def _band(self, ctx, leaves, fill, node, x0: float) -> None:
+    def _band(self, ctx, leaves, fill, node, x0: float, text=None) -> None:
         lay = ctx.layout
         if lay.is_polar:
             angles = [lf._angle for lf in leaves]
@@ -723,6 +767,18 @@ class _Highlight(_Element):
                 pts += lay._arc(r0, a1 + da, a0 - da)
                 ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                       alpha=self._alpha(True), zorder=2))
+                if text:
+                    # A ring is thin and curved, so a label centred on it
+                    # would need to run tangentially -- letter-by-letter
+                    # along the arc -- which nothing here typesets; printed
+                    # radially instead it would spill past the ring's own
+                    # width into whatever comes next. Left to clade_label(),
+                    # which places a name outside the whole ring stack.
+                    warnings.warn(
+                        "highlight(..., label=...) has no way to fit a "
+                        "label inside a ring (shape='auto'/'ring' on a "
+                        "circular layout) -- pass shape='wedge', or use "
+                        "clade_label() instead", stacklevel=2)
             else:
                 lo, hi = self._edges(lay, x0)
                 pts = lay._arc(lay.inner_radius + hi, a0 - da, a1 + da)
@@ -730,6 +786,16 @@ class _Highlight(_Element):
                 ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                       alpha=self._alpha(False), zorder=0,
                                       **self._render_kw(lay)))
+                if text:
+                    amid = (a0 + a1) / 2.0
+                    rmid = lay.inner_radius + (lo + hi) / 2.0
+                    x, y = lay._polar_to_xy(rmid, amid)
+                    deg = math.degrees(amid)
+                    rot = deg + 180 if 90 < (deg % 360) < 270 else deg
+                    ctx.scene.add(Label(
+                        x, y, text, size=self.label_size,
+                        color=self.label_color or readable_on(fill, self._alpha(False)),
+                        ha="center", va="center", rotation=rot, zorder=1))
         else:
             rows = [lf.y for lf in leaves]
             lo, hi = self._edges(lay, x0)
@@ -739,15 +805,33 @@ class _Highlight(_Element):
             ctx.scene.add(Polygon(pts, facecolor=fill, edgecolor=None,
                                   alpha=self._alpha(False), zorder=0,
                                   rounded=True, **self._render_kw(lay)))
+            if text:
+                ctx.scene.add(Label(
+                    (lo + hi) / 2.0, (y0 + y1) / 2.0, text, size=self.label_size,
+                    color=self.label_color or readable_on(fill, self._alpha(False)),
+                    ha="center", va="center", zorder=1))
 
 
 # --------------------------------------------------------------------------
 # clade label (bracket + text)
 # --------------------------------------------------------------------------
 class _CladeLabel(_Element):
+    """Bracket + name for one clade, pointing outward at the tree.
+
+    ``leader`` pushes the name further out still, past the small fixed gap
+    the bracket already keeps, and draws a thin dotted line back to where it
+    would otherwise have sat -- for a clade whose own bracket is too narrow
+    (angularly, or too few rows) to hold its name beside it without crowding
+    a neighbour's, the way a dense published tree calls out a small clade
+    with a name parked further out and a leader connecting the two. A number,
+    the same convention as ``reach``/``gap``/``offset`` elsewhere: a fraction
+    of the tree's own depth, so the same value means the same distance at any
+    figure size. ``0`` (the default) draws no leader at all.
+    """
+
     def __init__(self, label: str, node: Optional[Node] = None, taxa=None,
                  offset: float = 0.0, color="black", size: float = 11.0,
-                 barsize: float = 2.0):
+                 barsize: float = 2.0, leader: float = 0.0):
         self.label = label
         self.node = node
         self.taxa = taxa
@@ -755,6 +839,7 @@ class _CladeLabel(_Element):
         self.color = color
         self.size = size
         self.barsize = barsize
+        self.leader = leader
 
     def apply(self, ctx: RenderContext) -> None:
         node = self.node or (ctx.tree.get_mrca(self.taxa) if self.taxa else None)
@@ -778,7 +863,10 @@ class _CladeLabel(_Element):
             ctx.scene.add(Path(pts, color=self.color, width=self.barsize,
                                zorder=2, push_out=pad, push_span=span))
             amid = 0.5 * (min(angles) + max(angles))
-            x, y = lay._polar_to_xy(r + 0.03 * lay.max_x, amid)
+            near, far = r + 0.03 * lay.max_x, r + 0.03 * lay.max_x
+            if self.leader:
+                far += self.leader * lay.max_x
+            x, y = lay._polar_to_xy(far, amid)
             # ... and reading outward, so the ones on the left half are not
             # upside down (the same flip the tip labels do)
             deg = math.degrees(amid)
@@ -786,10 +874,22 @@ class _CladeLabel(_Element):
                 rot, ha = deg + 180, "right"
             else:
                 rot, ha = deg, "left"
+            label_push = pad + 0.03 * lay.max_x
             ctx.scene.add(Label(x, y, self.label, size=self.size, color=self.color,
                                 ha=ha, va="center", rotation=rot,
-                                push_out=pad + 0.03 * lay.max_x,
-                                push_span=span))
+                                push_out=label_push, push_span=span))
+            if self.leader:
+                # both ends share the label's own push_out/push_span, so
+                # whatever the renderer moves the label out to, the line
+                # still starts at the bracket's small fixed gap and ends
+                # exactly on the label -- the same amount added to each end
+                # rather than one point stretched to meet the other.
+                p0 = lay._polar_to_xy(near, amid)
+                p1 = lay._polar_to_xy(far, amid)
+                ctx.scene.add(Path([p0, p1], color=self.color,
+                                   width=max(0.6, self.barsize * 0.4),
+                                   dash="dot", zorder=2,
+                                   push_out=label_push, push_span=span))
         else:
             rows = [lf.y for lf in leaves]
             gap = self.offset + 0.02 * lay.max_x
@@ -798,10 +898,17 @@ class _CladeLabel(_Element):
             ctx.scene.add(Path([(x, min(rows) + 0.1), (x, max(rows) - 0.1)],
                                color=self.color, width=self.barsize, zorder=2,
                                align=True))
-            # horizontal label to the right of the bar
-            ctx.scene.add(Label(x + 0.02 * lay.max_x, 0.5 * (min(rows) + max(rows)),
-                                self.label, size=self.size, color=self.color,
-                                ha="left", va="center", rotation=0, align=True))
+            near = x + 0.02 * lay.max_x
+            far = near + self.leader * lay.max_x if self.leader else near
+            y_mid = 0.5 * (min(rows) + max(rows))
+            ctx.scene.add(Label(far, y_mid, self.label, size=self.size,
+                                color=self.color, ha="left", va="center",
+                                rotation=0, align=True))
+            if self.leader:
+                ctx.scene.add(Path([(near, y_mid), (far, y_mid)],
+                                   color=self.color,
+                                   width=max(0.6, self.barsize * 0.4),
+                                   dash="dot", zorder=2, align=True))
 
 
 # --------------------------------------------------------------------------

@@ -1,6 +1,11 @@
 """Tests for the sequences->tree pipeline and tree operations."""
+import shutil
+from types import SimpleNamespace
+
 import matplotlib
 matplotlib.use("Agg")
+
+import pytest
 
 import phytreon as pt
 from phytreon.infer import align, trim
@@ -283,6 +288,95 @@ def test_build_tree_rejects_an_unknown_root_string():
     import pytest
     with pytest.raises(ValueError, match="unknown root mode"):
         pt.build_tree(SEQS, method="nj", root="bogus")
+
+
+def _fake_rapidnj(monkeypatch, stdout_newick, seen_input=None):
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: "/fake/rapidnj" if "rapidnj" in tool else None)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        # the input FASTA only exists inside infer_rapidnj's own
+        # TemporaryDirectory, so it has to be read here, before that context
+        # manager tears it down on return -- same as the IQ-TREE -g test.
+        if seen_input is not None:
+            with open(cmd[1]) as f:
+                seen_input["lines"] = [ln for ln in f.read().splitlines() if ln]
+        return SimpleNamespace(returncode=0, stdout=stdout_newick, stderr="")
+
+    monkeypatch.setattr(ml_mod.subprocess, "run", fake_run)
+    return calls
+
+
+def test_infer_rapidnj_writes_single_line_fasta_and_parses_stdout(monkeypatch, tmp_path):
+    # Regression risk: Alignment.to_fasta() wraps at 60 columns by default,
+    # which rapidnj's -i fa reader (documented as wanting one line per
+    # sequence) cannot be trusted to parse.
+    seen = {}
+    calls = _fake_rapidnj(monkeypatch, "(a1,a2,(b1,b2));", seen_input=seen)
+    from phytreon.infer.ml import infer_rapidnj
+    seq = "ACGT" * 30                # > 60 columns, so wrapping would show up
+    aln = pt.Alignment(["a1", "a2", "b1", "b2"], [seq, seq, seq, seq])
+    tree = infer_rapidnj(aln)
+    cmd = calls[0]
+    assert cmd[2:4] == ["-i", "fa"]
+    assert seen["lines"] == [">a1", seq, ">a2", seq, ">b1", seq, ">b2", seq]
+    assert set(tree.leaf_names()) == {"a1", "a2", "b1", "b2"}
+
+
+def test_infer_rapidnj_default_flags(monkeypatch):
+    calls = _fake_rapidnj(monkeypatch, "(a1,a2,(b1,b2));")
+    from phytreon.infer.ml import infer_rapidnj
+    aln = pt.Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    infer_rapidnj(aln)
+    cmd = calls[0]
+    assert cmd[cmd.index("-a") + 1] == "kim"
+    assert "-n" in cmd
+    assert "-b" not in cmd
+
+
+def test_infer_rapidnj_bootstrap_flag(monkeypatch):
+    calls = _fake_rapidnj(monkeypatch, "(a1,a2,(b1,b2));")
+    from phytreon.infer.ml import infer_rapidnj
+    aln = pt.Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    infer_rapidnj(aln, bootstrap=50, evolution_model="jc")
+    cmd = calls[0]
+    assert cmd[cmd.index("-b") + 1] == "50"
+    assert cmd[cmd.index("-a") + 1] == "jc"
+
+
+def test_build_tree_nj_engine_rapidnj(monkeypatch):
+    _fake_rapidnj(monkeypatch, "(A1,A2,(A3,(B1,(B2,B3))));")
+    tree = pt.build_tree(SEQS, method="nj", nj_engine="rapidnj")
+    assert set(tree.leaf_names()) == {n for n, _ in SEQS}
+
+
+def test_build_tree_rapidnj_rejects_constraint():
+    with pytest.raises(ValueError, match="constrained_nj"):
+        pt.build_tree(SEQS, method="nj", nj_engine="rapidnj",
+                      constraint={"A1": "A"})
+
+
+def test_build_tree_rejects_an_unknown_nj_engine():
+    with pytest.raises(ValueError, match="unknown nj_engine"):
+        pt.build_tree(SEQS, method="nj", nj_engine="bogus")
+
+
+def test_bootstrap_with_rapidnj_rebuilds_each_replicate(monkeypatch):
+    _fake_rapidnj(monkeypatch, "(A1,A2,(A3,(B1,(B2,B3))))90:0.1;")
+    tree = pt.build_tree(SEQS, method="nj", nj_engine="rapidnj",
+                         bootstrap=20, seed=0)
+    assert set(tree.leaf_names()) == {n for n, _ in SEQS}
+
+
+@pytest.mark.skipif(not shutil.which("rapidnj"), reason="rapidnj not installed")
+def test_build_tree_nj_engine_rapidnj_real_binary():
+    tree = pt.build_tree(SEQS, method="nj", nj_engine="rapidnj")
+    kids = [frozenset(c.leaf_names()) for c in tree.root.children]
+    assert any({"A1", "A2", "A3"} <= k or {"B1", "B2", "B3"} <= k for k in kids) \
+        or {"A1", "A2", "A3"} in kids or {"B1", "B2", "B3"} in kids
 
 
 def test_native_ml_recovers_groups():

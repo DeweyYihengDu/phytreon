@@ -871,6 +871,102 @@ def test_the_ring_leaves_room_for_the_tip_labels():
     assert label_r(ringed) > label_r(plain), "labels did not move outside"
 
 
+# --------------------------------------------------------------------------
+# a label printed inside a highlight, rather than a separate clade_label()
+# --------------------------------------------------------------------------
+def test_a_string_label_draws_inside_a_single_clade_highlight():
+    tr = _phylum_tree()
+    ctx = (pt.TreeFigure(tr).highlight(taxa=["a1", "a2"], label="Alpha")
+           ._build())
+    hit = [lb for lb in ctx.scene.labels if lb.text == "Alpha"]
+    assert len(hit) == 1
+    lb = hit[0]
+    assert lb.ha == "center" and lb.va == "center"
+
+
+def test_the_label_sits_centred_inside_the_band_not_at_an_edge():
+    tr = _phylum_tree()
+    ctx = pt.TreeFigure(tr).highlight(taxa=["a1", "a2"], label="Alpha")._build()
+    band = next(p for p in ctx.scene.polygons if p.zorder == 0)
+    lb = next(lb for lb in ctx.scene.labels if lb.text == "Alpha")
+    xs = [x for x, _ in band.points]
+    ys = [y for _, y in band.points]
+    assert min(xs) < lb.x < max(xs)
+    assert min(ys) < lb.y < max(ys)
+
+
+def test_wedge_label_reads_outward_and_flips_on_the_left_half():
+    import math
+    tr = _phylum_tree()
+    # one clade whose angular midpoint falls on the right, one on the left,
+    # so both halves of the flip get exercised in a single build
+    ctx = (pt.TreeFigure(tr, layout="circular")
+           .highlight(taxa=["a1", "a2"], shape="wedge", label="Alpha")
+           .highlight(taxa=["b1", "b2"], shape="wedge", label="Beta")
+           ._build())
+    for name in ("Alpha", "Beta"):
+        lb = next(lb for lb in ctx.scene.labels if lb.text == name)
+        angle = math.degrees(math.atan2(lb.y, lb.x)) % 360
+        upside_down = 90 < lb.rotation % 360 < 270
+        # whichever side of the circle it is on, the rotation must have been
+        # flipped to the reading-outward orientation, not left as the raw angle
+        assert not upside_down, (name, lb.rotation)
+
+
+def test_a_ring_highlight_cannot_fit_a_label_and_warns_instead():
+    tr = _phylum_tree()
+    with pytest.warns(UserWarning, match="label"):
+        ctx = (pt.TreeFigure(tr, layout="circular")
+               .highlight(taxa=["a1", "a2"], label="Alpha")._build())
+    assert not any(lb.text == "Alpha" for lb in ctx.scene.labels)
+
+
+def test_by_true_labels_every_group_with_its_own_value():
+    tr = _phylum_tree()
+    ctx = pt.TreeFigure(tr).highlight(by="group", label=True)._build()
+    assert {lb.text for lb in ctx.scene.labels} == {"alpha", "beta", "gamma"}
+
+
+def test_by_and_label_true_labels_every_scattered_run_too():
+    # a3 is not adjacent to a1/a2 in tip order -- "alpha" is scattered into
+    # two bands, and per the same "several bands say what is there" rule
+    # each run gets its own copy of the label, not just the first
+    tr = _phylum_tree()
+    ctx = pt.TreeFigure(tr).highlight(by="group", label=True)._build()
+    alpha_labels = [lb for lb in ctx.scene.labels if lb.text == "alpha"]
+    assert len(alpha_labels) == 2
+
+
+def test_label_true_rejects_a_single_clade_highlight():
+    tr = _phylum_tree()
+    with pytest.raises(ValueError, match="label=True"):
+        pt.TreeFigure(tr).highlight(taxa=["a1", "a2"], label=True)
+
+
+def test_a_fixed_label_rejects_by_grouping():
+    tr = _phylum_tree()
+    with pytest.raises(ValueError, match="own label"):
+        pt.TreeFigure(tr).highlight(by="group", label="Alpha")
+
+
+def test_label_colour_is_chosen_for_contrast_against_the_actual_wash():
+    # the highlight is drawn at alpha=0.3 (a pale wash so branches/names show
+    # through), not the saturated fill colour -- judging ink against the raw
+    # hex instead of what alpha actually composites onto white measures the
+    # wrong colour, and this is the regression: a fill dark enough to want
+    # white ink at full strength can be pale enough at 0.3 to want black
+    from phytreon.plot.elements import readable_on
+    dark = "#1a1a2e"                                  # wants white at alpha=1
+    assert readable_on(dark, alpha=1.0) == "#ffffff"
+    assert readable_on(dark, alpha=0.3) == "#000000"   # but black once washed out
+
+    tr = _phylum_tree()
+    ctx = pt.TreeFigure(tr).highlight(taxa=["a1", "a2"], fill=dark,
+                                      label="Alpha")._build()
+    lb = next(lb for lb in ctx.scene.labels if lb.text == "Alpha")
+    assert lb.color == "#000000"
+
+
 def test_a_wedge_is_still_available_when_wanted():
     tr = _phylum_tree()
     ctx = (pt.TreeFigure(tr, layout="circular")

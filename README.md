@@ -218,18 +218,31 @@ tree = pt.build_tree(
     align_kw=dict(match=2, gap=-3),
     trim_kw=dict(max_gap=0.4, min_occupancy=0.5, min_conservation=0.3),
     method="nj",                        # "nj" | "upgma" | "ml" | "parsimony"
-    root="midpoint",
+    root="midpoint",                    # or an outgroup: root="Escherichia_coli" / [...]
     bootstrap=200,                      # bipartition support
 )
 # distances are JC69-corrected by default (dist_model="jc69"|"k2p"|"poisson"|"raw");
 # negative NJ branch lengths are clamped to 0.
+
+# force a taxonomy column (e.g. genus) to come out monophyletic: constrained
+# NJ (structural -- the tree cannot disagree) or a constrained ML search
+# (the data can still win the ties an unlisted split leaves open)
+genus_tree = pt.build_tree("asvs.fasta", method="nj",
+                           constraint={"asv1": "Bacillus", "asv2": "Bacillus", ...})
+# pt.sort_by(tree, "genus") does the display-only version of the same idea on
+# a tree that already exists: reorders branches, never moves one, so it can
+# bring two clades already siblings closer together but not join ones the
+# tree itself keeps apart -- what a genus the gene does not resolve gets is
+# still as few separate runs as the topology allows, not one.
 
 # maximum likelihood (pure Python), HKY85 + Γ4 rate variation + NNI:
 ml = pt.build_tree("seqs.fasta", method="ml", ml_model="HKY85", ml_gamma=4,
                    bootstrap=100)               # bootstrap works for nj/ml/parsimony
 print(ml.data["logL"], ml.data["AIC"], ml.data["gamma_shape"])
 pt.model_finder("seqs.fasta")                   # rank JC/K80/HKY/GTR (or JTT/WAG/LG) ±G by AIC
-# large datasets -> external engines: build_tree(..., method="ml", ml_engine="iqtree")
+# large datasets -> external engines:
+#   build_tree(..., method="ml", ml_engine="iqtree")     # or "raxml-ng"/"fasttree"
+#   build_tree(..., method="nj", nj_engine="rapidnj")    # builtin NJ is O(n^3)
 
 # protein sequences work the same way -- pass amino acid sequences and an
 # explicit protein model (ml_model's default stays "HKY85"; there is no
@@ -398,12 +411,14 @@ writing one translator — nothing in the phylogenetic logic changes.
 | Pure Python, pip-installable | ✅ | ✅ (Qt for GUI) | ✅ | ✅ | ✅ |
 
 phytreon's niche is a fluent figure builder plus a self-contained phylogenetics
-stack. The built-in aligner and native ML engine are designed for small to
-medium examples, teaching, prototyping, and reproducible pure-Python
-workflows — not as a replacement for MAFFT/MUSCLE or IQ-TREE/RAxML/FastTree
-on large production alignments. Plug those in when you need them
-(`aligner="mafft"`, `ml_engine="iqtree"`), then use phytreon for tree
-manipulation, metadata integration, and visualization.
+stack. The built-in aligner, native ML engine, and Biopython-backed NJ are
+designed for small to medium examples, teaching, prototyping, and
+reproducible pure-Python workflows — not as a replacement for MAFFT/MUSCLE,
+IQ-TREE/RAxML-NG/FastTree, or RapidNJ on large production alignments (a
+sizeable 16S ASV table, say). Plug those in when you need them
+(`aligner="mafft"`, `ml_engine="iqtree"`/`"raxml-ng"`/`"fasttree"`,
+`nj_engine="rapidnj"`), then use phytreon for tree manipulation, metadata
+integration, and visualization.
 
 ---
 

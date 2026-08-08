@@ -6,6 +6,70 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Bootstrap now respects `constraint=`.** Every replicate is rebuilt under
+  the same constraint as the main tree (`constrained_nj` for `method="nj"`,
+  the same `-g`/`--tree-constraint` for an external `ml_engine`) instead of
+  without it, which used to score how well a *forced* split does against data
+  that was never made to honour it -- not a fair reading of the tree actually
+  reported. A low number now means what it should: the resampled data
+  disagree with the grouping even once the constraint is applied, not that an
+  unconstrained rebuild would have found a different grouping on its own
+  (which the constraint had already decided regardless of the data).
+  Uncovered while wiring this up: `build_tree(method="ml", ml_engine="iqtree",
+  bootstrap=N)` built the tree successfully and silently produced **no**
+  support values at all -- `bootstrap` only ever reached the generic
+  resampling loop, which is skipped for every external ML engine (one
+  subprocess search per replicate is a non-starter), and was never forwarded
+  to IQ-TREE's own `-bb` either. Fixed by forwarding it at build time instead,
+  the same as the constraint file.
+- **`infer_raxmlng()`, RAxML-NG as a second constrained-ML engine**
+  (`build_tree(method="ml", ml_engine="raxml-ng", ...)`) alongside IQ-TREE --
+  same `constraint=` support (`--tree-constraint`, needs at least 4 taxa, a
+  RAxML-NG restriction not relaxed here) and the same own-bootstrap-not-a-
+  rebuild-loop treatment (`--all`/`--bs-trees` in one run, reading
+  `<prefix>.raxml.support` instead of `.raxml.bestTree` when it ran). Unlike
+  IQ-TREE's `-m MFP`, RAxML-NG has no built-in "find the model for me", so
+  `model=` needs a real one (`"GTR+G"` default for nucleotides).
+- **`infer_rapidnj()`, fast approximate NJ for alignments too large for the
+  builtin engine** (`build_tree(method="nj", nj_engine="rapidnj")`).
+  `neighbor_joining()` wraps Biopython's textbook O(n^3) implementation,
+  impractical somewhere in the low thousands of tips -- exactly the range a
+  large 16S ASV table reaches. RapidNJ computes its own distance matrix from
+  the alignment (a smaller model menu than `dist_model`'s `k2p`/`poisson`/...,
+  the tradeoff for not needing phytreon's own matrix built in Python first)
+  and is incompatible with `constraint=` for the same reason. Bootstrap goes
+  through phytreon's own rebuild loop here rather than RapidNJ's own `-b` --
+  unlike an external ML search, a fast approximate NJ rebuild is cheap enough
+  that the loop is not the bottleneck, and RapidNJ's own flag does not
+  document how it reports support well enough to trust guessing at it.
+- **`highlight(..., label=...)` prints a clade's name centred inside its own
+  band**, instead of (or alongside) a separate `clade_label()` outside the
+  tree -- the way a dense published tree names a filled sector directly, with
+  no room to spare on naming every tip. A single `node=`/`taxa=` highlight
+  takes the text itself; `by=` takes `label=True` and uses each group's own
+  value, one label per band including every run of a scattered group. Ink is
+  chosen for contrast against the band as actually rendered -- its pale wash
+  (alpha 0.3), not the saturated fill colour underneath it -- which
+  `readable_on()` could not do before this: it read the fill's raw hex, so a
+  colour dark enough to want white ink at full strength but pale enough to
+  want black once washed out the way a highlight always is would have picked
+  wrong. Only draws for `shape="wedge"` on a circular layout -- a ring is thin
+  and curved, and a label centred on it would need to run tangentially, which
+  nothing here typesets, so asking for one there warns and leaves it out.
+- **`clade_label(..., leader=...)` parks the name further out and draws a
+  thin dotted line back**, for a clade whose own bracket is too narrow --
+  angularly, or too few rows -- to hold its name beside it without crowding a
+  neighbour's, the way a dense published tree calls a small clade out with a
+  name on a leader rather than jammed against its bracket. A number, the same
+  convention as `reach`/`gap`/`offset` elsewhere: a fraction of the tree's own
+  depth. Getting the line to land correctly needed `_push_radius` (the
+  mechanism that moves a circular tree's clade bracket/label out past
+  wherever the tip names turned out to end, since only the renderer knows
+  that) generalised from *the path's outermost point, moved as a whole* to
+  *every point moved by the same amount*: a bracket's own points already
+  share one radius so the two gave the same answer there, but a leader line's
+  two ends do not, and the old version would have collapsed them onto a
+  single radius -- erasing the very gap the line exists to show.
 - **`outgroup_root(tree, taxa)`**, and `build_tree(..., root=taxa)` to reach it
   in one call. `midpoint_root` assumes every lineage drifts at about the same
   rate, which is often not even approximately true; an outgroup only assumes

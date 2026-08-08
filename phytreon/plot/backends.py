@@ -408,31 +408,33 @@ def _label_seats(fig, ax, artists, specs):
 def _push_radius(item, seats):
     """Move a path's points (or a label's anchor) outward, same angle.
 
-    The radial counterpart of :func:`_shift_path`: out to whichever is further,
-    the item's own radius or the tip labels inside its ``push_span``, plus its
-    ``push_out`` clearance.
+    The radial counterpart of :func:`_shift_path`: each point goes out to
+    whichever is further, its *own* radius or the tip labels inside
+    ``push_span``, plus ``push_out``. Applied per point rather than to the
+    path's outermost point and then uniformly: a bracket arc's points already
+    share one radius, so the two give the same answer there, but a leader
+    line's two ends do not, and collapsing them to one radius would erase the
+    very radial gap the line exists to show.
     """
-    if hasattr(item, "points"):
-        radii = [math.hypot(x, y) for x, y in item.points]
-        own = max(radii) if radii else 0.0
-    else:
-        own = math.hypot(item.x, item.y)
     span = item.push_span
+    reach = 0.0
     if span is not None:
         a0, a1 = span
         width = (a1 - a0) % (2 * math.pi)
         for ang, far in seats:
-            if (ang - a0) % (2 * math.pi) <= width and far > own:
-                own = far
-    radius = own + item.push_out
+            if (ang - a0) % (2 * math.pi) <= width:
+                reach = max(reach, far)
+
+    def out(x, y):
+        r = math.hypot(x, y)
+        if r <= 1e-12:
+            return x, y
+        radius = max(r, reach) + item.push_out
+        return x / r * radius, y / r * radius
+
     if hasattr(item, "points"):
-        moved = [(x / r * radius, y / r * radius) if r > 1e-12 else (x, y)
-                 for (x, y), r in zip(item.points, radii)]
-        return replace(item, points=moved)
-    r = math.hypot(item.x, item.y)
-    if r <= 1e-12:
-        return item
-    return replace(item, x=item.x / r * radius, y=item.y / r * radius)
+        return replace(item, points=[out(x, y) for x, y in item.points])
+    return replace(item, **dict(zip(("x", "y"), out(item.x, item.y))))
 
 
 def _measure_radius(fig, ax, texts):
