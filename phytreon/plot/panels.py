@@ -132,6 +132,7 @@ class PanelFigure:
     def save(self, path: str, dpi: int = 300, **kwargs) -> str:
         """Save the grid; SVG keeps editable text, as elsewhere in phytreon."""
         import matplotlib as mpl
+        import matplotlib.pyplot as plt
         ext = path.lower().rsplit(".", 1)[-1]
         fig = self.draw(**kwargs)
         extra = getattr(fig, "_phytreon_extra_artists", None)
@@ -139,7 +140,8 @@ class PanelFigure:
         with mpl.rc_context(rc):
             fig.savefig(path, bbox_inches="tight", dpi=dpi,
                         bbox_extra_artists=extra)
-        return path
+        plt.close(fig)          # save() never hands the figure back -- see
+        return path              # the same fix and note in plot/figure.py
 
     def show(self, **kwargs):
         import matplotlib.pyplot as plt

@@ -110,12 +110,13 @@ def sort_by(tree: Tree, key: Union[str, Dict[str, object], Callable[[Node], obje
     ``highlight(order=)``/``ring(order=)``. Unlabelled tips (``key`` gives
     ``None``) count as their own group.
     """
+    catfun: Callable[[Node], object]
     if callable(key):
         catfun = key
     elif isinstance(key, dict):
-        catfun: Callable[[Node], object] = lambda leaf: key.get(leaf.name)
+        catfun = lambda leaf: key.get(leaf.name)             # noqa: E731
     elif isinstance(key, str):
-        catfun = lambda leaf: leaf.data.get(key)
+        catfun = lambda leaf: leaf.data.get(key)              # noqa: E731
     else:
         raise TypeError("key must be a column name, a {tip_name: label} "
                         "mapping, or a function of the leaf node")
@@ -603,6 +604,62 @@ def midpoint_root(tree: Tree) -> Tree:
 # --------------------------------------------------------------------------
 # cut the tree into clusters (cutree)
 # --------------------------------------------------------------------------
+def outgroup_root(tree: Tree, taxa: Union[str, Iterable[str]]) -> Tree:
+    """Re-root on the branch leading to ``taxa``, bisecting it.
+
+    ``taxa`` is a tip name or a list of them; the root goes on the branch
+    separating them from everything else -- the standard choice whenever
+    there is a known outgroup, and the more defensible one:
+    :func:`midpoint_root` assumes every lineage drifts at roughly the same
+    rate (a molecular clock), which is often not true even approximately,
+    while this uses nothing but "the outgroup splits off before everything
+    else in the ingroup does", a claim usually settled independently of the
+    gene tree being rooted (by which taxa the study already knows are
+    outside the group of interest).
+
+    Finding that branch is not simply "the MRCA of ``taxa``": an unrooted
+    method's *display* root is an arbitrary implementation choice -- NJ, say,
+    roots wherever its last join happened to land -- and can put some of
+    ``taxa`` as direct children of that root while the rest sit nested three
+    levels into what looks like an unrelated subtree, which is exactly the
+    shape that hides a real split from a plain ancestor search: the two are
+    still one clade in the *unrooted* tree, just not in this particular
+    rooted display of it. Every node's own leaf set is one side of a real
+    split regardless of where the display root sits, so checking every node
+    against both ``taxa`` and its complement finds the branch if it exists,
+    no matter how the tree happens to be drawn coming in.
+
+    Returns a new tree; the input is left unchanged. Raises if ``taxa`` is
+    not a proper subset, or does not correspond to any single branch at all
+    (the gene tree does not agree that they form a clade, unrooted or not).
+    """
+    names = {taxa} if isinstance(taxa, str) else set(taxa)
+    all_leaves = set(tree.leaf_names())
+    missing = names - all_leaves
+    if missing:
+        raise ValueError(f"taxa not found in tree: {sorted(missing)}")
+    if not names or names == all_leaves:
+        raise ValueError(
+            "taxa must be a proper, non-empty subset of the tree's tips -- "
+            "there has to be something outside them to root against"
+        )
+    rest = all_leaves - names
+    for node in tree.traverse():
+        if node.parent is None:
+            continue
+        leaves = set(node.leaf_names())
+        if leaves == names or leaves == rest:
+            adj = _adjacency(tree)
+            w = node.length or 0.0
+            return _rebuild_rooted(tree, adj, node, node.parent, w / 2.0, w / 2.0)
+    raise ValueError(
+        "taxa do not form a single clade in this tree, rooted or not -- no "
+        "branch separates exactly this set from everything else, so rooting "
+        "on it would mean moving a branch, not just choosing where the root "
+        "sits"
+    )
+
+
 def cut_tree(tree: Tree, height: Optional[float] = None,
              k: Optional[int] = None) -> Dict[str, int]:
     """Cut the tree into clusters and return ``{tip_name: cluster_id}``.

@@ -69,6 +69,20 @@ def test_layouts_render_both_backends(tmp_path):
     assert (tmp_path / "circular.html").exists()
 
 
+def test_save_does_not_leak_the_figure_it_creates(tmp_path):
+    # Regression: save() built its own matplotlib Figure via draw() and never
+    # closed it -- the figure is never handed back (save() returns only the
+    # path), so nothing else could close it either, and a script saving one
+    # figure per sample (most of examples/ does exactly this) leaked one
+    # Figure, with every artist on it, per call.
+    import matplotlib.pyplot as plt
+    tr = pt.datasets.primates()
+    before = len(plt.get_fignums())
+    for i in range(5):
+        pt.TreeFigure(tr).tip_labels().save(str(tmp_path / f"leak{i}.png"))
+    assert len(plt.get_fignums()) == before
+
+
 def test_svg_export_keeps_editable_text(tmp_path):
     # SVG must emit real <text> elements (svg.fonttype="none"), not outlined
     # glyph paths -- so labels stay editable after importing into PowerPoint

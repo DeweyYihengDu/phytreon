@@ -34,13 +34,12 @@ def build_tree(sequences: SeqInput, *,
                method: str = "nj",
                dist_model: str = "jc69",
                constraint: Optional[Union[Dict[str, object], Tree, str]] = None,
-               root: str = "none",
+               root: Union[str, List[str]] = "none",
                bootstrap: int = 0,
                ml_engine: str = "native",
                ml_model: str = "HKY85",
                ml_gamma: int = 0,
                ml_search: bool = True,
-               ml_tool: str = "iqtree",
                parsimony_model: str = "fitch",
                seed: Optional[int] = None,
                return_alignment: bool = False
@@ -58,6 +57,11 @@ def build_tree(sequences: SeqInput, *,
                 :func:`phytreon.infer.trim.trim` (``max_gap``,
                 ``min_occupancy``, ``min_conservation`` ...).
     method      ``"nj"`` | ``"upgma"`` | ``"ml"`` | ``"parsimony"``/``"mp"``.
+    root        ``"none"``, ``"midpoint"``, or a tip name / list of tip names
+                to root on as the outgroup (:func:`phytreon.treeops.
+                outgroup_root`) -- the more defensible choice whenever one is
+                known, since midpoint rooting assumes every lineage drifts at
+                about the same rate and an outgroup does not.
     bootstrap   number of bootstrap replicates (0 = none; distance methods).
     constraint  Force a taxonomy grouping (e.g. genus) to come out
                 monophyletic, as a ``{tip_name: label}`` mapping (a tip
@@ -176,7 +180,13 @@ def build_tree(sequences: SeqInput, *,
         from ..treeops import midpoint_root
         tree = midpoint_root(tree)
     elif root != "none":
-        raise ValueError(f"unknown root mode {root!r}; use 'none' or 'midpoint'")
+        if isinstance(root, str):
+            raise ValueError(
+                f"unknown root mode {root!r}; use 'none', 'midpoint', or a "
+                "tip name/list of tip names to root on that outgroup"
+            )
+        from ..treeops import outgroup_root
+        tree = outgroup_root(tree, root)
 
     # 4. bootstrap (works for distance, parsimony and native-ML methods) -
     if bootstrap:

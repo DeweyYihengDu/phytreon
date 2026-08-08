@@ -6,6 +6,22 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`outgroup_root(tree, taxa)`**, and `build_tree(..., root=taxa)` to reach it
+  in one call. `midpoint_root` assumes every lineage drifts at about the same
+  rate, which is often not even approximately true; an outgroup only assumes
+  it split off before everything else did, usually a claim already settled
+  independently of the gene tree being rooted. Finding the right branch is not
+  simply "the MRCA of `taxa`": an unrooted method's own display root is an
+  arbitrary implementation choice -- NJ roots wherever its last join happened
+  to land -- and can seat some of `taxa` as direct children of that root while
+  the rest sit nested deep in what looks like an unrelated subtree, which
+  hides a real split from a plain ancestor search even though the two are
+  still one clade in the *unrooted* tree. Checking every node's own leaf set
+  against both `taxa` and its complement finds the branch regardless of how
+  the tree happened to arrive rooted (a real case, not a hypothetical: the
+  bundled 6-taxon NJ demo tree does exactly this to one of its two groups).
+  Raises rather than silently rooting somewhere plausible-looking if `taxa`
+  does not correspond to any single branch at all.
 - **`build_tree(..., constraint={tip: label})`** forces a taxonomy grouping --
   a genus column, say -- to come out monophyletic in the tree itself, at two
   different strengths depending on `method`, rather than only rearranging a
@@ -158,6 +174,22 @@ All notable changes to phytreon are documented here. Format loosely follows
   read off the name is easier to predict than a clever one.
 
 ### Fixed
+- **`save()` no longer leaks the figure it draws.** It builds a fresh
+  matplotlib `Figure` via `draw()`, saves it, and returns only the output
+  path -- never the figure itself -- so nothing else could ever close it
+  either. Harmless for one figure; most of `examples/` (and any real script
+  saving one figure per sample) calls `save()` in a loop, and every past
+  call stayed registered with pyplot, artists and all, for the rest of the
+  process. Found from the same `RuntimeWarning: More than 20 figures have
+  been opened` that this whole test suite has been quietly printing on
+  every run. `PanelFigure.save()` had the identical leak independently and
+  gets the identical fix.
+- **A dead `ml_tool` parameter is gone from `build_tree()`.** It was declared
+  in the signature, defaulted to `"iqtree"`, and read nowhere in the
+  function body -- `ml_engine` is what actually selects native vs. an
+  external tool, so passing `ml_tool="fasttree"` silently ran the native
+  engine instead, no error, nothing to notice. Grepped the repo first:
+  nothing outside its own declaration ever referenced it.
 - **A clade bracket on a circular tree goes outside the rings and the names.**
   It was drawn at the tip circle, so on any figure with ring tracks the bracket
   ran *under* them and its name across them — illegible, and it hid the data it

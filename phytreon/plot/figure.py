@@ -303,6 +303,7 @@ class _Renderable:
             self.draw(backend="plotly", **kwargs).write_html(path)
         else:  # pdf/svg/png/jpg -> matplotlib
             import matplotlib as mpl
+            import matplotlib.pyplot as plt
             fig = self.draw(backend="mpl", **kwargs)
             extra = getattr(fig, "_phytreon_extra_artists", None)
             # for SVG, emit editable <text> (not glyph outlines) so labels
@@ -311,6 +312,11 @@ class _Renderable:
             with mpl.rc_context(rc):
                 fig.savefig(path, bbox_inches="tight", dpi=dpi,
                             bbox_extra_artists=extra)
+            # save() hands back only the path, never this figure, so nothing
+            # else can ever close it -- left open, a script that saves one
+            # figure per sample (exactly what most of examples/ does) leaks
+            # one matplotlib Figure, with every artist on it, per call.
+            plt.close(fig)
         return path
 
     def show(self, backend: str = "mpl", **kwargs):

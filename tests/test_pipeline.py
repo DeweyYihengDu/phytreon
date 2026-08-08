@@ -221,6 +221,70 @@ def test_midpoint_root_balances():
     assert set(rooted.leaf_names()) == {n for n, _ in SEQS}
 
 
+def test_outgroup_root_bisects_the_named_branch():
+    import pytest
+    tr = pt.datasets.primates()
+    rooted = pt.outgroup_root(tr, "Baboon")
+    kids = rooted.root.children
+    assert {c.name for c in kids} == {"Baboon", None}      # leaf + the rest
+    baboon = next(c for c in kids if c.name == "Baboon")
+    original = next(lf for lf in tr.leaves() if lf.name == "Baboon").length
+    assert baboon.length == pytest.approx(original / 2)
+    assert set(rooted.leaf_names()) == set(tr.leaf_names())
+
+
+def test_outgroup_root_accepts_a_multi_tip_clade():
+    tr = pt.datasets.primates()
+    rooted = pt.outgroup_root(tr, ["Macaque", "Baboon"])
+    assert {frozenset(c.leaf_names()) for c in rooted.root.children} == {
+        frozenset({"Macaque", "Baboon"}),
+        frozenset({"Human", "Chimp", "Gorilla", "Orangutan", "Gibbon"}),
+    }
+
+
+def test_outgroup_root_finds_the_split_past_an_awkward_display_root():
+    # Regression: NJ's own (arbitrary) rooting can seat some of a real clade
+    # as direct children of its display root while the rest sit nested deep
+    # in what looks like an unrelated subtree -- get_mrca() alone would then
+    # report the whole tree as the "common ancestor", even though the two
+    # groups are still one clade each in the *unrooted* tree.
+    tree = pt.build_tree(SEQS, method="nj")     # no root= -- keep NJ's own
+    b_leaves = {"B1", "B2", "B3"}
+    # confirm this really is the awkward case before trusting the regression
+    assert set(tree.get_mrca(b_leaves, strict=False).leaf_names()) != b_leaves
+    rooted = pt.outgroup_root(tree, list(b_leaves))
+    assert {frozenset(c.leaf_names()) for c in rooted.root.children} == {
+        frozenset(b_leaves), frozenset({"A1", "A2", "A3"})}
+
+
+def test_outgroup_root_rejects_the_whole_tree_and_missing_taxa():
+    import pytest
+    tr = pt.datasets.primates()
+    with pytest.raises(ValueError, match="proper"):
+        pt.outgroup_root(tr, tr.leaf_names())
+    with pytest.raises(ValueError, match="not found"):
+        pt.outgroup_root(tr, ["NotReal"])
+
+
+def test_outgroup_root_rejects_a_set_that_is_not_a_clade():
+    import pytest
+    tr = pt.datasets.primates()          # Chimp is Human's real sister, not Gorilla
+    with pytest.raises(ValueError, match="clade"):
+        pt.outgroup_root(tr, ["Human", "Gorilla"])
+
+
+def test_build_tree_root_accepts_an_outgroup_list():
+    tree = pt.build_tree(SEQS, method="nj", root=["B1", "B2", "B3"])
+    assert {frozenset(c.leaf_names()) for c in tree.root.children} == {
+        frozenset({"B1", "B2", "B3"}), frozenset({"A1", "A2", "A3"})}
+
+
+def test_build_tree_rejects_an_unknown_root_string():
+    import pytest
+    with pytest.raises(ValueError, match="unknown root mode"):
+        pt.build_tree(SEQS, method="nj", root="bogus")
+
+
 def test_native_ml_recovers_groups():
     aln = pt.align(SEQS, seqtype="nucleotide")
     tree = pt.ml_tree(aln, model="HKY85", search=True)

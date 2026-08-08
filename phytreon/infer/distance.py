@@ -6,7 +6,7 @@ plain labels + matrix pair (or an alignment) and return a phytreon
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Sequence
 
 from ..core.tree import Node, Tree
 from ..core.io import from_biopython
