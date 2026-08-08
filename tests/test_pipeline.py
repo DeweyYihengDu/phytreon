@@ -49,6 +49,56 @@ def test_builtin_align_rectangular():
     assert aln.ncol >= max(len(s) for _, s in SEQS)
 
 
+def test_align_external_surfaces_the_tools_own_error(monkeypatch):
+    # Regression: subprocess.run(..., check=True) alone raised
+    # CalledProcessError with the default "returned non-zero exit status 1"
+    # message -- the actual reason (an alignment MAFFT could not parse, an
+    # unrecognised flag) sat captured in stderr and was silently dropped
+    # every time a run failed.
+    import shutil
+    import subprocess
+    from phytreon.infer.align import align_external
+
+    monkeypatch.setattr(shutil, "which", lambda tool: "/fake/mafft")
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, **kw: SimpleNamespace(
+            returncode=1, stdout="", stderr="mafft: unknown option --bogus\n"))
+    with pytest.raises(RuntimeError, match="unknown option --bogus"):
+        align_external([("a", "ACGT"), ("b", "ACGA")], tool="mafft",
+                       extra_args=["--bogus"])
+
+
+def test_align_external_muscle_path_also_surfaces_its_error(monkeypatch, tmp_path):
+    # muscle writes to an output file instead of stdout -- a distinct branch
+    # from the mafft one above, and needs the same fix independently
+    import shutil
+    import subprocess
+    from phytreon.infer.align import align_external
+
+    monkeypatch.setattr(shutil, "which", lambda tool: "/fake/muscle")
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, **kw: SimpleNamespace(
+            returncode=1, stdout="", stderr="muscle: bad input format\n"))
+    with pytest.raises(RuntimeError, match="bad input format"):
+        align_external([("a", "ACGT"), ("b", "ACGA")], tool="muscle")
+
+
+def test_align_external_still_works_on_success(monkeypatch):
+    import shutil
+    import subprocess
+    from phytreon.infer.align import align_external
+
+    monkeypatch.setattr(shutil, "which", lambda tool: "/fake/mafft")
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, **kw: SimpleNamespace(
+            returncode=0, stdout=">a\nACGT\n>b\nACG-\n", stderr=""))
+    aln = align_external([("a", "ACGT"), ("b", "ACG")], tool="mafft")
+    assert aln.names == ["a", "b"]
+
+
 def test_trim_removes_gappy_columns():
     aln = align([(n, s) for n, s in SEQS], seqtype="nucleotide")
     trimmed = trim(aln, max_gap=0.3)
@@ -190,7 +240,6 @@ def test_sort_by_preserves_topology_and_branch_lengths():
 
 
 def test_sort_by_reads_a_data_column_or_a_function_too():
-    import pytest
     tr = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
     for leaf in tr.leaves():
         leaf.data["genus"] = "X" if leaf.name in ("A", "B") else "Y"

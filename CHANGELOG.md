@@ -238,6 +238,44 @@ All notable changes to phytreon are documented here. Format loosely follows
   read off the name is easier to predict than a clever one.
 
 ### Fixed
+- **A failed external engine run now says why.** Every `subprocess.run(...,
+  check=True)` across `infer_iqtree`/`infer_fasttree`/`infer_raxmlng`/
+  `infer_rapidnj`, and MAFFT/MUSCLE in `align_external`, raised
+  `CalledProcessError` on a non-zero exit, whose default message is "Command
+  [...] returned non-zero exit status 1" -- the actual reason (a model name
+  the engine did not recognise, a constraint with too few taxa, an alignment
+  it could not parse) was captured in `stderr` and then silently discarded
+  every single time a run failed, contradicting `ml.py`'s own claim to be
+  "graceful... a clear, actionable error rather than failing obscurely."
+  Both now surface it.
+- **`build_tree(..., seed=)` reaches an external ML engine's own seed.**
+  `infer_raxmlng` was hardcoding `--seed 1` regardless of what `seed=` the
+  caller passed -- reproducible, since it was always the same fixed value,
+  but not *user*-reproducible: the parameter existed and looked like it
+  should apply, the same shape of bug as the dead `ml_tool` parameter above.
+  `infer_iqtree` gained a `seed=`/`-seed` it never had at all. Left unset,
+  RAxML-NG's default is still the fixed `1` rather than its own random one --
+  a tree that changes between identical-looking calls is its own kind of
+  surprise -- while IQ-TREE keeps picking its own, matching prior behaviour.
+- **`ml_model` reaches an external ML engine's `model=` too, when set.** It
+  was silently native-engine-only: `build_tree(ml_engine="iqtree",
+  ml_model="GTR")` built successfully with IQ-TREE's own default (`"MFP"`)
+  regardless, no error, nothing to notice -- the exact docstring claim
+  ("protein sequences work the same way -- pass `ml_model=`... for
+  `method='ml'`") was simply false for every engine but the native one.
+  `ml_model`'s default changed from the literal `"HKY85"` to `None`, so
+  `build_tree` can tell "unset" from "the caller chose HKY85" -- forwarded
+  verbatim only when actually set, so an unset `ml_model` still leaves
+  IQ-TREE's `"MFP"`/RAxML-NG's `"GTR+G"` alone rather than overwriting either
+  engine's own, better default with phytreon's native-engine one. IQ-TREE and
+  RAxML-NG do not share one model-string dialect, so a string valid for one
+  is not guaranteed valid for the other -- now the caller's problem when they
+  opt into both an external engine and an explicit model at once, not
+  something this can validate for them. `ml_gamma` has no equivalent for an
+  external engine (it encodes rate variation in the model string itself,
+  e.g. `"GTR+G4"`) and stays native-only; asking for it or `ml_model` on
+  FastTree, which does not accept a model string of its own, now raises
+  rather than a bare `TypeError` from a stray keyword argument.
 - **`save()` no longer leaks the figure it draws.** It builds a fresh
   matplotlib `Figure` via `draw()`, saves it, and returns only the output
   path -- never the figure itself -- so nothing else could ever close it

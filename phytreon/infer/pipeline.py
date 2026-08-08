@@ -38,7 +38,7 @@ def build_tree(sequences: SeqInput, *,
                root: Union[str, List[str]] = "none",
                bootstrap: int = 0,
                ml_engine: str = "native",
-               ml_model: str = "HKY85",
+               ml_model: Optional[str] = None,
                ml_gamma: int = 0,
                ml_search: bool = True,
                parsimony_model: str = "fitch",
@@ -106,7 +106,15 @@ def build_tree(sequences: SeqInput, *,
     Protein sequences work the same way -- pass ``ml_model="JTT"``/``"WAG"``/
     ``"LG"`` for ``method="ml"`` (:func:`phytreon.infer.ml_native.ml_tree`
     validates the model matches the data's alphabet); ``dist_model="poisson"``
-    for ``method="nj"``/``"upgma"``.
+    for ``method="nj"``/``"upgma"``. ``ml_model`` left unset defaults to
+    ``"HKY85"`` for the native engine; for an external one it is forwarded
+    as-is to that engine's own ``model=`` (IQ-TREE's ``"MFP"``/RAxML-NG's
+    ``"GTR+G"`` default otherwise) -- the two do not share one dialect, so a
+    string valid for one is not guaranteed valid for the other, and switching
+    ``ml_engine`` with an explicit ``ml_model`` set may need a different
+    string. ``ml_gamma`` (a category count) has no equivalent for an external
+    engine, which encodes rate variation in the model string itself
+    (``"GTR+G4"``); fold it into ``ml_model`` there instead.
 
     Single-cell CRISPR lineage-tracing character matrices (see
     :func:`phytreon.infer.lineage.read_allele_table`) work through
@@ -145,11 +153,29 @@ def build_tree(sequences: SeqInput, *,
                     "or method='nj' to force the grouping outright"
                 )
             from .ml_native import ml_tree as _native_ml
-            tree = _native_ml(aln, model=ml_model, gamma=ml_gamma, search=ml_search)
+            tree = _native_ml(aln, model=ml_model or "HKY85", gamma=ml_gamma,
+                              search=ml_search)
         else:                                   # external engine
             from .ml import infer_ml
-            _constrainable = ("iqtree", "iqtree2", "raxml-ng", "raxmlng", "raxml")
+            # IQ-TREE and RAxML-NG share a feature set FastTree has none of:
+            # a constrained search, their own bootstrap in the same run, and
+            # a seed for reproducing a stochastic search -- gates all three.
+            _feature_rich = ("iqtree", "iqtree2", "raxml-ng", "raxmlng", "raxml")
             ml_kw = {}
+            if ml_model is not None:
+                if ml_engine not in _feature_rich:
+                    raise ValueError(
+                        f"ml_engine={ml_engine!r} has no model= of its own to "
+                        "set (FastTree picks its own automatically) -- use "
+                        "ml_engine='iqtree' or 'raxml-ng' to choose one"
+                    )
+                # the two engines' model strings are different dialects
+                # (IQ-TREE's default is "MFP", RAxML-NG has no such
+                # shortcut and defaults to "GTR+G") -- forwarded verbatim
+                # only when the caller actually set one, so an unset
+                # ml_model does not silently override either engine's own,
+                # better default with phytreon's own native-engine one.
+                ml_kw["model"] = ml_model
             # Each engine's own bootstrap, not phytreon's generic resampling
             # loop in step 4 below: that loop rebuilds the tree from scratch
             # per replicate, which for an external ML engine means one full
@@ -157,10 +183,12 @@ def build_tree(sequences: SeqInput, *,
             # a non-starter for a few hundred external searches. FastTree has
             # no equivalent flag (it reports its own per-branch support
             # automatically instead), so it gets neither.
-            if bootstrap and ml_engine in _constrainable:
+            if bootstrap and ml_engine in _feature_rich:
                 ml_kw["bootstrap"] = bootstrap
+            if seed is not None and ml_engine in _feature_rich:
+                ml_kw["seed"] = seed
             if constraint is not None:
-                if ml_engine not in _constrainable:
+                if ml_engine not in _feature_rich:
                     raise ValueError(
                         f"ml_engine={ml_engine!r} has no constrained search to "
                         "hook into -- use ml_engine='iqtree' or 'raxml-ng', or "
@@ -268,7 +296,7 @@ def build_tree(sequences: SeqInput, *,
         elif method == "ml" and ml_engine == "native":
             from .ml_native import ml_tree as _nml
             # replicates skip NNI for tractability (branch+model opt only)
-            builder = lambda a: _nml(a, model=ml_model, gamma=ml_gamma, search=False)  # noqa: E731
+            builder = lambda a: _nml(a, model=ml_model or "HKY85", gamma=ml_gamma, search=False)  # noqa: E731
         else:
             builder = None
         if builder is not None:

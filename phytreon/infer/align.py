@@ -302,6 +302,21 @@ def align_external(records: List[Record], tool: str = "mafft",
             f"{tool!r} not found on PATH. Install it, pass path=, or use the "
             f"built-in align()."
         )
+    def run(cmd):
+        # plain check=True raises CalledProcessError, whose default message
+        # is just "Command [...] returned non-zero exit status 1" -- the
+        # actual reason (unparseable input, an unrecognised flag, too few
+        # sequences) is sitting right there in the stderr this already
+        # captures, silently dropped every time a run failed.
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()
+            raise RuntimeError(
+                f"{cmd[0]} exited with status {proc.returncode}"
+                + (f":\n{detail}" if detail else " (no output captured)")
+            )
+        return proc
+
     with tempfile.TemporaryDirectory() as tmp:
         infile = os.path.join(tmp, "in.fasta")
         # write the raw (possibly unequal-length) unaligned records directly;
@@ -311,11 +326,10 @@ def align_external(records: List[Record], tool: str = "mafft",
                 f.write(f">{n}\n{s.replace('-', '')}\n")
         if tool == "mafft":
             cmd = [exe, *(extra_args or ["--auto"]), infile]
-            out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+            out = run(cmd).stdout
             return Alignment.from_fasta(out)
         if tool == "muscle":
             outfile = os.path.join(tmp, "out.fasta")
-            subprocess.run([exe, "-align", infile, "-output", outfile],
-                           capture_output=True, text=True, check=True)
+            run([exe, "-align", infile, "-output", outfile])
             return Alignment.from_fasta(outfile)
     raise ValueError(f"unsupported tool {tool!r}")

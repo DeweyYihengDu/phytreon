@@ -896,7 +896,6 @@ def test_the_label_sits_centred_inside_the_band_not_at_an_edge():
 
 
 def test_wedge_label_reads_outward_and_flips_on_the_left_half():
-    import math
     tr = _phylum_tree()
     # one clade whose angular midpoint falls on the right, one on the left,
     # so both halves of the flip get exercised in a single build
@@ -906,7 +905,6 @@ def test_wedge_label_reads_outward_and_flips_on_the_left_half():
            ._build())
     for name in ("Alpha", "Beta"):
         lb = next(lb for lb in ctx.scene.labels if lb.text == name)
-        angle = math.degrees(math.atan2(lb.y, lb.x)) % 360
         upside_down = 90 < lb.rotation % 360 < 270
         # whichever side of the circle it is on, the rotation must have been
         # flipped to the reading-outward orientation, not left as the raw angle

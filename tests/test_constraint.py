@@ -423,3 +423,120 @@ def test_build_tree_constrained_ml_via_real_raxmlng():
         {"Aa1", "Aa2", "Aa3"}
     assert set(tree.get_mrca(["Bb1", "Bb2", "Bb3"]).leaf_names()) == \
         {"Bb1", "Bb2", "Bb3"}
+
+
+# --------------------------------------------------------------------------
+# seed=, ml_model=: reaching an external engine's own flags through
+# build_tree() instead of them being silently dropped on the floor
+# --------------------------------------------------------------------------
+def _fake_iqtree(monkeypatch, treefile_content):
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: None if tool == "iqtree2" else "/fake/iqtree")
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        with open(cmd[2] + ".treefile", "w") as f:
+            f.write(treefile_content)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ml_mod.subprocess, "run", fake_run)
+    return calls
+
+
+def test_build_tree_forwards_seed_to_iqtree(monkeypatch):
+    calls = _fake_iqtree(monkeypatch, "(a1,a2,(b1,b2));")
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    pt.build_tree(aln, method="ml", ml_engine="iqtree", seed=42)
+    assert calls[0][calls[0].index("-seed") + 1] == "42"
+
+
+def test_build_tree_forwards_seed_to_raxmlng(monkeypatch):
+    calls = _fake_raxmlng(monkeypatch, "(a1,a2,(b1,b2));")
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    pt.build_tree(aln, method="ml", ml_engine="raxml-ng", seed=99)
+    assert calls[0][calls[0].index("--seed") + 1] == "99"
+
+
+def test_raxmlng_seed_still_fixed_when_unset_so_repeat_calls_agree(monkeypatch):
+    # not RAxML-NG's own random default -- a tree that changes between
+    # identical-looking calls is its own kind of surprise
+    calls = _fake_raxmlng(monkeypatch, "(a1,a2,(b1,b2));")
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    pt.build_tree(aln, method="ml", ml_engine="raxml-ng")
+    pt.build_tree(aln, method="ml", ml_engine="raxml-ng")
+    seeds = {c[c.index("--seed") + 1] for c in calls}
+    assert seeds == {"1"}
+
+
+def test_build_tree_forwards_ml_model_to_raxmlng(monkeypatch):
+    calls = _fake_raxmlng(monkeypatch, "(a1,a2,(b1,b2));")
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    pt.build_tree(aln, method="ml", ml_engine="raxml-ng", ml_model="LG+G4")
+    assert calls[0][calls[0].index("--model") + 1] == "LG+G4"
+
+
+def test_unset_ml_model_leaves_each_external_engines_own_default(monkeypatch):
+    calls = _fake_raxmlng(monkeypatch, "(a1,a2,(b1,b2));")
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    pt.build_tree(aln, method="ml", ml_engine="raxml-ng")   # no ml_model=
+    assert calls[0][calls[0].index("--model") + 1] == "GTR+G"
+
+
+def test_unset_ml_model_still_defaults_to_hky85_for_the_native_engine():
+    # the real risk this guards: ml_model's default became None (a sentinel
+    # meaning "let the engine choose"), and the native engine has no such
+    # concept -- it needs an actual model string or ml_tree() raises
+    seqs = ["ACGTACGTACGTACGTACGTACGTACGTACGT", "ACGTACGTACGTACGTACGTACGTACGTACGA",
+           "TTGTACGTACGTACGTACGTACGTACGTACGT", "TTGTACGTACGTACGTACGTACGTACGTACGA"]
+    aln = Alignment(["a1", "a2", "a3", "a4"], seqs)
+    tree = pt.build_tree(aln, method="ml", ml_search=False)   # no ml_model=
+    assert set(tree.leaf_names()) == {"a1", "a2", "a3", "a4"}
+
+
+def test_ml_model_rejected_for_fasttree(monkeypatch):
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: "/fake/fasttree" if "ast" in tool.lower() else None)
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    with pytest.raises(ValueError, match="fasttree"):
+        pt.build_tree(aln, method="ml", ml_engine="fasttree", ml_model="GTR")
+
+
+# --------------------------------------------------------------------------
+# a failed external run surfaces the tool's own message, not a bare
+# CalledProcessError with no indication of what actually went wrong
+# --------------------------------------------------------------------------
+def test_a_failed_iqtree_run_surfaces_its_own_stderr(monkeypatch):
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: None if tool == "iqtree2" else "/fake/iqtree")
+
+    def fake_run(cmd, **kw):
+        return SimpleNamespace(returncode=2, stdout="",
+                              stderr="ERROR: Unrecognized model name JUNK123\n")
+
+    monkeypatch.setattr(ml_mod.subprocess, "run", fake_run)
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    with pytest.raises(RuntimeError, match="JUNK123"):
+        pt.build_tree(aln, method="ml", ml_engine="iqtree", ml_model="JUNK123")
+
+
+def test_a_failed_run_with_no_captured_output_still_names_the_exit_code(monkeypatch):
+    from phytreon.infer import ml as ml_mod
+    monkeypatch.setattr(ml_mod.shutil, "which",
+                        lambda tool: None if tool == "iqtree2" else "/fake/iqtree")
+    monkeypatch.setattr(ml_mod.subprocess, "run",
+                        lambda cmd, **kw: SimpleNamespace(returncode=1, stdout="", stderr=""))
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    with pytest.raises(RuntimeError, match="status 1"):
+        pt.build_tree(aln, method="ml", ml_engine="iqtree")
+
+
+def test_a_successful_run_is_unaffected_by_the_error_surfacing_change(monkeypatch):
+    calls = _fake_iqtree(monkeypatch, "(a1,a2,(b1,b2));")
+    aln = Alignment(["a1", "a2", "b1", "b2"], ["ACGT", "ACGA", "TTGT", "TTGA"])
+    tree = pt.build_tree(aln, method="ml", ml_engine="iqtree")
+    assert set(tree.leaf_names()) == {"a1", "a2", "b1", "b2"}
+    assert calls

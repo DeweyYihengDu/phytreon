@@ -30,8 +30,30 @@ def _require(tool: str, path: Optional[str]) -> str:
     return exe
 
 
+def _run(cmd: List[str]) -> subprocess.CompletedProcess:
+    """``subprocess.run`` that fails with the tool's own message attached.
+
+    ``check=True`` alone raises ``CalledProcessError``, whose default message
+    is just "Command [...] returned non-zero exit status 1" -- the *reason*
+    (a model name the engine did not recognise, a constraint with too few
+    taxa, an alignment it could not parse) is sitting right there in the
+    stderr this already captures, and was being silently dropped on the floor
+    every time a run actually failed. Contradicted the module's own claim to
+    be graceful about exactly this.
+    """
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(
+            f"{cmd[0]} exited with status {proc.returncode}"
+            + (f":\n{detail}" if detail else " (no output captured)")
+        )
+    return proc
+
+
 def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
-                 path: Optional[str] = None, extra_args: Optional[List[str]] = None,
+                 seed: Optional[int] = None, path: Optional[str] = None,
+                 extra_args: Optional[List[str]] = None,
                  constraint=None) -> Tree:
     """ML tree with IQ-TREE. ``model='MFP'`` runs ModelFinder Plus.
 
@@ -42,7 +64,8 @@ def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
     *within* every group and *between* groups by likelihood; only "no other
     tip may land inside this group" is fixed. Pass the :class:`~phytreon.
     core.tree.Tree` it returns directly, or a path to an existing constraint
-    Newick file.
+    Newick file. ``seed`` makes a stochastic search (and UFBoot) reproducible
+    (``-seed``); left unset, IQ-TREE picks its own, and two calls differ.
     """
     exe = _require("iqtree2", path) if (path or shutil.which("iqtree2")) else _require("iqtree", path)
     with tempfile.TemporaryDirectory() as tmp:
@@ -51,6 +74,8 @@ def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
         cmd = [exe, "-s", infile, "-m", model, "-redo", "-quiet"]
         if bootstrap:
             cmd += ["-bb", str(max(bootstrap, 1000))]
+        if seed is not None:
+            cmd += ["-seed", str(seed)]
         if constraint is not None:
             if isinstance(constraint, str):
                 gfile = constraint
@@ -59,7 +84,7 @@ def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
                 constraint.write(gfile)
             cmd += ["-g", gfile]
         cmd += extra_args or []
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        _run(cmd)
         with open(infile + ".treefile") as f:
             return parse_newick(f.read())
 
@@ -75,12 +100,13 @@ def infer_fasttree(aln: Alignment, nucleotide: Optional[bool] = None,
         infile = os.path.join(tmp, "aln.fasta")
         aln.to_fasta(infile)
         cmd = [exe] + (["-nt"] if nucleotide else []) + [infile]
-        out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+        out = _run(cmd).stdout
         return parse_newick(out)
 
 
 def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
-                  threads: int = 1, path: Optional[str] = None,
+                  seed: Optional[int] = None, threads: int = 1,
+                  path: Optional[str] = None,
                   extra_args: Optional[List[str]] = None,
                   constraint=None) -> Tree:
     """ML tree with RAxML-NG, IQ-TREE's other standard alternative.
@@ -96,9 +122,13 @@ def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
     bootstrapping together (``--all``) rather than phytreon's rebuild-from-
     scratch loop, for the same reason :func:`infer_iqtree` reaches for its
     own ``-bb`` instead: one external search per replicate does not scale.
-    ``threads`` is passed through explicitly (``--threads``) since older
-    RAxML-NG releases error out without it; newer ones default to auto-
-    detection, but there's no version probe here to tell which is running.
+    ``seed`` makes the search reproducible (``--seed``); left unset it still
+    passes a fixed one (``1``, not RAxML-NG's own random default) so that two
+    calls with the same arguments agree, since a tree that changes between
+    identical-looking runs is its own kind of surprise. ``threads`` is passed
+    through explicitly (``--threads``) since older RAxML-NG releases error
+    out without it; newer ones default to auto-detection, but there's no
+    version probe here to tell which is running.
     """
     exe = _require("raxml-ng", path)
     with tempfile.TemporaryDirectory() as tmp:
@@ -106,7 +136,7 @@ def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
         aln.to_fasta(infile)
         prefix = os.path.join(tmp, "run")
         cmd = [exe, "--msa", infile, "--model", model, "--prefix", prefix,
-              "--threads", str(threads), "--seed", "1"]
+              "--threads", str(threads), "--seed", str(1 if seed is None else seed)]
         cmd.append("--all" if bootstrap else "--search")
         if bootstrap:
             cmd += ["--bs-trees", str(bootstrap)]
@@ -118,7 +148,7 @@ def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
                 constraint.write(gfile)
             cmd += ["--tree-constraint", gfile]
         cmd += extra_args or []
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        _run(cmd)
         # --all additionally writes <prefix>.raxml.support (the best tree
         # with bootstrap values mapped onto it); --search alone never
         # produces that file, so bestTree is the one that always exists.
@@ -161,7 +191,7 @@ def infer_rapidnj(aln: Alignment, evolution_model: str = "kim",
         if bootstrap:
             cmd += ["-b", str(bootstrap)]
         cmd += extra_args or []
-        out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+        out = _run(cmd).stdout
         return parse_newick(out)
 
 
