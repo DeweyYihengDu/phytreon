@@ -24,6 +24,30 @@ def _check_taxa(taxa: Set[str], leaves: Dict[str, Node]) -> None:
         raise ValueError(f"taxa not found in tree: {sorted(missing)}")
 
 
+def _check_table_columns(table, leaves: Dict[str, Node], caller: str) -> None:
+    """Every column of a samples x taxa table has to be a tip of the tree.
+
+    Checked up front, over all columns, rather than per row as a side effect of
+    whichever taxa happened to be present in that row: an ASV table normally
+    has *more* ASVs than the tree does tips, because tree building drops
+    sequences (too short, failed alignment, chimeras filtered after the table
+    was counted). Left unchecked that is not a loud failure but a quiet one --
+    the extra taxa's abundance still lands in each sample's total, so every real
+    taxon's fraction comes out too small and the distances are wrong rather
+    than absent.
+    """
+    unknown = [str(c) for c in table.columns if c not in leaves]
+    if unknown:
+        shown = sorted(unknown)[:10]
+        raise ValueError(
+            f"{caller}: {len(unknown)} of {len(table.columns)} table columns "
+            f"are not tips of the tree: {shown}"
+            f"{' ...' if len(unknown) > len(shown) else ''}. Subset the table "
+            f"to the tree's tips first, e.g. "
+            f"table[[c for c in table.columns if c in set(tree.leaf_names())]]"
+        )
+
+
 def _edges_to_root(leaves: Dict[str, Node], taxa: Iterable[str]) -> Set[Node]:
     """Nodes whose edge-to-parent lies on some tip-to-root path in ``taxa``.
 
@@ -73,6 +97,8 @@ def faiths_pd_table(tree: Tree, table) -> "pd.Series":  # noqa: F821
     for the metric that does).
     """
     import pandas as pd
+    leaves = _leaves_by_name(tree)
+    _check_table_columns(table, leaves, "faiths_pd_table")
     out = {}
     for sample, row in table.iterrows():
         present = row.index[row.to_numpy() > 0]
@@ -165,6 +191,8 @@ def unifrac_matrix(tree: Tree, table, weighted: bool = False,
     """
     import numpy as np
     import pandas as pd
+    leaves = _leaves_by_name(tree)
+    _check_table_columns(table, leaves, "unifrac_matrix")
     samples = list(table.index)
     n = len(samples)
     mat = np.zeros((n, n))
@@ -189,7 +217,6 @@ def unifrac_matrix(tree: Tree, table, weighted: bool = False,
                     d = num
                 mat[i, j] = mat[j, i] = d
     else:
-        leaves = _leaves_by_name(tree)
         used = [_edges_to_root(leaves, list(table.columns[table.loc[s].to_numpy() > 0]))
                for s in samples]
         for i in range(n):

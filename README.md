@@ -480,6 +480,10 @@ pt.faiths_pd_table(tree, samples_by_taxa_table)     # every row of a samples x t
 pt.unweighted_unifrac(tree, taxa_a, taxa_b)         # presence/absence beta diversity
 pt.weighted_unifrac(tree, abundance_a, abundance_b) # abundance-weighted, normalized to [0, 1]
 pt.unifrac_matrix(tree, samples_by_taxa_table, weighted=True)  # every pair at once
+# every column of the table must be a tip of the tree -- an ASV table usually
+# has more ASVs than the tree does, so subset it first rather than letting the
+# extras quietly skew each sample's abundance total:
+#   table[[c for c in table.columns if c in set(tree.leaf_names())]]
 
 # phylogenetic signal: does a continuous trait track the tree more, less, or
 # exactly as much as Brownian motion on it would predict?
@@ -633,7 +637,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 420 tests
+pytest -q                             # 429 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

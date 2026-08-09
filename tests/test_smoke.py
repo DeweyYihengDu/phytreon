@@ -178,6 +178,43 @@ def test_continuous_ace_bounds():
     assert all(lo <= v <= hi for v in vals.values())
 
 
+def test_ace_rejects_trait_names_that_are_not_tips_of_the_tree():
+    # a misspelled tip name, or tree and metadata disagreeing on name format --
+    # used to be ignored in silence, which is not harmless: the tip it was meant
+    # for loses its value and gets reconstructed as ambiguous instead. One
+    # misspelling among these seven primates moved the reconstructed state of
+    # seven nodes, and because the state space is read off trait.values(), a
+    # misspelled key can also add a state no tip in the tree carries.
+    tr = pt.datasets.primates()
+    names = tr.leaf_names()
+    typo = {n: ("x" if i % 2 else "y") for i, n in enumerate(names)}
+    del typo["Human"]
+    typo["Humann"] = "y"
+    for call in (lambda: pt.ace_parsimony(tr, typo),
+                 lambda: pt.ace_ml(tr, typo),
+                 lambda: pt.stochastic_map(tr, typo, n=5, seed=0),
+                 lambda: pt.ace_continuous(
+                     tr, {**{n: 1.0 for n in names[1:]}, "Humann": 2.0})):
+        with pytest.raises(ValueError, match="not tips of the tree"):
+            call()
+
+
+def test_a_tip_absent_from_trait_is_still_allowed_for_discrete_traits():
+    # the other direction, and a documented feature rather than an oversight:
+    # partial data is normal to reconstruct from, and the discrete methods treat
+    # an unlabelled tip as fully ambiguous
+    tr = pt.datasets.primates()
+    names = tr.leaf_names()
+    partial = {n: ("x" if i % 2 else "y")
+              for i, n in enumerate(names) if n != "Baboon"}
+    assert pt.ace_parsimony(tr, partial)["states"] == ["x", "y"]
+    assert len(pt.ace_ml(tr, partial)) > 0
+    # ace_continuous is the exception -- a weighted average has nothing to
+    # average over an unknown, so it still demands every tip
+    with pytest.raises(KeyError, match="missing trait value"):
+        pt.ace_continuous(tr, {n: 1.0 for n in names[1:]})
+
+
 def test_time_axis_with_geo(tmp_path):
     tr = pt.datasets.random_tree(10, seed=1)
     pt.scale_clade(tr, tr.root, 100.0 / max(n.depth() for n in tr.leaves()))

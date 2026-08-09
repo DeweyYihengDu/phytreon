@@ -20,6 +20,34 @@ from typing import Dict
 from ..core.tree import Node, Tree
 
 
+def check_trait_names(tree: Tree, trait: Dict[str, object], caller: str) -> None:
+    """Reject keys of ``trait`` that are not tips of ``tree``.
+
+    Only that direction. A *tip* with no entry in ``trait`` is legitimate and
+    documented -- the discrete reconstructions treat it as fully ambiguous, and
+    partial data is a normal thing to reconstruct from. A *name in trait that is
+    not a tip* is never legitimate: it is a typo, or tree and metadata that
+    disagree on how names are formatted, and it is the direction that fails
+    quietly. The tip it was meant to label ends up unlabelled, so
+    :func:`ace_parsimony` reconstructs it as ambiguous and resolves it from its
+    parent -- silently, and not only for that tip (one misspelling among the
+    seven bundled primates moved the reconstructed state of seven nodes). Worse,
+    the discrete functions read their state space off ``trait.values()``, so a
+    misspelled key can add a state that no tip in the tree actually carries and
+    :func:`ace_ml` will estimate rates over it.
+    """
+    unknown = sorted(str(k) for k in trait if k not in {lf.name for lf in tree.leaves()})
+    if unknown:
+        shown = unknown[:10]
+        raise ValueError(
+            f"{caller}: {len(unknown)} trait name(s) are not tips of the tree: "
+            f"{shown}{' ...' if len(unknown) > len(shown) else ''}. Tips absent "
+            f"from trait are fine (treated as unknown); names absent from the "
+            f"tree are not, since the tip they were meant for silently loses "
+            f"its value."
+        )
+
+
 # --------------------------------------------------------------------------
 # Fitch parsimony
 # --------------------------------------------------------------------------
@@ -30,6 +58,7 @@ def ace_parsimony(tree: Tree, trait: Dict[str, str]) -> Dict[str, object]:
     treated as fully ambiguous.  Each node gets ``data['ace_state']``;
     the function returns ``{"score": int, "states": [...]}``.
     """
+    check_trait_names(tree, trait, "ace_parsimony")
     states = sorted({v for v in trait.values()})
     full = set(states)
 
@@ -122,6 +151,7 @@ def ace_ml(tree: Tree, trait: Dict[str, str], model: str = "ER",
     from scipy.linalg import expm
     from scipy.optimize import minimize, minimize_scalar
 
+    check_trait_names(tree, trait, "ace_ml")
     states = sorted({v for v in trait.values()})
     k = len(states)
     idx = {s: i for i, s in enumerate(states)}
@@ -204,7 +234,13 @@ def ace_continuous(tree: Tree, trait: Dict[str, float]) -> Dict[Node, float]:
     independent-contrasts weighted averaging (Brownian motion).
 
     Returns ``{node: estimated_value}`` and writes ``data['ace_value']``.
+
+    Unlike the discrete reconstructions, every tip needs a value -- a weighted
+    average has nothing to average over an unknown.
     """
+    # checked before the walk below, which would otherwise report the *tip* left
+    # without a value rather than the misspelled key that stranded it
+    check_trait_names(tree, trait, "ace_continuous")
     # postorder: weighted average of children, weights = 1 / (branch len + accumulated var)
     var: Dict[Node, float] = {}
     val: Dict[Node, float] = {}

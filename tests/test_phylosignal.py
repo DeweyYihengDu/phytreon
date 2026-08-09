@@ -58,6 +58,56 @@ def test_phylo_vcv_respects_a_requested_taxon_order():
     assert V.shape == (len(names), len(names))
 
 
+# --------------------------------------------------------------------------
+# Trees whose covariance matrix cannot be inverted. Not an exotic input: a
+# zero-length terminal branch puts two tips at zero distance, giving them
+# identical rows in V, and IQ-TREE and RAxML emit those routinely.
+# --------------------------------------------------------------------------
+ZERO_LENGTH_TREE = "((A:0.0,B:0.0):1.0,(C:1.0,D:1.0):1.0,E:2.0);"
+ZERO_LENGTH_TRAIT = {"A": 1.0, "B": 2.0, "C": 3.0, "D": 1.5, "E": 2.5}
+
+
+def test_signal_functions_name_the_tips_that_make_the_tree_singular():
+    # each of these used to fail differently and unhelpfully on this tree:
+    # blomberg_k with a bare numpy LinAlgError, and pagels_lambda not at all --
+    # its optimiser escaped to lambda ~ 0, where the off-diagonals vanish and
+    # the matrix inverts again, reporting "no signal, p = 1.0" for what is
+    # really "not computable here"
+    tr = pt.Tree.from_newick(ZERO_LENGTH_TREE)
+    for call in (lambda: pt.blomberg_k(tr, ZERO_LENGTH_TRAIT),
+                 lambda: pt.pagels_lambda(tr, ZERO_LENGTH_TRAIT),
+                 lambda: pt.pgls(tr, ZERO_LENGTH_TRAIT,
+                                 {k: 2 * v for k, v in ZERO_LENGTH_TRAIT.items()})):
+        with pytest.raises(ValueError, match="zero distance from each other"):
+            call()
+        # and the message says which tips, not just that something is singular
+        try:
+            call()
+        except ValueError as exc:
+            assert "'A'" in str(exc) and "'B'" in str(exc)
+
+
+def test_pgls_still_allows_a_fixed_lambda_that_does_not_need_the_tree():
+    # lambda_=0.0 zeroes the shared history, so duplicate tips stop mattering
+    # and the fit is genuinely well defined -- the guard is on the estimated
+    # path, where a singular V is dangerous rather than merely fatal, and must
+    # not reject this
+    tr = pt.Tree.from_newick(ZERO_LENGTH_TREE)
+    pred = {k: 2.0 * v + 0.1 for k, v in ZERO_LENGTH_TRAIT.items()}
+    res = pt.pgls(tr, ZERO_LENGTH_TRAIT, pred, lambda_=0.0)
+    assert res["coefficients"]["x"] == pytest.approx(0.5)
+    # a fixed lambda that *is* singular is the caller's assertion, so it fails
+    # loudly from the linear algebra rather than being pre-screened
+    with pytest.raises(np.linalg.LinAlgError):
+        pt.pgls(tr, ZERO_LENGTH_TRAIT, pred, lambda_=1.0)
+
+
+def test_a_tip_at_zero_depth_is_reported_as_its_own_case():
+    tr = pt.Tree.from_newick("(A:0.0,(B:1.0,C:1.0):1.0);")
+    with pytest.raises(ValueError, match="zero distance from the root"):
+        pt.blomberg_k(tr, {"A": 1.0, "B": 2.0, "C": 3.0})
+
+
 def test_phylo_vcv_rejects_an_unknown_taxon():
     tr = pt.datasets.primates()
     with pytest.raises(ValueError, match="not found"):

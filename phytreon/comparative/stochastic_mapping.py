@@ -31,8 +31,9 @@ def stochastic_map(tree: Tree, trait: Dict[str, str], n: int = 200,
     import numpy as np
     from scipy.linalg import expm
     from scipy.optimize import minimize, minimize_scalar
-    from .ace import mk_q_builder
+    from .ace import check_trait_names, mk_q_builder
 
+    check_trait_names(tree, trait, "stochastic_map")
     states = sorted({v for v in trait.values()})
     k = len(states)
     idx = {s: i for i, s in enumerate(states)}

@@ -5,6 +5,55 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **`unifrac_matrix(weighted=True)` silently returned wrong distances when the
+  table had a column the tree does not have as a tip.** The realistic case, not
+  an exotic one: tree building drops sequences (too short, failed alignment,
+  chimeras filtered after the table was counted), so an ASV table normally has
+  *more* ASVs than the tree has tips. The extra taxa's abundance still went into
+  each sample's total, so every real taxon's subtree fraction came out too small
+  -- 0.846 where the answer was 0.5 on a four-tip test case, with the fractions
+  summing to 0.18 instead of 1.0 -- and those distances then feed an ordination
+  with nothing having gone visibly wrong. The same mistake produced three
+  different behaviours across the module: this silent one, a bare `KeyError`
+  from `unifrac_matrix(weighted=False)`, and a clear `ValueError` from every
+  single-pair function. Now one `ValueError` from all of them, naming the
+  offending columns and the one-liner that subsets the table. `faiths_pd_table`
+  checked all columns up front too, since it had been validating only the
+  nonzero entries of each row -- so whether the same table raised depended on
+  the data in it.
+- **`ace_parsimony`, `ace_ml` and `stochastic_map` silently ignored a trait name
+  that is not a tip of the tree.** A misspelling, or a tree and a metadata table
+  that disagree on how names are formatted -- and not harmless when ignored: the
+  tip the entry was meant for is left unlabelled, so it gets reconstructed as
+  fully ambiguous and resolved from its parent instead. One misspelling among the
+  seven bundled primates moved the reconstructed state of seven nodes with
+  nothing reported. And since all three read their state space off
+  `trait.values()`, a misspelled key can add a state that no tip in the tree
+  carries, which `ace_ml` will then estimate rates over. Now a `ValueError`
+  naming the offending keys, from these three and from `ace_continuous`, which
+  did fail loudly but blamed the tip left without a value rather than the
+  misspelled key that stranded it. The *other* direction is deliberately still
+  allowed: a tip with no entry in `trait` is documented behaviour for the
+  discrete methods (treated as fully ambiguous -- partial data is a normal thing
+  to reconstruct from), and only `ace_continuous` requires every tip, a weighted
+  average having nothing to average over an unknown.
+- **`blomberg_k`, `pagels_lambda` and `pgls` failed three different ways on a
+  tree whose covariance matrix is singular.** Also not exotic: any two tips at
+  zero patristic distance have identical rows in `phylo_vcv`'s matrix, and a
+  zero-length terminal branch does exactly that -- IQ-TREE and RAxML emit them
+  routinely. `blomberg_k` raised a bare `LinAlgError: Singular matrix` with
+  nothing to act on; `pgls` continued, having landed on a `lambda` where the
+  matrix happened to invert; and `pagels_lambda` was the bad one -- its
+  optimiser escaped to `lambda ~ 0`, where the off-diagonals vanish and the
+  matrix inverts again, and reported `p = 1.0`, which reads as "no phylogenetic
+  signal" for what is really "not computable on this tree". All three now raise
+  one `ValueError` naming the tied tips and what to do about them. The guard is
+  deliberately only on the paths that estimate `lambda`: a `lambda_` handed over
+  as a number is the caller asserting the error structure, and `lambda_=0.0`
+  ignores the tree entirely, so it is well defined on exactly the trees this
+  check rejects and still works.
+
 ### Changed
 - **`pgls` estimates `lambda` by REML by default, and charges it a degree of
   freedom.** A Type-I error sweep over tree shape (ultrametric and not), tree

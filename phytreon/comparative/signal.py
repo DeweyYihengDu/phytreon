@@ -69,6 +69,56 @@ def _gls_mean(V_inv, x):
     return float(ones @ V_inv @ x / denom), float(denom)
 
 
+def _check_invertible(names, V, caller: str) -> None:
+    """Refuse a singular covariance matrix, saying which tips caused it.
+
+    Not an exotic input: any two tips at zero patristic distance -- which is
+    what a zero-length terminal branch produces, and IQ-TREE and RAxML emit
+    those routinely -- have identical rows in ``V``, so it cannot be inverted.
+    Nothing downstream can separate such tips, and left to itself each of these
+    functions failed differently and unhelpfully: a bare ``LinAlgError`` from
+    numpy, or (worse) an optimiser quietly escaping to ``lambda = 0``, where
+    the off-diagonals vanish and the matrix inverts again -- reporting "no
+    phylogenetic signal, p = 1.0" for what is really "not computable on this
+    tree".
+    """
+    import numpy as np
+    n = len(names)
+    try:
+        np.linalg.cholesky(V)
+        return          # positive definite: nothing to report, and this is the
+                        # common case, so it is the cheap check that runs first
+    except np.linalg.LinAlgError:
+        pass            # fall through and work out what to tell the caller
+    flat = [i for i in range(n) if V[i, i] <= 0.0]
+    if flat:
+        raise ValueError(
+            f"{caller}: {sorted(names[i] for i in flat)} sit at zero distance "
+            f"from the root, so the tree implies no variance for them"
+        )
+    # patristic distance from the covariance: d_ij = V_ii + V_jj - 2 V_ij
+    groups, seen = [], set()
+    for i in range(n):
+        if i in seen:
+            continue
+        tied = [j for j in range(i + 1, n)
+                if abs(V[i, i] + V[j, j] - 2.0 * V[i, j]) <= 0.0]
+        if tied:
+            seen.update(tied)
+            groups.append([names[i]] + [names[j] for j in tied])
+    if groups:
+        raise ValueError(
+            f"{caller}: the tree has tips at zero distance from each other, so "
+            f"its covariance matrix is singular and nothing can tell them "
+            f"apart: {groups}. Give the branches between them a length, or "
+            f"drop all but one tip from each group."
+        )
+    raise ValueError(
+        f"{caller}: the tree's covariance matrix is singular (rank "
+        f"{np.linalg.matrix_rank(V)} of {n}), so it cannot be inverted"
+    )
+
+
 def blomberg_k(tree: Tree, trait: Dict[str, float], n_perm: int = 0,
               seed: Optional[int] = None) -> Dict[str, object]:
     """Blomberg et al. (2003)'s K: how strongly a continuous trait's
@@ -98,6 +148,7 @@ def blomberg_k(tree: Tree, trait: Dict[str, float], n_perm: int = 0,
     n = len(names)
     if n < 3:
         raise ValueError("blomberg_k needs at least 3 taxa with trait values")
+    _check_invertible(names, V, "blomberg_k")
     V_inv = np.linalg.inv(V)
     ones = np.ones(n)
 
@@ -116,8 +167,10 @@ def blomberg_k(tree: Tree, trait: Dict[str, float], n_perm: int = 0,
     if n_perm > 0:
         rng = np.random.default_rng(seed)
         raw_ratios = np.array([k_stat(rng.permutation(x)) for _ in range(n_perm)])
-        obs_raw = k_stat(x)
-        result["p"] = float(np.mean(raw_ratios >= obs_raw))
+        # compared on the raw ratio rather than K: the two differ only by
+        # expected_ratio, which is a property of the tree and so identical for
+        # every permutation, and dividing both sides by it changes nothing
+        result["p"] = float(np.mean(raw_ratios >= observed))
         result["n_perm"] = n_perm
     return result
 
@@ -210,6 +263,7 @@ def pagels_lambda(tree: Tree, trait: Dict[str, float]) -> Dict[str, object]:
     n = len(names)
     if n < 3:
         raise ValueError("pagels_lambda needs at least 3 taxa with trait values")
+    _check_invertible(names, V, "pagels_lambda")
 
     X = np.ones((n, 1))          # intercept only: the phylogenetic mean
     fit = minimize_scalar(lambda lam: _gls_profile_crit(V, X, x, lam, reml=False),
@@ -349,6 +403,17 @@ def pgls(tree: Tree, y: Dict[str, float], x: Union[Dict[str, float], "pd.DataFra
             f"({len(x_names)}) plus two for a meaningful fit"
         )
     names, V = phylo_vcv(tree, taxa)
+    if isinstance(lambda_, str):
+        # only when lambda is being estimated. That is the path where a singular
+        # V is dangerous rather than merely fatal: the optimiser can escape to
+        # lambda = 0, where the off-diagonals vanish and the matrix inverts
+        # again, and report a confident fit that used none of the tree. A
+        # lambda_ handed over as a number is the caller asserting the error
+        # structure -- including lambda_=0.0, which ignores the tree entirely
+        # and is perfectly well defined on a tree this check would reject -- so
+        # leave that to np.linalg.inv, which raises loudly if it really is
+        # singular at the value asked for.
+        _check_invertible(names, V, "pgls")
     n = len(names)
     Y = np.array([y[t] for t in names], dtype=float)
     X = np.column_stack([np.ones(n)] + [

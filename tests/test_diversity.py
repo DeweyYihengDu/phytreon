@@ -161,3 +161,65 @@ def test_unifrac_matrix_weighted_matches_pairwise_calls():
     expected = pt.weighted_unifrac(
         tr, {"Human": 1, "Chimp": 2}, {"Gorilla": 3, "Orangutan": 1})
     assert mat.loc["s1", "s2"] == pytest.approx(expected)
+
+
+# --------------------------------------------------------------------------
+# Table columns that are not tips of the tree. The realistic case, not an
+# exotic one: tree building drops sequences (too short, failed alignment,
+# chimeras filtered after the table was counted), so an ASV table normally has
+# more ASVs than the tree has tips.
+# --------------------------------------------------------------------------
+def _table_with_an_extra_taxon():
+    import pandas as pd
+    tr = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    table = pd.DataFrame(
+        {"A": [10, 0], "B": [0, 10], "C": [10, 0], "D": [0, 10],
+         "NotInTree": [90, 0]},
+        index=["s1", "s2"])
+    return tr, table
+
+
+def test_table_functions_reject_columns_that_are_not_tips_of_the_tree():
+    # weighted unifrac_matrix used to accept this silently and return a wrong
+    # number rather than no number: the extra taxon's abundance still landed in
+    # each sample's total, so every real taxon's fraction came out too small
+    # (0.846 where the answer is 0.5, on this exact table). Unweighted raised a
+    # bare KeyError, and the single-pair functions a clear ValueError -- three
+    # behaviours for one mistake.
+    tr, table = _table_with_an_extra_taxon()
+    for call in (lambda: pt.unifrac_matrix(tr, table),
+                 lambda: pt.unifrac_matrix(tr, table, weighted=True),
+                 lambda: pt.faiths_pd_table(tr, table)):
+        with pytest.raises(ValueError, match="not tips of the tree"):
+            call()
+
+
+def test_the_rejection_message_says_how_many_and_names_them():
+    tr, table = _table_with_an_extra_taxon()
+    try:
+        pt.unifrac_matrix(tr, table, weighted=True)
+    except ValueError as exc:
+        assert "1 of 5" in str(exc)
+        assert "NotInTree" in str(exc)
+
+
+def test_subsetting_the_table_to_the_tree_gives_the_pairwise_answer():
+    # the fix the error message tells you to apply, and the value it lands on
+    tr, table = _table_with_an_extra_taxon()
+    kept = [c for c in table.columns if c in set(tr.leaf_names())]
+    mat = pt.unifrac_matrix(tr, table[kept], weighted=True)
+    assert mat.loc["s1", "s2"] == pytest.approx(pt.weighted_unifrac(
+        tr, table.loc["s1", kept].to_dict(), table.loc["s2", kept].to_dict()))
+    assert mat.loc["s1", "s2"] == pytest.approx(0.5)
+
+
+def test_an_all_zero_extra_column_is_rejected_too():
+    # checked over the columns up front, not per row as a side effect of which
+    # taxa happened to be nonzero there -- otherwise the same table raises or
+    # not depending on the data in it
+    import pandas as pd
+    tr = pt.Tree.from_newick("((A:1,B:1):1,(C:1,D:1):1);")
+    table = pd.DataFrame({"A": [1, 0], "B": [0, 1], "C": [1, 0], "D": [0, 1],
+                          "NotInTree": [0, 0]}, index=["s1", "s2"])
+    with pytest.raises(ValueError, match="not tips of the tree"):
+        pt.faiths_pd_table(tr, table)
