@@ -5,7 +5,62 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`pgls` estimates `lambda` by REML by default, and charges it a degree of
+  freedom.** A Type-I error sweep over tree shape (ultrametric and not), tree
+  size (10-80 taxa) and the true lambda that generated the traits -- two traits
+  simulated independently on one tree, so every rejection is a false positive
+  against a nominal 5% -- found the old `lambda_="ML"` default rejecting 8.1%
+  of true nulls at 10-20 taxa. Two causes, both now addressed. Plain ML pulls a
+  variance component towards zero when the mean structure is estimated from the
+  same data, and here that means a systematically too-small `lambda` (measured
+  at 10 tips on data whose real lambda was 1.0: ML averaged 0.60, REML 0.78) --
+  a too-small lambda understates how dependent the tips are and so understates
+  the standard errors. And `lambda` is a parameter read out of the data like
+  any other, so the t-test now spends a degree of freedom on it rather than
+  treating it as given. Together: 8.1% -> 7.1% pooled over the small-tree
+  cells, and 7.3-9.5% -> 5.2-7.2% in the cells where the true lambda really was
+  1.0. The rejections removed are strictly the right ones -- paired against ML
+  on identical data, "REML called it significant and ML did not" happened 0
+  times in 1200 replicates, while the reverse happened 33 times. `lambda_="ML"`
+  is still available for reproducing software that does it that way
+  (`caper::pgls`). Two smaller things fell out of the same sweep: `pgls` now
+  reports `lambda_method` so a result says how its lambda was obtained, and it
+  refuses a fit with no residual degrees of freedom left instead of returning
+  meaningless p-values from one.
+- **`pagels_lambda`'s `logLik` is now an actual log-likelihood.** It was the
+  concentrated criterion with the additive constants dropped for optimisation:
+  correct to a constant, which cancels inside the reported likelihood ratio but
+  not in anything else built on it, so an AIC computed from it was wrong.
+  Checked against the multivariate normal density at the fitted parameters,
+  evaluated independently by scipy.
+
 ### Added
+- **`pgls(..., n_boot=)`, a parametric bootstrap p-value.** For the residual
+  the two changes above do not reach: the t-test treats the estimated `lambda`
+  as if it were known exactly, and at 10-20 taxa it is being read out of very
+  few points, so when it comes out too low the standard errors come out too
+  small. The bootstrap simulates from the fitted reduced model (that predictor
+  dropped, the others kept and refitted) and re-estimates `lambda` on every
+  replicate, which prices that uncertainty in rather than conditioning on one
+  point estimate of it. Paired against the t-test on identical data over 3200
+  replicates: 7.3% -> 5.5%, which is the difference between six standard errors
+  above the nominal 5% and one and a half -- inflated versus not distinguishable
+  from correct. Worth the `n_boot` extra fits per predictor below roughly 20
+  taxa and not otherwise.
+  Also measured and **rejected** along the way: a likelihood-ratio test on the
+  predictor instead of the Wald t-test, which sounds like the more principled
+  option and is markedly worse calibrated here (10.1% against the t-test's
+  6.8%, pooled over 6400 replicates). What survives all of this is a real
+  limit, not a bug to keep chasing: below ~20 taxa a PGLS p-value is mildly
+  anti-conservative whatever test you use, and one of 0.04 from 10 species
+  should not be leaned on. Two other p-values in the module were audited on the
+  same terms and left alone: `pagels_lambda`'s likelihood-ratio test rejects
+  0.5-2.0% of true nulls, conservative because lambda=0 sits on the boundary of
+  [0,1] and the LR's true null there is a 50:50 chi2_0/chi2_1 mixture rather
+  than the plain chi2_1 it is tested against -- the safe direction, and what
+  phytools' `phylosig` reports too; `blomberg_k`'s permutation test came out at
+  3.0-5.6%, i.e. calibrated, as a permutation test should be by construction.
 - **Phylogenetic diversity: `faiths_pd`/`faiths_pd_table`,
   `unweighted_unifrac`/`weighted_unifrac`/`unifrac_matrix`.** Not "what did
   the ancestors look like" (the rest of `comparative`), but "how much

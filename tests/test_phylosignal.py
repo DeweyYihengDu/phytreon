@@ -153,6 +153,43 @@ def test_pagels_lambda_is_bounded_and_reports_a_likelihood_ratio_test():
     assert result["logLik"] >= result["logLik0"] - 1e-6  # lambda=ML fits >= lambda=0
 
 
+def test_pagels_lambda_reports_an_actual_log_likelihood():
+    # valid absolutely, not just up to the additive constant that cancels
+    # inside the likelihood ratio -- checked against the multivariate normal
+    # density at the fitted parameters, computed independently by scipy
+    from scipy.stats import multivariate_normal
+    tr = pt.datasets.random_tree(15, seed=12)
+    names, V = pt.phylo_vcv(tr)
+    rng = np.random.default_rng(4)
+    x = np.linalg.cholesky(V) @ rng.normal(size=15)
+    trait = dict(zip(names, x))
+    res = pt.pagels_lambda(tr, trait)
+
+    Vl = V * res["lambda"]
+    np.fill_diagonal(Vl, np.diag(V))
+    Vi = np.linalg.inv(Vl)
+    ones = np.ones(len(x))
+    a_hat = float(ones @ Vi @ x / (ones @ Vi @ ones))
+    resid = x - a_hat
+    sigma2 = float(resid @ Vi @ resid) / len(x)
+    expected = multivariate_normal.logpdf(x, mean=a_hat * ones, cov=sigma2 * Vl)
+    assert res["logLik"] == pytest.approx(expected)
+
+
+def test_pagels_lambda_significance_errs_conservative_not_permissive():
+    # trait drawn iid across tips, so there is no signal and every p < 0.05 is
+    # a false positive. lambda = 0 sits on the boundary of [0, 1], which makes
+    # the LR's true null a 50:50 chi2_0/chi2_1 mixture; testing against plain
+    # chi2_1 demands a larger LR than that and so under-rejects, which is the
+    # safe direction. Measured at 800 replicates: 0.5-2.0% against a nominal 5%.
+    tr = pt.datasets.random_tree(20, seed=120)
+    names = tr.leaf_names()
+    rng = np.random.default_rng(7)
+    rate = np.mean([pt.pagels_lambda(tr, dict(zip(names, rng.normal(size=20))))["p"]
+                    < 0.05 for _ in range(300)])
+    assert rate < 0.05
+
+
 def test_pagels_lambda_needs_at_least_three_taxa():
     tr = pt.datasets.random_tree(10, seed=1)
     names = tr.leaf_names()[:2]
@@ -239,6 +276,155 @@ def test_pgls_fixed_lambda_zero_matches_ordinary_least_squares_on_an_ultrametric
     res = pt.pgls(tr, dict(zip(names, yv)), dict(zip(names, xv)), lambda_=0.0)
     ols_slope = np.polyfit(xv, yv, 1)[0]
     assert res["coefficients"]["x"] == pytest.approx(ols_slope, rel=1e-6)
+
+
+# --------------------------------------------------------------------------
+# How lambda is estimated, and what that costs -- the small-sample
+# false-positive story. Measured over a calibration sweep (tree shape x tree
+# size x true lambda, 600 replicates a cell) before these were written:
+# pooled over the cells with 10-20 taxa, lambda_="ML" rejected 8.1% of true
+# nulls at a nominal 5%, lambda_="REML" 7.1%, lambda_=1.0 8.5%.
+# --------------------------------------------------------------------------
+def test_pgls_estimates_lambda_by_reml_by_default():
+    tr = pt.datasets.random_tree(20, seed=3)
+    names, V = pt.phylo_vcv(tr)
+    rng = np.random.default_rng(0)
+    xv = np.linalg.cholesky(V) @ rng.normal(size=20)
+    yv = 2.0 * xv + rng.normal(scale=0.5, size=20)
+    res = pt.pgls(tr, dict(zip(names, yv)), dict(zip(names, xv)))
+    assert res["lambda_method"] == "REML"
+    assert pt.pgls(tr, dict(zip(names, yv)), dict(zip(names, xv)),
+                   lambda_="ML")["lambda_method"] == "ML"
+    assert pt.pgls(tr, dict(zip(names, yv)), dict(zip(names, xv)),
+                   lambda_=1.0)["lambda_method"] == "fixed"
+
+
+def test_reml_lambda_is_less_downward_biased_than_ml_in_small_samples():
+    # data simulated on the untransformed tree, so the true lambda is 1. Both
+    # estimators fall short of it at 10 tips; ML falls much further, and a
+    # too-small lambda is what understates the tips' dependence and so
+    # understates the standard errors. Measured: ML ~0.60, REML ~0.78.
+    tr = pt.datasets.random_tree(10, seed=110)
+    names, V = pt.phylo_vcv(tr)
+    L = np.linalg.cholesky(V)
+    rng = np.random.default_rng(0)
+    lam_ml, lam_reml = [], []
+    for _ in range(150):
+        yv = L @ rng.normal(size=10)
+        xv = L @ rng.normal(size=10)
+        yd, xd = dict(zip(names, yv)), dict(zip(names, xv))
+        lam_ml.append(pt.pgls(tr, yd, xd, lambda_="ML")["lambda"])
+        lam_reml.append(pt.pgls(tr, yd, xd, lambda_="REML")["lambda"])
+    assert np.mean(lam_ml) < np.mean(lam_reml) - 0.1
+    assert np.mean(lam_reml) < 1.0          # still biased low, just less so
+
+
+def test_ml_lambda_claims_significance_reml_does_not_and_never_the_reverse():
+    # paired -- both estimators see the same simulated data, and x and y are
+    # independent so every rejection is a false positive. The extra rejections
+    # ML produces are strictly one-directional: measured over 400 replicates
+    # at three seeds, "REML rejected but ML did not" happened 0 times, while
+    # "ML rejected but REML did not" happened 5, 12 and 16 times.
+    tr = pt.datasets.random_tree(10, seed=110)
+    names, V = pt.phylo_vcv(tr)
+    L = np.linalg.cholesky(V)
+    rng = np.random.default_rng(2)
+    ml_only = reml_only = 0
+    for _ in range(400):
+        xv, yv = L @ rng.normal(size=10), L @ rng.normal(size=10)
+        yd, xd = dict(zip(names, yv)), dict(zip(names, xv))
+        sig_ml = pt.pgls(tr, yd, xd, lambda_="ML")["p"]["x"] < 0.05
+        sig_reml = pt.pgls(tr, yd, xd, lambda_="REML")["p"]["x"] < 0.05
+        ml_only += sig_ml and not sig_reml
+        reml_only += sig_reml and not sig_ml
+    assert reml_only == 0
+    assert ml_only >= 4
+
+
+def test_estimating_lambda_costs_a_degree_of_freedom():
+    tr = pt.datasets.random_tree(20, seed=3)
+    names, V = pt.phylo_vcv(tr)
+    rng = np.random.default_rng(0)
+    xv = np.linalg.cholesky(V) @ rng.normal(size=20)
+    yv = 2.0 * xv + rng.normal(scale=0.5, size=20)
+    yd, xd = dict(zip(names, yv)), dict(zip(names, xv))
+    given = pt.pgls(tr, yd, xd, lambda_=1.0)
+    estimated = pt.pgls(tr, yd, xd)
+    assert given["dof"] == 20 - 2                 # intercept + one predictor
+    assert estimated["dof"] == given["dof"] - 1   # plus lambda itself
+
+
+def test_pgls_rejects_an_unrecognised_lambda_keyword():
+    tr = pt.datasets.random_tree(10, seed=1)
+    names = tr.leaf_names()
+    d = {n: float(i) for i, n in enumerate(names)}
+    with pytest.raises(ValueError, match="'REML', 'ML', or a number"):
+        pt.pgls(tr, d, d, lambda_="bogus")
+
+
+def test_pgls_refuses_a_fit_with_no_residual_degrees_of_freedom_left():
+    # 4 taxa, intercept + 2 predictors + an estimated lambda = 4 parameters
+    import pandas as pd
+    tr = pt.datasets.random_tree(4, seed=1)
+    names = tr.leaf_names()
+    rng = np.random.default_rng(0)
+    y = dict(zip(names, rng.normal(size=4)))
+    X = pd.DataFrame({"x1": rng.normal(size=4), "x2": rng.normal(size=4)},
+                     index=names)
+    with pytest.raises(ValueError, match="no residual degrees of freedom"):
+        pt.pgls(tr, y, X)
+    # handing lambda over instead frees that degree of freedom back up
+    assert pt.pgls(tr, y, X, lambda_=1.0)["dof"] == 1
+
+
+# --------------------------------------------------------------------------
+# The parametric bootstrap p-value
+# --------------------------------------------------------------------------
+def test_pgls_bootstrap_covers_the_predictors_only_and_is_reproducible():
+    tr = pt.datasets.random_tree(15, seed=4)
+    names, V = pt.phylo_vcv(tr)
+    rng = np.random.default_rng(0)
+    xv = np.linalg.cholesky(V) @ rng.normal(size=15)
+    yv = xv + rng.normal(scale=1.0, size=15)
+    yd, xd = dict(zip(names, yv)), dict(zip(names, xv))
+    a = pt.pgls(tr, yd, xd, n_boot=100, seed=7)
+    b = pt.pgls(tr, yd, xd, n_boot=100, seed=7)
+    assert a["p_boot"] == b["p_boot"]              # same seed, same answer
+    assert set(a["p_boot"]) == {"x"}               # no null for the intercept
+    assert a["n_boot"] == 100
+    assert 1 / 101 <= a["p_boot"]["x"] <= 1.0
+    assert "p_boot" not in pt.pgls(tr, yd, xd)     # opt-in
+
+
+def test_pgls_bootstrap_p_cannot_go_below_its_own_resolution():
+    # an overwhelming real effect: the t-based p is astronomically small, but a
+    # p-value counted out of 200 null draws can only ever report 1/201
+    tr = pt.datasets.random_tree(15, seed=4)
+    names, V = pt.phylo_vcv(tr)
+    rng = np.random.default_rng(0)
+    xv = np.linalg.cholesky(V) @ rng.normal(size=15)
+    yv = 5.0 * xv + rng.normal(scale=0.01, size=15)
+    res = pt.pgls(tr, dict(zip(names, yv)), dict(zip(names, xv)),
+                  n_boot=200, seed=1)
+    assert res["p"]["x"] < 1e-10
+    assert res["p_boot"]["x"] == pytest.approx(1 / 201)
+
+
+def test_pgls_bootstrap_tests_each_predictor_against_a_reduced_null_model():
+    # x1 drives y, x2 does not; each predictor's null keeps the other one, so
+    # x2's non-effect has to survive x1 being in the model
+    import pandas as pd
+    tr = pt.datasets.random_tree(25, seed=8)
+    names, V = pt.phylo_vcv(tr)
+    rng = np.random.default_rng(3)
+    x1 = np.linalg.cholesky(V) @ rng.normal(size=25)
+    x2 = rng.normal(size=25)
+    yv = 3.0 * x1 + rng.normal(scale=0.3, size=25)
+    X = pd.DataFrame({"x1": x1, "x2": x2}, index=names)
+    res = pt.pgls(tr, dict(zip(names, yv)), X, n_boot=150, seed=2)
+    assert set(res["p_boot"]) == {"x1", "x2"}
+    assert res["p_boot"]["x1"] < 0.02      # real effect
+    assert res["p_boot"]["x2"] > 0.10      # none
 
 
 def test_pgls_rejects_too_few_taxa_for_the_predictors_given():

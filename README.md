@@ -488,9 +488,42 @@ pt.pagels_lambda(tree, trait)          # more robust to polytomies/uncertain bra
 
 # PGLS: regress one trait on another without treating related tips as
 # independent data points, which inflates false positives (Felsenstein 1985)
-pt.pgls(tree, y=trait_a, x=trait_b)                 # lambda estimated by ML
+pt.pgls(tree, y=trait_a, x=trait_b)                 # lambda estimated by REML
 pt.pgls(tree, y=trait_a, x=predictors_df)           # several predictors at once
+pt.pgls(tree, y=trait_a, x=trait_b, n_boot=999)     # bootstrap p too, for <~20 taxa
+pt.pgls(tree, y=trait_a, x=trait_b, lambda_=1.0)    # or hand lambda over, if truly known
 ```
+
+On false positives, measured rather than assumed — a Type-I error sweep over
+tree shape (ultrametric and not), tree size, and the true lambda the traits were
+simulated under, with the two traits always independent of each other so every
+rejection is a false positive against a nominal 5%:
+
+| | 10-20 taxa | 40-80 taxa |
+|---|---|---|
+| plain OLS, ignoring the tree | 7-29% | 10-43% |
+| `lambda_=1.0` when the true lambda is not 1 | 10-15% | 8-13% |
+| `lambda_="ML"` | 8.1% | 5-7% |
+| `lambda_="REML"` (the default) | ~7% | 5-6% |
+| `lambda_="REML"` + `n_boot=` | 5.5% | not needed |
+
+Three things to take from it. Plain OLS gets **worse** with more species, not
+better — 16% at 10 taxa, 43% at 80 — because the inflation comes from shared
+ancestry, and a bigger tree has more of it; this is not a problem you can
+collect your way out of. Fixing `lambda` yourself is the same kind of trap: an
+asserted `lambda_=1.0` is still at 13% with 80 taxa if the real value is 0.5,
+because a misspecified error structure does not improve with sample size either.
+What is left after that is an ordinary small-sample problem, and it does shrink
+with more taxa: below ~20, `lambda` is being read out of very few points and the
+t-test treats it as known exactly, so the p-value runs mildly anti-conservative
+(~7%). `n_boot=` re-estimates `lambda` on every replicate to price that in and
+brings it back to 5.5%, close enough to nominal to be indistinguishable from it.
+Even so, do not lean on a PGLS p of 0.04 from 10 species.
+
+(Each row is measured against the row it is being compared with on the *same*
+simulated datasets, so the pairings are exact; the small-`n` REML figure reads
+6.8-7.3% depending on which comparison's replicate set it is quoted from, hence
+the `~7%`.)
 </details>
 
 <details>
@@ -600,7 +633,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 409 tests
+pytest -q                             # 420 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```
