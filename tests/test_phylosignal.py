@@ -221,9 +221,15 @@ def test_pgls_corrects_the_type_i_error_ols_gets_wrong_on_shared_ancestry():
         ols_sig += p_ols < 0.05
         res = pt.pgls(tr, dict(zip(names, yv)), dict(zip(names, xv)))
         pgls_sig += res["p"]["x"] < 0.05
-    # measured on this exact setup: OLS ~0.35-0.45, PGLS ~0.03-0.07
+    # measured on this exact 40-tip setup over 300 sims at three seeds:
+    # OLS 0.307-0.373, PGLS 0.053-0.057. The OLS figure is specific to this
+    # tree size -- the inflation comes from shared ancestry, so it grows with
+    # the tree rather than being one constant (16% at 10 tips, 43% at 80), and
+    # the sweep behind those numbers lives in the README.
     assert ols_sig / n_sims > 0.20, "OLS should show its well-known inflation here"
-    assert pgls_sig / n_sims < 0.15, "PGLS should not inflate the way OLS just did"
+    # tight enough to catch a real regression: PGLS sits near the nominal 0.05
+    # here, so anything approaching OLS territory should fail rather than pass
+    assert pgls_sig / n_sims < 0.10, "PGLS should not inflate the way OLS just did"
 
 
 def test_pgls_recovers_a_known_slope_from_a_direct_causal_relationship():
@@ -281,9 +287,12 @@ def test_pgls_fixed_lambda_zero_matches_ordinary_least_squares_on_an_ultrametric
 # --------------------------------------------------------------------------
 # How lambda is estimated, and what that costs -- the small-sample
 # false-positive story. Measured over a calibration sweep (tree shape x tree
-# size x true lambda, 600 replicates a cell) before these were written:
-# pooled over the cells with 10-20 taxa, lambda_="ML" rejected 8.1% of true
-# nulls at a nominal 5%, lambda_="REML" 7.1%, lambda_=1.0 8.5%.
+# size x true lambda) before these were written: pooled over the cells with
+# 10-20 taxa, at a nominal 5%, lambda_="ML" rejected 8.1% of true nulls,
+# lambda_="REML" 7.1%, lambda_=1.0 8.5% (600 replicates a cell). A separate
+# and larger run put ML at 7.9% and REML at 6.8% (6400 replicates) -- the same
+# quantities, and the spread between the two runs is why the README quotes the
+# REML figure as "~7%" rather than implying more precision than there is.
 # --------------------------------------------------------------------------
 def test_pgls_estimates_lambda_by_reml_by_default():
     tr = pt.datasets.random_tree(20, seed=3)

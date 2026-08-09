@@ -10,15 +10,18 @@ All notable changes to phytreon are documented here. Format loosely follows
   freedom.** A Type-I error sweep over tree shape (ultrametric and not), tree
   size (10-80 taxa) and the true lambda that generated the traits -- two traits
   simulated independently on one tree, so every rejection is a false positive
-  against a nominal 5% -- found the old `lambda_="ML"` default rejecting 8.1%
-  of true nulls at 10-20 taxa. Two causes, both now addressed. Plain ML pulls a
+  against a nominal 5% -- found the old `lambda_="ML"` default rejecting 7.9%
+  of true nulls at 10-20 taxa (6400 replicates; the same quantity reads 8.1% on
+  a separate 4800-replicate set, and every figure below is quoted from whichever
+  run its comparison arm was paired against on identical data). Two causes,
+  both now addressed. Plain ML pulls a
   variance component towards zero when the mean structure is estimated from the
   same data, and here that means a systematically too-small `lambda` (measured
   at 10 tips on data whose real lambda was 1.0: ML averaged 0.60, REML 0.78) --
   a too-small lambda understates how dependent the tips are and so understates
   the standard errors. And `lambda` is a parameter read out of the data like
   any other, so the t-test now spends a degree of freedom on it rather than
-  treating it as given. Together: 8.1% -> 7.1% pooled over the small-tree
+  treating it as given. Together: 7.9% -> 6.8% pooled over the small-tree
   cells, and 7.3-9.5% -> 5.2-7.2% in the cells where the true lambda really was
   1.0. The rejections removed are strictly the right ones -- paired against ML
   on identical data, "REML called it significant and ML did not" happened 0
@@ -50,8 +53,18 @@ All notable changes to phytreon are documented here. Format loosely follows
   taxa and not otherwise.
   Also measured and **rejected** along the way: a likelihood-ratio test on the
   predictor instead of the Wald t-test, which sounds like the more principled
-  option and is markedly worse calibrated here (10.1% against the t-test's
-  6.8%, pooled over 6400 replicates). What survives all of this is a real
+  option and is markedly worse calibrated here. The first comparison of the two
+  was confounded -- Wald with a REML lambda against an LRT with an ML one, since
+  an LRT on fixed effects has to use ML (restricted likelihoods for models with
+  different fixed effects are not comparable) -- so it mixed the test statistic
+  and the lambda estimator into one 3.4-point gap. Re-run with all three arms on
+  the same 6400 replicates and the lambda estimator held fixed, it decomposes,
+  and the test statistic turns out to be the larger of the two effects:
+  Wald+ML 7.9%, LRT+ML 10.1% (+2.3 points from the statistic alone),
+  Wald+REML 6.8% (-1.1 from the estimator). The LRT is worst at the smallest
+  trees (11.3-11.4% at 10 taxa against 8.4-10.2% at 20), which is the mechanism
+  showing through: it leans on an asymptotic chi2_1 null, where the Wald t has
+  a finite-sample reference distribution to lean on instead. What survives all of this is a real
   limit, not a bug to keep chasing: below ~20 taxa a PGLS p-value is mildly
   anti-conservative whatever test you use, and one of 0.04 from 10 species
   should not be leaned on. Two other p-values in the module were audited on the
@@ -103,9 +116,15 @@ All notable changes to phytreon are documented here. Format loosely follows
   very small sample sizes, a documented property of the statistic itself,
   not a bug, and not the regime these numbers were measured in); and PGLS
   reproduces the Felsenstein (1985) demonstration that founded this whole
-  field of methods -- two independently-evolved traits sharing one tree
-  showed a 41% false-positive rate under plain OLS and 4% under PGLS
-  against the same data, against a nominal 5%.
+  field of methods -- two independently-evolved traits sharing one **60-tip**
+  tree, 400 replicates, gave a 36-37% false-positive rate under plain OLS
+  against 5.0-6.5% under PGLS on the same data, at a nominal 5%. An earlier
+  draft of this entry said "41% and 4%" and gave no tree size; both numbers
+  came from a 150-replicate run and were within a standard error of these,
+  but the omission was the real problem. OLS's inflation comes from shared
+  ancestry, so it scales with the tree (16% at 10 tips, 43% at 80) rather
+  than being one constant of the method, and an unqualified 41% reads as
+  exactly that. See the `Changed` entry above for the full sweep.
 - **Bootstrap now respects `constraint=`.** Every replicate is rebuilt under
   the same constraint as the main tree (`constrained_nj` for `method="nj"`,
   the same `-g`/`--tree-constraint` for an external `ml_engine`) instead of

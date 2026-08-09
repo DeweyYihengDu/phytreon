@@ -503,7 +503,7 @@ rejection is a false positive against a nominal 5%:
 |---|---|---|
 | plain OLS, ignoring the tree | 7-29% | 10-43% |
 | `lambda_=1.0` when the true lambda is not 1 | 10-15% | 8-13% |
-| `lambda_="ML"` | 8.1% | 5-7% |
+| `lambda_="ML"` | 7.9% | 5-7% |
 | `lambda_="REML"` (the default) | ~7% | 5-6% |
 | `lambda_="REML"` + `n_boot=` | 5.5% | not needed |
 

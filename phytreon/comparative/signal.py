@@ -297,8 +297,9 @@ def pgls(tree: Tree, y: Dict[str, float], x: Union[Dict[str, float], "pd.DataFra
       ML pulls ``lambda`` towards zero in small samples, which understates how
       dependent the tips are and so understates the standard errors (measured
       at 10 tips on data whose real lambda was 1.0: ML averaged 0.60, REML
-      0.78, and the false-positive rate over trees of 10-20 taxa was 8.1%
-      under ML against 7.1% under REML, at a nominal 5%).
+      0.78, and the false-positive rate over trees of 10-20 taxa was 7.9%
+      under ML against 6.8% under REML on the same 6400 datasets, at a
+      nominal 5%).
     * a fixed number, skipping estimation entirely -- ``1.0`` for
       untransformed Brownian-motion GLS, ``0.0`` for an ordinary
       non-phylogenetic least-squares fit. Only do this if the value is
