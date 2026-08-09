@@ -6,6 +6,51 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Phylogenetic diversity: `faiths_pd`/`faiths_pd_table`,
+  `unweighted_unifrac`/`weighted_unifrac`/`unifrac_matrix`.** Not "what did
+  the ancestors look like" (the rest of `comparative`), but "how much
+  evolutionary history does this sample's -- or these two samples' -- taxa
+  collectively represent": the standard alpha/beta diversity metrics for a
+  community sitting on a tree (a 16S ASV table, say), and the natural next
+  step once that tree is built rather than an edge case of a general
+  phylogenetics toolbox. Faith's PD is a single tree walk (the total branch
+  length of the smallest subtree connecting a sample's taxa to the root);
+  UniFrac's weighted form needs one post-order pass per sample for the
+  per-branch abundance fractions, reused across every pair `unifrac_matrix`
+  computes rather than redone per pair -- the difference between
+  `O(samples)` and `O(samples^2)` tree walks once a table has hundreds of
+  rows. Verified against the properties each metric is defined to have,
+  not just "runs without raising": PD of every taxon in the tree equals the
+  tree's own total branch length exactly; UniFrac between a sample and
+  itself is 0 and between a clean bipartition of all taxa is exactly 1,
+  weighted or not.
+- **Phylogenetic signal and PGLS: `phylo_vcv`, `blomberg_k`, `pagels_lambda`,
+  `pgls`.** All three read a continuous trait's covariance across tips
+  against the Brownian-motion expectation implied by the tree itself
+  (`phylo_vcv`, ape's `vcv.phylo`) -- Blomberg et al. (2003)'s K asks how
+  the trait's *actual* fit compares to that expectation (K=1 matches BM);
+  Pagel (1999)'s lambda finds, by maximum likelihood, how much of the
+  tree's shared history the trait's covariance actually supports (0 = none,
+  1 = all of it), more robust than K to polytomies and uncertain branch
+  lengths (Freckleton, Harvey & Pagel 2002); PGLS regresses one trait on
+  another using that same covariance as the error structure, rather than
+  the plain least-squares assumption that every tip is an independent data
+  point, which is false by construction for any two related tips and
+  inflates false positives the more of the tree they share (Felsenstein
+  1985). None of the three formulas has a simple closed-form answer to
+  assert against for an arbitrary tree, so each is verified by the
+  statistical property that *does* have a known answer: K averages to 1.0
+  over many Brownian-motion simulations on the same tree it is being asked
+  about (measured: 0.996-1.034 across two tree sizes and 300+ simulations
+  each); lambda's maximum-likelihood estimate recovers the true value used
+  to simulate the data on average (mean 0.98 for lambda=1 data, 0.03 for
+  lambda=0 data, at 60 tips -- lambda is a genuinely bimodal estimator at
+  very small sample sizes, a documented property of the statistic itself,
+  not a bug, and not the regime these numbers were measured in); and PGLS
+  reproduces the Felsenstein (1985) demonstration that founded this whole
+  field of methods -- two independently-evolved traits sharing one tree
+  showed a 41% false-positive rate under plain OLS and 4% under PGLS
+  against the same data, against a nominal 5%.
 - **Bootstrap now respects `constraint=`.** Every replicate is rebuilt under
   the same constraint as the main tree (`constrained_nj` for `method="nj"`,
   the same `-g`/`--tree-constraint` for an external `ml_engine`) instead of

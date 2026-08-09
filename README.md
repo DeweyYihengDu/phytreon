@@ -395,7 +395,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | `scene` | `Path` / `Marker` / `Label` / `Polygon` primitives |
 | `plot` | `TreeFigure` builder + matplotlib / plotly backends |
 | `infer` | alignment / trimming / NJ / ML / parsimony / bootstrap |
-| `comparative` | ancestral states + stochastic mapping |
+| `comparative` | ancestral states + stochastic mapping + phylogenetic diversity/signal/PGLS |
 
 ---
 
@@ -407,7 +407,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | Static **and** interactive backend | ✅ mpl + plotly | own GUI / SVG | toyplot | basic mpl | ✗ |
 | Annotation tracks (heatmap / rings / MSA / bars) | ✅ | partial | partial | ✗ | ✗ |
 | Built-in ML (+Γ) / parsimony | ✅ pure-Python | ✗ | ✗ | ✗ | ✗ |
-| Comparative (ancestral states / stochastic map) | ✅ | ✗ | ✗ | ✗ | partial |
+| Comparative (ancestral states / stochastic map / PD / UniFrac / PGLS) | ✅ | ✗ | ✗ | ✗ | partial |
 | Pure Python, pip-installable | ✅ | ✅ (Qt for GUI) | ✅ | ✅ | ✅ |
 
 phytreon's niche is a fluent figure builder plus a self-contained phylogenetics
@@ -466,6 +466,30 @@ pt.stochastic_map(tree, trait, n=200)        # stochastic character mapping
 (pt.TreeFigure(dated_tree)                    # branch lengths = time
     .time_axis(geo=True, gridlines=True, unit="Mya")  # geological bands
     .tip_labels())
+```
+</details>
+
+<details>
+<summary><b>Phylogenetic diversity, signal, and PGLS</b></summary>
+
+```python
+# alpha/beta diversity for a community sitting on a tree (16S ASVs, say) --
+# the natural next step once the tree itself is built
+pt.faiths_pd(tree, sample_taxa)                    # one sample's PD
+pt.faiths_pd_table(tree, samples_by_taxa_table)     # every row of a samples x taxa table
+pt.unweighted_unifrac(tree, taxa_a, taxa_b)         # presence/absence beta diversity
+pt.weighted_unifrac(tree, abundance_a, abundance_b) # abundance-weighted, normalized to [0, 1]
+pt.unifrac_matrix(tree, samples_by_taxa_table, weighted=True)  # every pair at once
+
+# phylogenetic signal: does a continuous trait track the tree more, less, or
+# exactly as much as Brownian motion on it would predict?
+pt.blomberg_k(tree, {"Human": 1.4, "Chimp": 1.35, ...})   # K=1 matches BM
+pt.pagels_lambda(tree, trait)          # more robust to polytomies/uncertain branch lengths
+
+# PGLS: regress one trait on another without treating related tips as
+# independent data points, which inflates false positives (Felsenstein 1985)
+pt.pgls(tree, y=trait_a, x=trait_b)                 # lambda estimated by ML
+pt.pgls(tree, y=trait_a, x=predictors_df)           # several predictors at once
 ```
 </details>
 
@@ -576,7 +600,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 333 tests
+pytest -q                             # 409 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

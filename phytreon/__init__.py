@@ -36,7 +36,11 @@ from .infer import (
     reconstruct_ancestral_mutations,
     expression_distance_matrix, expression_dendrogram,
 )
-from .comparative import ace_parsimony, ace_ml, ace_continuous, stochastic_map
+from .comparative import (
+    ace_parsimony, ace_ml, ace_continuous, stochastic_map,
+    faiths_pd, faiths_pd_table, unweighted_unifrac, weighted_unifrac,
+    unifrac_matrix, phylo_vcv, blomberg_k, pagels_lambda, pgls,
+)
 from .treeops import (
     rotate, flip, swap_children, ladderize, sort_by, collapse_low_support,
     scale_clade, cut_tree, midpoint_root, outgroup_root, group_clade, group_otu,
@@ -61,6 +65,8 @@ __all__ = [
     "reconstruct_ancestral_mutations",
     "expression_distance_matrix", "expression_dendrogram",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
+    "faiths_pd", "faiths_pd_table", "unweighted_unifrac", "weighted_unifrac",
+    "unifrac_matrix", "phylo_vcv", "blomberg_k", "pagels_lambda", "pgls",
     "rotate", "flip", "swap_children", "ladderize", "sort_by", "collapse_low_support",
     "scale_clade", "cut_tree", "midpoint_root", "outgroup_root", "group_clade", "group_otu",
     "prune_to_taxa", "untangle", "crossing_number", "collapse_clade",

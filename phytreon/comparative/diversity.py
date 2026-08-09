@@ -1,0 +1,203 @@
+"""Phylogenetic diversity: Faith's PD and UniFrac.
+
+Both answer a question ancestral-state reconstruction does not: not "what
+did the ancestors look like", but "how much evolutionary history does this
+set of taxa -- the ones actually observed in one sample, or in two samples
+being compared -- collectively represent". The standard alpha- and
+beta-diversity metrics for a community sitting on a tree (16S ASVs, say),
+and the natural next step once that tree is built.
+"""
+from __future__ import annotations
+
+from typing import Dict, Iterable, Set, Union
+
+from ..core.tree import Node, Tree
+
+
+def _leaves_by_name(tree: Tree) -> Dict[str, Node]:
+    return {lf.name: lf for lf in tree.leaves()}
+
+
+def _check_taxa(taxa: Set[str], leaves: Dict[str, Node]) -> None:
+    missing = taxa - set(leaves)
+    if missing:
+        raise ValueError(f"taxa not found in tree: {sorted(missing)}")
+
+
+def _edges_to_root(leaves: Dict[str, Node], taxa: Iterable[str]) -> Set[Node]:
+    """Nodes whose edge-to-parent lies on some tip-to-root path in ``taxa``.
+
+    One node per edge (a node's ``length`` is the branch above it), so this
+    set *is* "the minimal subtree connecting taxa to the root", represented
+    the cheapest way phytreon can: as the edges themselves rather than a
+    materialised sub-tree. Shared once a further-out node is already in the
+    set, every path above it is too, so each leaf's walk stops the moment it
+    rejoins one already taken -- the total work is bounded by the number of
+    edges in the tree, not by (number of taxa) x (tree depth).
+    """
+    used: Set[Node] = set()
+    for name in taxa:
+        node = leaves[name]
+        while node.parent is not None and node not in used:
+            used.add(node)
+            node = node.parent
+    return used
+
+
+def faiths_pd(tree: Tree, taxa: Union[str, Iterable[str]]) -> float:
+    """Faith's phylogenetic diversity: total branch length of the smallest
+    subtree connecting ``taxa`` to the root.
+
+    The standard phylogenetic alpha-diversity metric -- how much
+    evolutionary history a sample's observed taxa collectively represent,
+    as opposed to a plain species count, which treats a genus-full of near-
+    identical ASVs the same as one that spans the whole tree. Measured from
+    the root (not the sample's own MRCA), the usual convention when
+    comparing several samples embedded in one shared reference tree, since
+    it makes every sample's number a fraction of the same total.
+    """
+    taxa = {taxa} if isinstance(taxa, str) else set(taxa)
+    leaves = _leaves_by_name(tree)
+    _check_taxa(taxa, leaves)
+    if not taxa:
+        return 0.0
+    return sum(n.length or 0.0 for n in _edges_to_root(leaves, taxa))
+
+
+def faiths_pd_table(tree: Tree, table) -> "pd.Series":  # noqa: F821
+    """Faith's PD for every sample (row) of a samples x taxa table at once.
+
+    ``table`` is a :class:`pandas.DataFrame`, presence/absence or abundance
+    -- only whether each entry is nonzero matters, since Faith's PD does not
+    weight by how much of a taxon is present (see :func:`weighted_unifrac`
+    for the metric that does).
+    """
+    import pandas as pd
+    out = {}
+    for sample, row in table.iterrows():
+        present = row.index[row.to_numpy() > 0]
+        out[sample] = faiths_pd(tree, list(present))
+    return pd.Series(out, name="faiths_pd")
+
+
+def unweighted_unifrac(tree: Tree, taxa_a: Iterable[str],
+                       taxa_b: Iterable[str]) -> float:
+    """Unweighted UniFrac: the fraction of branch length spanning two
+    samples' taxa that belongs to only one of them.
+
+    0 when the two samples' observed taxa span exactly the same branches
+    (however different the two sets of taxa look), 1 when they share no
+    branches at all. Presence/absence only -- see :func:`weighted_unifrac`
+    to also account for how abundant each taxon is.
+    """
+    a, b = set(taxa_a), set(taxa_b)
+    leaves = _leaves_by_name(tree)
+    _check_taxa(a | b, leaves)
+    if not a and not b:
+        return 0.0
+    in_a = _edges_to_root(leaves, a)
+    in_b = _edges_to_root(leaves, b)
+    total = sum(n.length or 0.0 for n in (in_a | in_b))
+    if total <= 0.0:
+        return 0.0
+    unshared = sum(n.length or 0.0 for n in (in_a ^ in_b))
+    return unshared / total
+
+
+def _subtree_fractions(tree: Tree, abundance: Dict[str, float]) -> Dict[Node, float]:
+    """For every non-root node, the fraction of ``abundance``'s total
+    carried by tips in its subtree -- one post-order pass, reused for every
+    branch's contribution to weighted UniFrac.
+    """
+    total = sum(abundance.values())
+    per_node: Dict[Node, float] = {}
+    for node in tree.traverse("postorder"):
+        if node.is_leaf:
+            per_node[node] = abundance.get(node.name, 0.0)
+        else:
+            per_node[node] = sum(per_node[c] for c in node.children)
+    if total <= 0.0:
+        return {n: 0.0 for n in per_node if n.parent is not None}
+    return {n: v / total for n, v in per_node.items() if n.parent is not None}
+
+
+def weighted_unifrac(tree: Tree, abundance_a: Dict[str, float],
+                     abundance_b: Dict[str, float],
+                     normalized: bool = True) -> float:
+    """Weighted UniFrac: like :func:`unweighted_unifrac`, but a branch's
+    contribution is scaled by how differently abundant the two samples are
+    on either side of it, not just whether they differ at all.
+
+    ``abundance_a``/``abundance_b`` map tip name -> a count or relative
+    abundance (need not already sum to 1; each is normalised to its own
+    total internally, so the two samples' totals do not have to match).
+    ``normalized=True`` (default) divides by the maximum possible value for
+    this pair of samples, bounding the result to ``[0, 1]`` and making it
+    comparable across sample pairs and trees the way the raw metric is not;
+    ``normalized=False`` returns the original, unbounded branch-length units.
+    """
+    leaves = _leaves_by_name(tree)
+    _check_taxa(set(abundance_a) | set(abundance_b), leaves)
+    frac_a = _subtree_fractions(tree, abundance_a)
+    frac_b = _subtree_fractions(tree, abundance_b)
+    nodes = set(frac_a) | set(frac_b)
+    if not nodes:
+        return 0.0
+    num = sum((n.length or 0.0) * abs(frac_a.get(n, 0.0) - frac_b.get(n, 0.0))
+             for n in nodes)
+    if not normalized:
+        return num
+    denom = sum((n.length or 0.0) * (frac_a.get(n, 0.0) + frac_b.get(n, 0.0))
+               for n in nodes)
+    return num / denom if denom > 0.0 else 0.0
+
+
+def unifrac_matrix(tree: Tree, table, weighted: bool = False,
+                   normalized: bool = True) -> "pd.DataFrame":  # noqa: F821
+    """Pairwise UniFrac distances for every sample (row) of a samples x taxa
+    table -- the usual next step being an ordination (PCoA) or PERMANOVA on
+    the result, both outside phytreon's own scope.
+
+    Each sample's per-branch data is computed once and reused for every pair
+    it appears in, rather than recomputed per pair -- the difference between
+    ``O(samples)`` and ``O(samples^2)`` tree walks, which matters once
+    ``table`` has hundreds of rows.
+    """
+    import numpy as np
+    import pandas as pd
+    samples = list(table.index)
+    n = len(samples)
+    mat = np.zeros((n, n))
+    if weighted:
+        fracs = [_subtree_fractions(tree, table.loc[s].to_dict()) for s in samples]
+        lengths: Dict[Node, float] = {}
+        for f in fracs:
+            for node in f:
+                lengths.setdefault(node, node.length or 0.0)
+        for i in range(n):
+            for j in range(i + 1, n):
+                nodes = set(fracs[i]) | set(fracs[j])
+                num = sum(lengths[node] * abs(fracs[i].get(node, 0.0)
+                                              - fracs[j].get(node, 0.0))
+                         for node in nodes)
+                if normalized:
+                    denom = sum(lengths[node] * (fracs[i].get(node, 0.0)
+                                                 + fracs[j].get(node, 0.0))
+                               for node in nodes)
+                    d = num / denom if denom > 0.0 else 0.0
+                else:
+                    d = num
+                mat[i, j] = mat[j, i] = d
+    else:
+        leaves = _leaves_by_name(tree)
+        used = [_edges_to_root(leaves, list(table.columns[table.loc[s].to_numpy() > 0]))
+               for s in samples]
+        for i in range(n):
+            for j in range(i + 1, n):
+                union = used[i] | used[j]
+                total = sum(node.length or 0.0 for node in union)
+                if total <= 0.0:
+                    continue
+                unshared = sum(node.length or 0.0 for node in (used[i] ^ used[j]))
+                mat[i, j] = mat[j, i] = unshared / total
+    return pd.DataFrame(mat, index=samples, columns=samples)
