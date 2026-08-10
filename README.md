@@ -228,7 +228,7 @@ tree = pt.build_tree(
 # NJ (structural -- the tree cannot disagree) or a constrained ML search
 # (the data can still win the ties an unlisted split leaves open)
 genus_tree = pt.build_tree("asvs.fasta", method="nj",
-                           constraint={"asv1": "Bacillus", "asv2": "Bacillus", ...})
+                           constraint={"asv1": "Bacillus", "asv2": "Bacillus"})  # one per ASV
 # pt.sort_by(tree, "genus") does the display-only version of the same idea on
 # a tree that already exists: reorders branches, never moves one, so it can
 # bring two clades already siblings closer together but not join ones the
@@ -487,7 +487,7 @@ pt.unifrac_matrix(tree, samples_by_taxa_table, weighted=True)  # every pair at o
 
 # phylogenetic signal: does a continuous trait track the tree more, less, or
 # exactly as much as Brownian motion on it would predict?
-pt.blomberg_k(tree, {"Human": 1.4, "Chimp": 1.35, ...})   # K=1 matches BM
+pt.blomberg_k(tree, {"Human": 1.4, "Chimp": 1.35})   # one per tip; K=1 matches BM
 pt.pagels_lambda(tree, trait)          # more robust to polytomies/uncertain branch lengths
 
 # PGLS: regress one trait on another without treating related tips as
@@ -637,7 +637,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 429 tests
+pytest -q                             # 434 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

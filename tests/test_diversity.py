@@ -163,6 +163,51 @@ def test_unifrac_matrix_weighted_matches_pairwise_calls():
     assert mat.loc["s1", "s2"] == pytest.approx(expected)
 
 
+def test_unifrac_matrix_matches_the_pairwise_functions_on_random_tables():
+    # unifrac_matrix computes every pair as one numpy expression over a
+    # samples x edges array, while the pairwise functions walk dicts per call --
+    # two genuinely different code paths for the same quantity, so this pins
+    # them together across all three modes on trees and tables it has not been
+    # tuned for. Guards the vectorised path against a rewrite quietly changing
+    # the numbers rather than only the runtime.
+    import numpy as np
+    import pandas as pd
+    rng = np.random.default_rng(0)
+    for trial in range(6):
+        n_tips = int(rng.integers(6, 40))
+        tr = pt.datasets.random_tree(n_tips, seed=trial)
+        tips = tr.leaf_names()
+        n_s = int(rng.integers(3, 7))
+        rows = []
+        for _ in range(n_s):
+            v = np.zeros(n_tips)
+            k = int(rng.integers(1, n_tips + 1))
+            v[rng.choice(n_tips, k, replace=False)] = rng.integers(1, 200, k)
+            rows.append(v)
+        table = pd.DataFrame(rows, columns=tips,
+                            index=[f"s{i}" for i in range(n_s)])
+        mats = {
+            "unweighted": pt.unifrac_matrix(tr, table),
+            "weighted": pt.unifrac_matrix(tr, table, weighted=True),
+            "raw": pt.unifrac_matrix(tr, table, weighted=True, normalized=False),
+        }
+        for m in mats.values():
+            assert np.allclose(np.diag(m), 0.0)
+            assert np.allclose(m, m.T)
+        for i in range(n_s):
+            for j in range(i + 1, n_s):
+                a, b = table.iloc[i], table.iloc[j]
+                pa = list(table.columns[a.to_numpy() > 0])
+                pb = list(table.columns[b.to_numpy() > 0])
+                assert mats["unweighted"].iat[i, j] == pytest.approx(
+                    pt.unweighted_unifrac(tr, pa, pb))
+                assert mats["weighted"].iat[i, j] == pytest.approx(
+                    pt.weighted_unifrac(tr, a.to_dict(), b.to_dict()))
+                assert mats["raw"].iat[i, j] == pytest.approx(
+                    pt.weighted_unifrac(tr, a.to_dict(), b.to_dict(),
+                                        normalized=False))
+
+
 # --------------------------------------------------------------------------
 # Table columns that are not tips of the tree. The realistic case, not an
 # exotic one: tree building drops sequences (too short, failed alignment,

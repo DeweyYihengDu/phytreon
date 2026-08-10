@@ -5,6 +5,23 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`unifrac_matrix` is 6-15x faster.** Both paths now build each sample's
+  per-branch data into a row of a `samples x edges` array once, so every pair is
+  a numpy expression instead of a Python loop over a dict; the weighted
+  denominator also separates (`sum(L * (F_i + F_j))` is just `r_i + r_j`), so it
+  costs one matrix-vector product for all pairs rather than a pass per pair.
+  A 967-sample table on a 500-tip tree went from about 5 minutes to under 10
+  seconds. Verified numerically identical to the untouched pairwise functions
+  across all three modes on random trees and tables (worst disagreement
+  4.4e-16, i.e. floating-point rounding), which is now a test rather than a
+  one-off check, since a rewrite for speed is exactly the kind that can change
+  answers quietly. Explicitly **not** a change of complexity: the cost is still
+  proportional to `samples^2 x edges` -- measured at 10-13x for a 10x bigger
+  tree, before and after -- because comparing two samples branch by branch has
+  to look at every branch. A first version of the accompanying test asserted the
+  scaling had flattened; it had not, and the test was wrong rather than the code.
+
 ### Fixed
 - **`unifrac_matrix(weighted=True)` silently returned wrong distances when the
   table had a column the tree does not have as a tip.** The realistic case, not
@@ -80,6 +97,22 @@ All notable changes to phytreon are documented here. Format loosely follows
   reports `lambda_method` so a result says how its lambda was obtained, and it
   refuses a fit with no residual degrees of freedom left instead of returning
   meaningless p-values from one.
+- **Two README examples were not valid Python.** A bare `...` inside a dict
+  literal (`{"Human": 1.4, "Chimp": 1.35, ...}`), so copy-pasting either gave a
+  `SyntaxError`. The ellipsis moved into a comment, where it still says "one per
+  tip" without breaking the code. Found by a check that walks every `pt.*` call
+  in the README and verifies the attribute exists and the keyword arguments are
+  real parameters -- worth noting because the two unparseable blocks were being
+  *skipped* by that check, and one of them was the block documenting every
+  function added this release. With them parsing, coverage went from 22 calls to
+  39, and all 39 resolve. That check is now `tests/test_readme_api.py` rather
+  than something run once: the README is the first thing most people read and
+  nothing else verified it, so a renamed parameter could stay documented
+  indefinitely with the reader finding out via `TypeError`. It cannot check that
+  the examples *run* -- they use placeholder filenames and variables on purpose
+  -- but "this function accepts that argument" is the part that rots silently,
+  and one of its four tests exists only to fail if the block extraction itself
+  ever stops matching, so the others cannot pass by checking nothing.
 - **`pagels_lambda`'s `logLik` is now an actual log-likelihood.** It was the
   concentrated criterion with the additive constants dropped for optimisation:
   correct to a constant, which cancels inside the reported likelihood ratio but
