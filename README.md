@@ -528,6 +528,15 @@ Even so, do not lean on a PGLS p of 0.04 from 10 species.
 simulated datasets, so the pairings are exact; the small-`n` REML figure reads
 6.8-7.3% depending on which comparison's replicate set it is quoted from, hence
 the `~7%`.)
+
+The arithmetic is also checked against implementations other than itself, since
+"it has the statistical property it was built to have" is not quite the same as
+"it computes the right number": `pgls` at a fixed `lambda` agrees with
+`statsmodels.GLS` to 1.4e-14 on coefficients, standard errors, t- and p-values;
+`phylo_vcv`, `blomberg_k`, `faiths_pd` and `unweighted_unifrac` agree with exact
+`sympy` rational arithmetic on a tree small enough to verify by hand (K there is
+exactly 70014/93775). Both are `dev`-only test dependencies -- nothing here
+needs R, and the verification does not either.
 </details>
 
 <details>
@@ -637,7 +646,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 434 tests
+pytest -q                             # 442 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

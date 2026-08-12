@@ -26,7 +26,11 @@ dependencies = [
 
 [project.optional-dependencies]
 interactive = ["plotly>=5.0"]
-dev = ["pytest>=7", "plotly>=5.0", "ruff"]
+# statsmodels and sympy are used by tests/test_reference_crosscheck.py only, to
+# check the comparative methods against an independent implementation of the
+# same maths (statsmodels.GLS) and against exact rational arithmetic (sympy).
+# Not runtime dependencies; those tests skip if either is absent.
+dev = ["pytest>=7", "plotly>=5.0", "ruff", "statsmodels>=0.13", "sympy>=1.10"]
 docs = ["mkdocs-material", "mkdocstrings[python]"]
 
 [project.urls]

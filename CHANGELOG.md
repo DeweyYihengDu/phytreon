@@ -5,6 +5,33 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **`tests/test_reference_crosscheck.py`: the comparative methods checked against
+  something other than themselves.** Every other test of these functions checks
+  a statistic against the property it is *defined* to have -- K averaging to 1
+  under Brownian motion, PGLS not inflating Type I error -- which is strong but
+  circular in one respect: the same implementation produces both the number and
+  the behaviour being used to judge it. Two outside sources now, both pure
+  Python, since a Python package that needed R to verify itself would be a
+  contradiction:
+  - **`statsmodels.GLS`.** PGLS at a fixed `lambda` *is* generalised least
+    squares with a known error covariance, so a mature independent
+    implementation of that exact computation can be held against ours term by
+    term. Agreement is 1.4e-14 relative at worst, on coefficients, standard
+    errors, t-values, p-values and residual degrees of freedom, across
+    `lambda` of 0.0/0.3/0.5/1.0 and one to three predictors.
+  - **`sympy` exact rationals**, on a four-tip tree small enough that the
+    answers can also be read off it by hand. `phylo_vcv` reproduces the matrix
+    written out by inspection; Blomberg's K comes to exactly 70014/93775, which
+    the implementation matches to 1.5e-16; Faith's PD and UniFrac match hand
+    arithmetic (PD of every taxon = the tree's 10 total branch length, UniFrac
+    of two disjoint halves = 1, `{A}` against `{A,B}` = 3/5).
+
+  Both are `dev`-extra only and the tests `importorskip`, so a bare install
+  skips them rather than failing -- verified by running the file with both
+  blocked, where the six reference tests skip and the two hand-arithmetic ones
+  still run.
+
 ### Changed
 - **`unifrac_matrix` is 6-15x faster.** Both paths now build each sample's
   per-branch data into a row of a `samples x edges` array once, so every pair is
