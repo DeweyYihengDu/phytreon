@@ -109,3 +109,45 @@ def test_every_documented_keyword_argument_is_a_real_parameter():
                 )
     assert checked >= 20, f"only {checked} calls resolved -- extraction may be broken"
     assert not wrong, "README passes arguments that do not exist: " + "; ".join(wrong)
+
+
+def test_every_documented_call_passes_enough_positional_arguments():
+    """Keyword names alone are not enough -- an example can name only real
+    parameters and still be uncallable by leaving a required one out.
+
+    Caught exactly that: an added example wrote ``pt.phylo_pca(traits_df)``,
+    dropping the ``tree`` the function needs first. Every keyword in it was
+    valid, so the check above passed it.
+    """
+    wrong = []
+    for bi, parts, node in _pt_calls():
+        obj = pt
+        for p in parts:
+            if not hasattr(obj, p):
+                obj = None
+                break
+            obj = getattr(obj, p)
+        if obj is None or not callable(obj):
+            continue
+        try:
+            sig = inspect.signature(obj)
+        except (ValueError, TypeError):
+            continue
+        params = [p for p in sig.parameters.values()
+                  if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        if any(p.kind is p.VAR_POSITIONAL for p in sig.parameters.values()):
+            continue                      # *args accepts anything
+        supplied = {kw.arg for kw in node.keywords if kw.arg}
+        n_positional = len(node.args)
+        # a required parameter is one with no default that was not given by name
+        required = [p.name for i, p in enumerate(params)
+                    if p.default is inspect.Parameter.empty
+                    and i >= n_positional and p.name not in supplied]
+        if required:
+            wrong.append(f"block {bi}: pt.{'.'.join(parts)}() is missing "
+                         f"required argument(s) {required}")
+        if n_positional > len(params):
+            wrong.append(f"block {bi}: pt.{'.'.join(parts)}() got "
+                         f"{n_positional} positional arguments but takes "
+                         f"{len(params)}")
+    assert not wrong, "; ".join(wrong)

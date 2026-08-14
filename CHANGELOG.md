@@ -6,6 +6,77 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Models of trait evolution beyond Brownian motion: `fit_continuous`,
+  `compare_continuous_models`.** `blomberg_k` and `pagels_lambda` ask how well a
+  trait fits Brownian motion, which is useful but narrow -- a trait can depart
+  from BM in several distinguishable ways and "it is not BM" does not say which.
+  Five models are now fitted by ML and compared by AICc with Akaike weights:
+  **BM**, **OU** (pulled towards an optimum with strength `alpha`, reported
+  alongside its half-life, which is the interpretable form in the tree's own
+  branch-length units), **EB** (the rate itself changing exponentially through
+  time -- an early burst at `b < 0`), **lambda**, and **white** (no phylogenetic
+  structure, worth keeping in the comparison because a trait that fits it best is
+  one the tree says nothing about).
+
+  The covariance forms are Hansen (1997) / Butler & King (2004) for OU and
+  Blomberg et al. (2003) / Harmon et al. (2010) for EB, taken from the literature
+  and then verified symbolically rather than trusted: `sympy` confirms the OU form
+  reduces to the published ultrametric expression, that its diagonal is the known
+  `sigma^2/(2 alpha) (1 - exp(-2 alpha T))`, and that both OU and EB collapse to
+  `sigma^2 * s` in their Brownian limits. **The published OU covariance is
+  normally written with `T_i` alone, which is correct on an ultrametric tree and
+  silently *asymmetric* when tips differ in depth** -- as they do on any
+  `random_tree` or ML tree -- so the symmetric general form is used, and a test
+  asserts symmetry on a deliberately non-ultrametric tree.
+
+  Validated by model recovery, the property the module exists for: simulating
+  under each model in turn, AICc picks the generating one 18-23 times out of 25.
+  The misses go to *nested* models (OU and EB losing to BM), which is what should
+  happen when a fitted parameter sits near the Brownian boundary and the two are
+  genuinely indistinguishable.
+
+  Documented rather than papered over: **`lambda = 0` and `white` are not the
+  same model unless the tree is ultrametric.** `lambda = 0` removes shared
+  history but keeps each tip's own variance -- its root-to-tip depth -- so on a
+  tree whose depths span 12x it is a weighted model, and on iid data it beat
+  equal-variance white noise by 2.2 log-likelihood units and earned its extra
+  parameter. A test asserting `white` must win on such data failed for exactly
+  this reason; the code was right and the test's premise was wrong. This is the
+  same property that bit `pgls(lambda_=0.0)` earlier in this release, met from a
+  different direction, and it is now pinned in both places.
+- **`fritz_purvis_d`: phylogenetic signal for binary traits.** `blomberg_k` and
+  `pagels_lambda` both require a continuous trait, which left presence/absence
+  data -- a gene, a habitat, a phenotype being there or not -- with no signal
+  statistic at all. D (Fritz & Purvis 2010) is scaled between two simulated
+  references rather than one, so the number means something on its own: 0 is as
+  clumped as a Brownian trait pushed through a threshold, 1 is randomly
+  scattered, below 0 is more conserved than Brownian and above 1 overdispersed.
+  Both p-values are reported, against random and against Brownian, because those
+  are separate claims and a trait is often the first without being the second.
+
+  Checked against its own definition rather than an implementation: the
+  reference case that fixes the statistic's scale -- a trait split basally into
+  one all-1 and one all-0 clade -- comes to exactly 1.0, and simulating traits at
+  each calibration point recovers it, with Brownian-threshold traits averaging
+  D = -0.03 and randomly scattered ones D = +0.93 against definitions of 0 and 1.
+- **`phylo_pca`: principal components that do not mistake the phylogeny for a
+  trait axis (Revell 2009).** Ordinary PCA estimates the trait covariance as if
+  each species were an independent sample; for species on a tree they are not, so
+  its leading axes can describe the phylogeny rather than the traits. This
+  estimates the same covariance with the tree's expected covariance divided out
+  and centres on a GLS phylogenetic mean rather than a column mean.
+
+  It has an exact reference case, which is the test: on a **star tree** there is
+  no shared history to correct for, so it must reduce to ordinary PCA -- and the
+  phylogenetic mean, the loadings and the explained-variance fractions all match
+  a plain PCA computed independently. On a structured tree they diverge, which is
+  the point. Axis signs are fixed by a convention (largest-magnitude loading
+  positive) so repeated runs cannot silently mirror a biplot.
+- **`tests/test_readme_api.py` now also checks positional arguments.** Validating
+  keyword names alone let through an example that named only real parameters and
+  was still uncallable: a `pt.phylo_pca(traits_df)` written while documenting the
+  above, missing the `tree` it takes first. The new check was confirmed against
+  both that broken form and a too-many-arguments one before being trusted.
 - **Community phylogenetics: `patristic_distances`, `mpd`, `mntd`, `ses_mpd`,
   `ses_mntd`, `beta_mntd`, `beta_nti`, plus `permanova` and `mantel`.** The
   existing diversity functions answer "how much evolutionary history is in this

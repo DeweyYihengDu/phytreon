@@ -470,3 +470,121 @@ def pgls(tree: Tree, y: Dict[str, float], x: Union[Dict[str, float], "pd.DataFra
         result["n_boot"] = n_boot
 
     return result
+
+
+# --------------------------------------------------------------------------
+# Phylogenetic signal in a BINARY trait
+# --------------------------------------------------------------------------
+def _sister_clade_differences(tree: Tree, values: Dict[str, float]) -> float:
+    """Sum of changes in estimated nodal values along every edge.
+
+    Internal nodes take the unweighted mean of their immediate children, from
+    tips to root, and the statistic is the total absolute change across edges.
+    The scale this sets is fixed by the reference case in Fritz & Purvis: a trait
+    split basally into one all-1 clade and one all-0 clade has nodal values of 1
+    throughout the first, 0 throughout the second and 0.5 at the root, so every
+    edge contributes nothing except the root's two, which contribute 0.5 each --
+    a total of exactly 1, the most conserved arrangement possible.
+    """
+    est: Dict[Node, float] = {}
+    for node in tree.traverse("postorder"):
+        if node.is_leaf:
+            est[node] = float(values[node.name])
+        else:
+            kids = [est[c] for c in node.children]
+            est[node] = sum(kids) / len(kids) if kids else 0.0
+    return sum(abs(est[nd] - est[nd.parent]) for nd in est
+               if nd.parent is not None)
+
+
+def fritz_purvis_d(tree: Tree, trait: Dict[str, int], n_sim: int = 999,
+                   seed: Optional[int] = None) -> Dict[str, object]:
+    """Fritz & Purvis (2010)'s D: phylogenetic signal in a **binary** trait.
+
+    :func:`blomberg_k` and :func:`pagels_lambda` both assume a continuous trait
+    and are not defined for presence/absence data -- which is most of what a
+    comparative question about genes, traits or habitats actually looks like.
+    D fills that gap, and is scaled against two simulated references rather than
+    one so that its value means something on its own:
+
+    * ``D = 0`` -- as clumped as a Brownian trait pushed through a threshold
+      would be, i.e. the signal a continuous character evolving neutrally leaves.
+    * ``D = 1`` -- randomly scattered across the tips; the tree says nothing.
+    * ``D < 0`` -- *more* clumped than Brownian, the pattern of a conserved trait
+      confined to a few clades.
+    * ``D > 1`` -- overdispersed, closer relatives sharing the state less often
+      than chance.
+
+    ``trait`` maps tip name to 0/1 (or False/True); every tip of the tree needs a
+    value, since an unlabelled tip has no state to be clumped or not. Returns D,
+    the observed sum of sister-clade differences, the two reference means it was
+    scaled between, and a p-value against each reference -- both are worth
+    reading, because "significantly different from random" and "significantly
+    different from Brownian" are separate claims and a trait can easily be the
+    first without being the second.
+    """
+    import numpy as np
+    leaves = [lf.name for lf in tree.leaves()]
+    missing = [nm for nm in leaves if nm not in trait]
+    if missing:
+        raise ValueError(
+            f"fritz_purvis_d needs a value for every tip; missing {sorted(missing)[:10]}"
+            f"{' ...' if len(missing) > 10 else ''}"
+        )
+    unknown = sorted(str(k) for k in trait if k not in set(leaves))
+    if unknown:
+        raise ValueError(f"fritz_purvis_d: trait names not tips of the tree: {unknown[:10]}")
+    values = {nm: float(trait[nm]) for nm in leaves}
+    states = set(values.values())
+    if not states <= {0.0, 1.0}:
+        raise ValueError(
+            f"fritz_purvis_d needs a binary trait (0/1); got {sorted(states)[:5]}"
+        )
+    if len(states) < 2:
+        raise ValueError(
+            "fritz_purvis_d needs both states present; the trait is constant"
+        )
+
+    observed = _sister_clade_differences(tree, values)
+    n_ones = int(sum(values.values()))
+    rng = np.random.default_rng(seed)
+
+    # reference 1: the tip values shuffled, keeping how many are 1
+    random_sums = []
+    order = list(leaves)
+    for _ in range(n_sim):
+        shuffled = rng.permutation(list(values.values()))
+        random_sums.append(_sister_clade_differences(
+            tree, dict(zip(order, shuffled))))
+
+    # reference 2: a continuous Brownian trait, cut at the threshold that
+    # reproduces the observed prevalence -- so the two references differ only in
+    # whether the states were placed with the tree's structure or without it
+    names, V = phylo_vcv(tree, order)
+    chol = np.linalg.cholesky(V + 1e-12 * np.eye(len(order)))
+    brownian_sums = []
+    for _ in range(n_sim):
+        cont = chol @ rng.normal(size=len(order))
+        cut = np.sort(cont)[::-1][n_ones - 1] if n_ones > 0 else np.inf
+        binary = {nm: float(v >= cut) for nm, v in zip(names, cont)}
+        brownian_sums.append(_sister_clade_differences(tree, binary))
+
+    mean_random = float(np.mean(random_sums))
+    mean_brownian = float(np.mean(brownian_sums))
+    span = mean_random - mean_brownian
+    d = (observed - mean_brownian) / span if span != 0 else float("nan")
+    return {
+        "D": float(d),
+        "observed": float(observed),
+        "mean_random": mean_random,
+        "mean_brownian": mean_brownian,
+        # one-sided each way: is it less scattered than random, and is it more
+        # clumped than Brownian?
+        "p_random": float((np.sum(np.asarray(random_sums) <= observed) + 1)
+                          / (n_sim + 1)),
+        "p_brownian": float((np.sum(np.asarray(brownian_sums) >= observed) + 1)
+                            / (n_sim + 1)),
+        "n_sim": n_sim,
+        "n": len(order),
+        "n_ones": n_ones,
+    }

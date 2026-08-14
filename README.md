@@ -395,7 +395,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | `scene` | `Path` / `Marker` / `Label` / `Polygon` primitives |
 | `plot` | `TreeFigure` builder + matplotlib / plotly backends |
 | `infer` | alignment / trimming / NJ / ML / parsimony / bootstrap |
-| `comparative` | ancestral states + stochastic mapping + phylogenetic diversity/signal/PGLS + community phylogenetics |
+| `comparative` | ancestral states + stochastic mapping + diversity/signal/PGLS + community phylogenetics + trait-evolution models (BM/OU/EB) + phylogenetic PCA |
 
 ---
 
@@ -407,7 +407,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | Static **and** interactive backend | ✅ mpl + plotly | own GUI / SVG | toyplot | basic mpl | ✗ |
 | Annotation tracks (heatmap / rings / MSA / bars) | ✅ | partial | partial | ✗ | ✗ |
 | Built-in ML (+Γ) / parsimony | ✅ pure-Python | ✗ | ✗ | ✗ | ✗ |
-| Comparative (ancestral states / stochastic map / PD / UniFrac / PGLS / NRI·NTI·betaNTI) | ✅ | ✗ | ✗ | ✗ | partial |
+| Comparative (ancestral states / PD / UniFrac / PGLS / NRI·NTI·betaNTI / BM·OU·EB model choice / phylo-PCA / Fritz-Purvis D) | ✅ | ✗ | ✗ | ✗ | partial |
 | Pure Python, pip-installable | ✅ | ✅ (Qt for GUI) | ✅ | ✅ | ✅ |
 
 phytreon's niche is a fluent figure builder plus a self-contained phylogenetics
@@ -503,6 +503,15 @@ pt.mantel(unifrac, environmental_distance)   # does dissimilarity track environm
 # exactly as much as Brownian motion on it would predict?
 pt.blomberg_k(tree, {"Human": 1.4, "Chimp": 1.35})   # one per tip; K=1 matches BM
 pt.pagels_lambda(tree, trait)          # more robust to polytomies/uncertain branch lengths
+pt.fritz_purvis_d(tree, {"Human": 1, "Chimp": 0})    # binary traits (K/lambda need continuous)
+                                       # D=0 Brownian-threshold clumped, D=1 random
+
+# ... and if it is NOT Brownian, which of the alternatives is it? Fit them and
+# let AICc choose, rather than only rejecting BM
+pt.compare_continuous_models(tree, trait)   # BM / OU / EB / lambda / white, ranked
+pt.fit_continuous(tree, trait, "OU")        # one model: alpha, and its half-life
+pt.phylo_pca(tree, traits_df)           # PCA that does not mistake the phylogeny
+                                        # for a trait axis (DataFrame by tip name)
 
 # PGLS: regress one trait on another without treating related tips as
 # independent data points, which inflates false positives (Felsenstein 1985)
@@ -670,7 +679,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 464 tests
+pytest -q                             # 491 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

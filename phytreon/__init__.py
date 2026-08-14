@@ -41,7 +41,8 @@ from .comparative import (
     faiths_pd, faiths_pd_table, unweighted_unifrac, weighted_unifrac,
     unifrac_matrix, patristic_distances, mpd, mntd, ses_mpd, ses_mntd,
     beta_mntd, beta_nti, permanova, mantel,
-    phylo_vcv, blomberg_k, pagels_lambda, pgls,
+    phylo_vcv, blomberg_k, pagels_lambda, pgls, fritz_purvis_d,
+    fit_continuous, compare_continuous_models, phylo_pca, CONTINUOUS_MODELS,
 )
 from .treeops import (
     rotate, flip, swap_children, ladderize, sort_by, collapse_low_support,
@@ -70,7 +71,9 @@ __all__ = [
     "faiths_pd", "faiths_pd_table", "unweighted_unifrac", "weighted_unifrac",
     "unifrac_matrix", "patristic_distances", "mpd", "mntd", "ses_mpd",
     "ses_mntd", "beta_mntd", "beta_nti", "permanova", "mantel",
-    "phylo_vcv", "blomberg_k", "pagels_lambda", "pgls",
+    "phylo_vcv", "blomberg_k", "pagels_lambda", "pgls", "fritz_purvis_d",
+    "fit_continuous", "compare_continuous_models", "phylo_pca",
+    "CONTINUOUS_MODELS",
     "rotate", "flip", "swap_children", "ladderize", "sort_by", "collapse_low_support",
     "scale_clade", "cut_tree", "midpoint_root", "outgroup_root", "group_clade", "group_otu",
     "prune_to_taxa", "untangle", "crossing_number", "collapse_clade",
