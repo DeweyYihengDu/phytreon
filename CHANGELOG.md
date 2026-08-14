@@ -6,6 +6,65 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Community phylogenetics: `patristic_distances`, `mpd`, `mntd`, `ses_mpd`,
+  `ses_mntd`, `beta_mntd`, `beta_nti`, plus `permanova` and `mantel`.** The
+  existing diversity functions answer "how much evolutionary history is in this
+  sample" (Faith's PD) and "how different are two samples' branches" (UniFrac).
+  These answer the question after that one: *given* that samples differ, are the
+  taxa that co-occur more closely related than a random draw from the same pool
+  would be, and is the turnover between samples more phylogenetic than chance can
+  explain -- which is what separates habitat filtering and selection from drift.
+
+  `patristic_distances` was the missing primitive underneath all of it and is
+  worth having on its own: there was no way to get tip-to-tip distances *through
+  the tree* at all, only `distance_matrix`, which compares sequences without
+  reference to any tree. It is independent of rooting, checked against a
+  hand-computed four-tip matrix and, separately, against `phylo_vcv`'s identity
+  `d_ij = V_ii + V_jj - 2 V_ij` on a random tree, which is a different code path
+  to the same numbers.
+
+  `permanova` (Anderson 2001) and `mantel` are the two tests that actually get
+  run on a `unifrac_matrix` once samples carry labels or environmental data --
+  "do these groups differ in composition" and "does dissimilarity track
+  environment" -- and both get their p-values by permutation, since distances
+  over shared samples are not independent observations. Both were held to the
+  same Type-I error standard as `pgls` was: on a homogeneous cloud with random
+  group labels, `permanova` rejects 3.2-5.5% of true nulls at a nominal 5% across
+  four configurations of sample size and group count (600 replicates each), i.e.
+  correctly calibrated and slightly conservative. An initial reading of 8.0%
+  looked like inflation and was noise from 200 replicates -- worth measuring
+  properly rather than either ignoring it or "fixing" a problem that was not
+  there.
+
+  **Sign conventions get their own tests, because inverting one flips the
+  biological conclusion while leaving every magnitude plausible.** NRI and NTI
+  carry a factor of -1 (Webb 2000; they are the negations of the standardised
+  effect sizes, Kembel 2009), so positive is clustered. betaNTI does not (Stegen
+  et al. 2012, *ISME J* 6:1653-1664), so positive is more turnover than expected.
+  Both directions were confirmed against the primary sources before implementing
+  rather than from memory, and are pinned by tests on communities whose answer is
+  known by construction: a real clade of the tree comes out at NRI +5.2 / NTI
+  +3.3, two halves of one clade give a negative betaNTI and two different clades
+  +5.8.
+
+  The null model is a tip relabelling (Stegen's randomisation, picante's
+  `taxa.labels`), which keeps community richness and tree shape exactly as
+  observed. Implemented as a permutation of *positions* rather than of names,
+  which is the same operation for every metric here and made one trap explicit:
+  a pair's two samples must share one relabelling, or taxa present in both stop
+  being present in both and the null inflates. Verified directly -- with the
+  shared permutation, two identical samples give a betaMNTD of exactly 0 in all
+  200 null draws, so betaNTI is `NaN` and that is the correct answer; permuting
+  independently instead gives the null a spread (sd 0.070 about a mean of 0.302)
+  and would return a confident-looking -4.3.
+
+  Beyond the closed-form checks, the standardised indices are validated by the
+  property any correctly specified effect size must have: on random samples they
+  centre on zero **with unit standard deviation** (measured NRI -0.05, NTI +0.08,
+  sd 1.01 and 1.06), which tests the null's spread and not merely its centre. A
+  first attempt to demonstrate NTI used a tree regular enough that patristic
+  distances took only four distinct values, inflating the null's sd and capping
+  the index at +1.8; the metric was right and the test design was wrong.
 - **`tests/test_reference_crosscheck.py`: the comparative methods checked against
   something other than themselves.** Every other test of these functions checks
   a statistic against the property it is *defined* to have -- K averaging to 1

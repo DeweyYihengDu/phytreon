@@ -395,7 +395,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | `scene` | `Path` / `Marker` / `Label` / `Polygon` primitives |
 | `plot` | `TreeFigure` builder + matplotlib / plotly backends |
 | `infer` | alignment / trimming / NJ / ML / parsimony / bootstrap |
-| `comparative` | ancestral states + stochastic mapping + phylogenetic diversity/signal/PGLS |
+| `comparative` | ancestral states + stochastic mapping + phylogenetic diversity/signal/PGLS + community phylogenetics |
 
 ---
 
@@ -407,7 +407,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | Static **and** interactive backend | ✅ mpl + plotly | own GUI / SVG | toyplot | basic mpl | ✗ |
 | Annotation tracks (heatmap / rings / MSA / bars) | ✅ | partial | partial | ✗ | ✗ |
 | Built-in ML (+Γ) / parsimony | ✅ pure-Python | ✗ | ✗ | ✗ | ✗ |
-| Comparative (ancestral states / stochastic map / PD / UniFrac / PGLS) | ✅ | ✗ | ✗ | ✗ | partial |
+| Comparative (ancestral states / stochastic map / PD / UniFrac / PGLS / NRI·NTI·betaNTI) | ✅ | ✗ | ✗ | ✗ | partial |
 | Pure Python, pip-installable | ✅ | ✅ (Qt for GUI) | ✅ | ✅ | ✅ |
 
 phytreon's niche is a fluent figure builder plus a self-contained phylogenetics
@@ -485,6 +485,20 @@ pt.unifrac_matrix(tree, samples_by_taxa_table, weighted=True)  # every pair at o
 # extras quietly skew each sample's abundance total:
 #   table[[c for c in table.columns if c in set(tree.leaf_names())]]
 
+# community phylogenetics: not "how much history is here" but "are the taxa
+# that co-occur more closely related than a random draw would be?"
+pt.patristic_distances(tree)                # (names, D) tip-to-tip through the tree
+pt.mpd(tree, sample_taxa)                   # mean pairwise distance, whole community
+pt.mntd(tree, sample_taxa)                  # ... to each taxon's nearest relative
+pt.ses_mpd(tree, samples_by_taxa_table)     # standardised, reports NRI, one row per sample
+pt.ses_mntd(tree, samples_by_taxa_table)    # standardised, reports NTI
+pt.beta_nti(tree, samples_by_taxa_table)    # is turnover between samples more
+                                            # phylogenetic than chance? (Stegen et al.)
+
+# the hypothesis tests that come after a distance matrix
+pt.permanova(unifrac, groups)               # do these groups differ in composition?
+pt.mantel(unifrac, environmental_distance)   # does dissimilarity track environment?
+
 # phylogenetic signal: does a continuous trait track the tree more, less, or
 # exactly as much as Brownian motion on it would predict?
 pt.blomberg_k(tree, {"Human": 1.4, "Chimp": 1.35})   # one per tip; K=1 matches BM
@@ -528,6 +542,16 @@ Even so, do not lean on a PGLS p of 0.04 from 10 species.
 simulated datasets, so the pairings are exact; the small-`n` REML figure reads
 6.8-7.3% depending on which comparison's replicate set it is quoted from, hence
 the `~7%`.)
+
+**Sign conventions**, which are where community-phylogenetics results get
+inverted while every magnitude still looks plausible. `NRI` and `NTI` carry a
+factor of −1 (Webb 2000 — they are the *negations* of the standardised effect
+sizes), so **positive means phylogenetically clustered**, the pattern habitat
+filtering leaves; negative means overdispersed. `betaNTI` carries no such factor
+(Stegen et al. 2012), so **positive means more turnover than chance**, read as
+variable selection, and below −2 as homogeneous selection. Each function states
+its own convention, and both directions are pinned by tests on communities whose
+answer is known by construction.
 
 The arithmetic is also checked against implementations other than itself, since
 "it has the statistical property it was built to have" is not quite the same as
@@ -646,7 +670,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 442 tests
+pytest -q                             # 464 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```
