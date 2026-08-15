@@ -79,6 +79,35 @@ def test_the_ou_covariance_is_symmetric_on_a_non_ultrametric_tree():
                        (1.0 - np.exp(-2.0 * alpha * depths)) / (2.0 * alpha))
 
 
+@pytest.mark.parametrize("n,seed", [(30, 1), (50, 4), (20, 7)])
+def test_two_implementations_of_pagels_lambda_agree(n, seed):
+    # pagels_lambda (signal.py) and fit_continuous(model="lambda") (models.py)
+    # estimate the same quantity by ML through separate code -- separate
+    # covariance construction, separate likelihood, separate optimiser call.
+    # Nothing forced them to agree, so this is a real cross-check rather than a
+    # tautology, and it is the guard against the two drifting apart later.
+    tr = pt.datasets.random_tree(n, seed=seed)
+    names, V = pt.phylo_vcv(tr)
+    rng = np.random.default_rng(seed)
+    trait = dict(zip(names, np.linalg.cholesky(V) @ rng.normal(size=n)))
+    a = pt.pagels_lambda(tr, trait)
+    b = pt.fit_continuous(tr, trait, "lambda")
+    assert b["lambda"] == pytest.approx(a["lambda"], abs=1e-6)
+    assert b["logLik"] == pytest.approx(a["logLik"], abs=1e-8)
+
+
+def test_brownian_log_likelihood_agrees_across_the_two_modules():
+    # fit_continuous's BM fit and signal's own profile log-likelihood at
+    # lambda = 1 are the same model reached two ways, constants included -- which
+    # is what makes the AIC in one comparable with a likelihood ratio in the other
+    from phytreon.comparative.signal import _profile_log_lik
+    tr, names, V, _, _ = _bm_setup(n=30, seed=1)
+    trait = _simulate(names, V, 1)
+    y = np.array([trait[n] for n in names])
+    direct = _profile_log_lik(V, np.ones((len(names), 1)), y, 1.0)
+    assert pt.fit_continuous(tr, trait, "BM")["logLik"] == pytest.approx(direct)
+
+
 def test_shape_rejects_an_unknown_model():
     tr, names, V, depths, patristic = _bm_setup(n=10)
     with pytest.raises(ValueError, match="unknown model"):
@@ -196,6 +225,58 @@ def test_aicc_penalises_more_than_aic_and_converges_on_it_with_more_taxa():
         assert fit["AICc"] > fit["AIC"]
         gaps.append(fit["AICc"] - fit["AIC"])
     assert gaps[1] < gaps[0]
+
+
+ZERO_LENGTH_TREE = "((A:0.0,B:0.0):1.0,(C:1.0,D:1.0):1.0,E:2.0);"
+ZERO_LENGTH_TRAIT = {"A": 1.0, "B": 2.0, "C": 3.0, "D": 1.5, "E": 2.5}
+
+
+def test_the_singular_tree_guard_covers_every_path_that_inverts_the_covariance():
+    # blomberg_k, pagels_lambda and pgls got this guard earlier; the models added
+    # afterwards bypassed it and fell back to numpy's bare "Singular matrix",
+    # which says nothing about which tips or what to do.
+    tr = pt.Tree.from_newick(ZERO_LENGTH_TREE)
+    import pandas as pd
+    frame = pd.DataFrame({"a": list(ZERO_LENGTH_TRAIT.values()),
+                          "b": [1.0, 2.0, 3.0, 4.0, 5.0]},
+                         index=list(ZERO_LENGTH_TRAIT))
+    for call in (lambda: pt.fit_continuous(tr, ZERO_LENGTH_TRAIT, "BM"),
+                 lambda: pt.fit_continuous(tr, ZERO_LENGTH_TRAIT, "OU"),
+                 lambda: pt.fit_continuous(tr, ZERO_LENGTH_TRAIT, "EB"),
+                 lambda: pt.fit_continuous(tr, ZERO_LENGTH_TRAIT, "lambda"),
+                 lambda: pt.compare_continuous_models(tr, ZERO_LENGTH_TRAIT),
+                 lambda: pt.phylo_pca(tr, frame)):
+        with pytest.raises(ValueError, match="zero distance from each other"):
+            call()
+        try:
+            call()
+        except ValueError as exc:
+            assert "'A'" in str(exc) and "'B'" in str(exc)
+
+
+def test_the_guard_is_not_applied_where_the_covariance_is_never_inverted():
+    # The guard belongs where the matrix is INVERTED, not merely where it is
+    # used. White noise's covariance is the identity -- it ignores the tree, so a
+    # singular tree cannot hurt it. fritz_purvis_d only *simulates from* the
+    # covariance, which is well defined when singular: two tips at zero distance
+    # simply come out perfectly correlated, which is what the tree says of them.
+    # Guarding either would reject a case that is genuinely computable.
+    tr = pt.Tree.from_newick(ZERO_LENGTH_TREE)
+    white = pt.fit_continuous(tr, ZERO_LENGTH_TRAIT, "white")
+    assert np.isfinite(white["logLik"])
+    assert np.isfinite(white["AIC"])
+
+    binary = {"A": 1, "B": 1, "C": 0, "D": 0, "E": 1}
+    res = pt.fritz_purvis_d(tr, binary, n_sim=99, seed=0)
+    assert np.isfinite(res["D"])
+
+    # and the perfect correlation that makes that legitimate
+    names, V = pt.phylo_vcv(tr, list(ZERO_LENGTH_TRAIT))
+    chol = np.linalg.cholesky(V + 1e-12 * np.eye(len(names)))
+    rng = np.random.default_rng(0)
+    draws = np.array([chol @ rng.normal(size=len(names)) for _ in range(200)])
+    ia, ib = names.index("A"), names.index("B")
+    assert np.corrcoef(draws[:, ia], draws[:, ib])[0, 1] == pytest.approx(1.0)
 
 
 def test_fit_continuous_needs_at_least_three_taxa_and_a_known_criterion():

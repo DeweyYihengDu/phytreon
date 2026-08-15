@@ -72,6 +72,17 @@ All notable changes to phytreon are documented here. Format loosely follows
   a plain PCA computed independently. On a structured tree they diverge, which is
   the point. Axis signs are fixed by a convention (largest-magnitude loading
   positive) so repeated runs cannot silently mirror a biplot.
+- **The two implementations of Pagel's lambda are now checked against each
+  other.** `pagels_lambda` and `fit_continuous(model="lambda")` estimate the same
+  quantity through separate code -- separate covariance construction, separate
+  likelihood, separate optimiser call -- and nothing forced them to agree. They
+  do, to 2e-12 on lambda and 5e-15 on the log-likelihood across three tree sizes,
+  and the BM log-likelihood matches `signal`'s own profile likelihood at
+  `lambda = 1` exactly, constants included, which is what makes an AIC in one
+  module comparable with a likelihood ratio in the other. Now a test, so the two
+  cannot drift apart unnoticed. Also pins the documented but previously untested
+  fast path where `mpd`/`mntd`/`beta_mntd` take a precomputed distance matrix
+  instead of a tree.
 - **`tests/test_readme_api.py` now also checks positional arguments.** Validating
   keyword names alone let through an example that named only real parameters and
   was still uncallable: a `pt.phylo_pca(traits_df)` written while documenting the
@@ -180,6 +191,26 @@ All notable changes to phytreon are documented here. Format loosely follows
   scaling had flattened; it had not, and the test was wrong rather than the code.
 
 ### Fixed
+- **The singular-tree guard did not cover the functions added after it.**
+  `blomberg_k`, `pagels_lambda` and `pgls` were given a check that names the tips
+  responsible when a tree's covariance matrix cannot be inverted; `fit_continuous`,
+  `compare_continuous_models` and `phylo_pca`, written later in the same release,
+  bypassed it and fell back to numpy's bare `Singular matrix` from somewhere
+  inside an optimiser -- no indication of which tips, or that a zero-length
+  terminal branch was the cause. Now all of them report it the same way.
+
+  Deliberately **not** extended to two paths that also touch that matrix, because
+  the guard belongs where it is *inverted*, not merely where it is used:
+  `fit_continuous(model="white")` builds an identity covariance and ignores the
+  tree entirely, and `fritz_purvis_d` only *simulates from* the covariance, which
+  is perfectly well defined when singular -- two tips at zero distance simply come
+  out perfectly correlated, which is exactly what the tree asserts about them
+  (verified: correlation 1.0000000000 across 200 draws). Guarding either would
+  reject a case that is genuinely computable, so both are exempt and a test pins
+  the distinction in each direction.
+
+  Found by checking whether earlier fixes still held over code added since, which
+  is a different question from whether the fixes were right at the time.
 - **`unifrac_matrix(weighted=True)` silently returned wrong distances when the
   table had a column the tree does not have as a tip.** The realistic case, not
   an exotic one: tree building drops sequences (too short, failed alignment,

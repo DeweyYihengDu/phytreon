@@ -122,6 +122,33 @@ def test_beta_mntd_of_a_sample_against_itself_is_zero_and_it_is_symmetric():
     assert pt.beta_mntd(tr, a, b) == pytest.approx(pt.beta_mntd(tr, b, a))
 
 
+def test_the_metrics_accept_a_precomputed_distance_matrix():
+    # mpd/mntd/beta_mntd take a tree *or* an already-computed matrix, so a caller
+    # working through hundreds of samples need not repeat patristic_distances'
+    # O(n^2) walk each time. Documented and worth pinning: it is the one place in
+    # the comparative API whose first argument is not a tree, so the two routes
+    # have to be kept agreeing.
+    tr = pt.datasets.random_tree(30, seed=1)
+    names, D = pt.patristic_distances(tr)
+    sample = names[:8]
+    assert pt.mpd(D, sample, names=names) == pytest.approx(pt.mpd(tr, sample))
+    assert pt.mntd(D, sample, names=names) == pytest.approx(pt.mntd(tr, sample))
+    a, b = {names[0]: 1.0}, {names[9]: 1.0}
+    assert pt.beta_mntd(D, a, b, names=names) == pytest.approx(
+        pt.beta_mntd(tr, a, b))
+    # a matrix built for a subset works too, given its own names
+    sub_names, sub_D = pt.patristic_distances(tr, sample)
+    assert pt.mpd(sub_D, sample, names=sub_names) == pytest.approx(
+        pt.mpd(tr, sample))
+
+
+def test_a_precomputed_matrix_without_names_says_so():
+    tr = pt.datasets.random_tree(12, seed=1)
+    names, D = pt.patristic_distances(tr)
+    with pytest.raises(ValueError, match="pass names="):
+        pt.mpd(D, names[:5])
+
+
 # --------------------------------------------------------------------------
 # Standardised indices, and the sign conventions
 # --------------------------------------------------------------------------

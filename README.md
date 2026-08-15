@@ -679,7 +679,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 491 tests
+pytest -q                             # 499 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

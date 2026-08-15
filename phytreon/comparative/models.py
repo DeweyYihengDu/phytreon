@@ -44,7 +44,7 @@ from __future__ import annotations
 from typing import Dict, Sequence
 
 from ..core.tree import Tree
-from .signal import phylo_vcv
+from .signal import _check_invertible, phylo_vcv
 
 
 MODELS = ("BM", "OU", "EB", "lambda", "white")
@@ -144,6 +144,14 @@ def fit_continuous(tree: Tree, trait: Dict[str, float], model: str = "BM"
     n = len(names)
     if n < 3:
         raise ValueError("fit_continuous needs at least 3 taxa with trait values")
+    if model != "white":
+        # Every model except white builds its covariance out of the tree's, so a
+        # singular tree covariance (tips at zero distance -- a zero-length
+        # terminal branch) makes them unfittable. Checked here rather than left
+        # to numpy, which reports only "Singular matrix" from somewhere inside
+        # the optimiser. White noise is exempt because its covariance is the
+        # identity: it ignores the tree entirely and is well defined regardless.
+        _check_invertible(names, shared, f"fit_continuous({model!r})")
     depths = np.diag(shared).copy()
     patristic = depths[:, None] + depths[None, :] - 2.0 * shared
 
@@ -268,6 +276,9 @@ def phylo_pca(tree: Tree, data, mode: str = "cov") -> Dict[str, object]:
     n, p = X.shape
     if n < 3:
         raise ValueError("phylo_pca needs at least 3 taxa")
+    # the tree's covariance is inverted below, so a singular one is fatal --
+    # reported by which tips caused it rather than as a bare "Singular matrix"
+    _check_invertible(names, C, "phylo_pca")
     C_inv = np.linalg.inv(C)
     ones = np.ones((n, 1))
 
