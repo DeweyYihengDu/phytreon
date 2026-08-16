@@ -20,6 +20,9 @@ from .lineage import (read_allele_table, read_mutation_matrix, sankoff_score,
                       camin_sokal_score, lineage_tree, reconstruct_ancestral_mutations)
 from .expression import expression_distance_matrix, expression_dendrogram
 from .pipeline import build_tree
+from .domains import (residue_to_column, split_domains, domain_trees,
+                      taxon_displacement, rogue_taxon, compare_domain_trees)
+from .markers import concatenate, species_tree, gene_trees, gene_tree_conflict
 
 __all__ = [
     "Alignment", "align", "align_external", "read_fasta", "read_character_matrix",
@@ -36,4 +39,7 @@ __all__ = [
     "expression_distance_matrix", "expression_dendrogram",
     "distance_matrix_model",
     "build_tree",
+    "residue_to_column", "split_domains", "domain_trees",
+    "taxon_displacement", "rogue_taxon", "compare_domain_trees",
+    "concatenate", "species_tree", "gene_trees", "gene_tree_conflict",
 ]

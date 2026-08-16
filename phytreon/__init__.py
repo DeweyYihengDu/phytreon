@@ -35,6 +35,9 @@ from .infer import (
     read_allele_table, read_mutation_matrix, sankoff_score, camin_sokal_score, lineage_tree,
     reconstruct_ancestral_mutations,
     expression_distance_matrix, expression_dendrogram,
+    residue_to_column, split_domains, domain_trees, taxon_displacement,
+    rogue_taxon, compare_domain_trees,
+    concatenate, species_tree, gene_trees, gene_tree_conflict,
 )
 from .comparative import (
     ace_parsimony, ace_ml, ace_continuous, stochastic_map,
@@ -67,6 +70,9 @@ __all__ = [
     "read_allele_table", "read_mutation_matrix", "sankoff_score", "camin_sokal_score", "lineage_tree",
     "reconstruct_ancestral_mutations",
     "expression_distance_matrix", "expression_dendrogram",
+    "residue_to_column", "split_domains", "domain_trees",
+    "taxon_displacement", "rogue_taxon", "compare_domain_trees",
+    "concatenate", "species_tree", "gene_trees", "gene_tree_conflict",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
     "faiths_pd", "faiths_pd_table", "unweighted_unifrac", "weighted_unifrac",
     "unifrac_matrix", "patristic_distances", "mpd", "mntd", "ses_mpd",

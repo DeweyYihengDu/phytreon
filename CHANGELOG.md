@@ -6,6 +6,61 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Two protein workflows where one tree from one alignment is the wrong object:
+  `residue_to_column`/`split_domains`/`domain_trees`/`compare_domain_trees` and
+  `concatenate`/`species_tree`/`gene_trees`/`gene_tree_conflict`, plus
+  `taxon_displacement` and `rogue_taxon` underneath both.**
+
+  *Per-domain trees.* A multidomain protein has several histories, and one tree
+  compresses them into nobody's. Cyanobacterial OCP is the case that motivated
+  it: an all-helical NTD whose relatives are the HCPs fused to an NTF2-like CTD
+  whose relatives are the CTDHs, so a single OCP tree is a category error and the
+  two domain trees' disagreement *is* the fusion. `residue_to_column` is the
+  fiddly bridge that makes this usable -- HMMER reports domains as residue
+  positions on one sequence, an alignment is indexed by columns including gaps,
+  and the two conventions are deliberately kept different (residues 1-based
+  inclusive, columns 0-based half-open) so mixing them up fails loudly instead of
+  shifting a boundary by one.
+
+  *Marker-gene species trees.* `concatenate` builds a supermatrix with partition
+  ranges and, more importantly, an **occupancy** table: a taxon present in a tenth
+  of the markers is positioned by almost no data with the rest gap-filled, and
+  bootstrap will not tell you, because every replicate resamples the same absence.
+  Then `gene_tree_conflict` compares each gene against the species tree, which is
+  where transfer candidates come from.
+
+  **The measure that makes the conflict analysis worth having, and the two
+  attempts it took to get right.** Two situations produce similar conflict and
+  mean opposite things: one lineage genuinely misplaced (transfer, hidden
+  paralogue) versus a region too saturated to resolve anything. The first design
+  ranked genes by the ratio of maximum to mean neighbourhood displacement, and
+  simulation killed it twice over. It was computed from patristic distances, so
+  genes differing only in evolutionary *rate* scored as displaced -- a gene tree
+  matching its species tree exactly, Robinson-Foulds distance 0, still posted
+  displacements up to 0.5 and topped the ranking. Making the measure count edges
+  rather than branch lengths fixed that, and then the ratio still ranked a
+  signal-free gene above a simulated transfer, because moving one taxon between
+  clades perturbs the neighbourhoods of *both* clades and so is not numerically
+  "concentrated" on a modest number of taxa.
+
+  Replaced with `rogue_taxon`, which asks the question directly: drop each taxon
+  in turn and recompute the distance. On the simulated set the transferred gene
+  scores `explained_by_one = 1.00` and names the right taxon -- removing it leaves
+  the trees identical -- against 0.25 for the saturated gene. And the point of
+  all of it: **the signal-free gene had 2.5x the Robinson-Foulds distance of the
+  real transfer**, so ranking by total conflict buries the biology beneath it.
+
+  Both workflows pass `method=`/`ml_engine=` through to `build_tree` and both
+  docstrings say plainly what phytreon cannot do here: its own likelihood offers
+  only site-homogeneous LG/WAG/JTT, and on a deep protein matrix a
+  site-homogeneous model does not merely lose resolution but produces long-branch
+  attraction *with high support*. For that step use an external engine.
+
+  One thing removed on the way: `concatenate` originally re-checked its input for
+  ragged sequence lengths and duplicate taxon names. `Alignment`'s own constructor
+  already rejects both, so those branches were unreachable -- the same dead
+  validation pattern found in `blomberg_k` earlier this release. Removed, with a
+  test asserting `Alignment` still enforces it so the omission stays correct.
 - **Models of trait evolution beyond Brownian motion: `fit_continuous`,
   `compare_continuous_models`.** `blomberg_k` and `pagels_lambda` ask how well a
   trait fits Brownian motion, which is useful but narrow -- a trait can depart

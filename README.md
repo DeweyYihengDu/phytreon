@@ -394,7 +394,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | `layout` | topology → display coordinates |
 | `scene` | `Path` / `Marker` / `Label` / `Polygon` primitives |
 | `plot` | `TreeFigure` builder + matplotlib / plotly backends |
-| `infer` | alignment / trimming / NJ / ML / parsimony / bootstrap |
+| `infer` | alignment / trimming / NJ / ML / parsimony / bootstrap + per-domain and marker-gene workflows |
 | `comparative` | ancestral states + stochastic mapping + diversity/signal/PGLS + community phylogenetics + trait-evolution models (BM/OU/EB) + phylogenetic PCA |
 
 ---
@@ -467,6 +467,61 @@ pt.stochastic_map(tree, trait, n=200)        # stochastic character mapping
     .time_axis(geo=True, gridlines=True, unit="Mya")  # geological bands
     .tip_labels())
 ```
+</details>
+
+<details>
+<summary><b>Protein trees that answer a biological question</b></summary>
+
+Two workflows for the cases where one tree from one alignment is the wrong
+object. Both are built around the same idea: **the disagreement between two
+trees is often the result, not the noise** — and the thing that matters is
+telling apart *one lineage genuinely misplaced* from *a region with no signal at
+all*, because those mean opposite things and produce similar overall conflict
+scores.
+
+```python
+# --- multidomain proteins: domains have separate histories ---
+# A protein whose N-terminal domain belongs to one family and whose C-terminal
+# domain belongs to an unrelated superfamily has two ancestries. One tree
+# averages them into nobody's history. Cyanobacterial OCP is the textbook case:
+# an all-helical NTD (relatives: HCPs) fused to an NTF2-like CTD (relatives:
+# CTDHs).
+cols = pt.residue_to_column(aln, "OCP_Synechocystis",   # HMMER residue ranges,
+                            {"NTD": (1, 165), "CTD": (190, 317)})  # 1-based
+res = pt.domain_trees(aln, cols, method="ml", ml_engine="iqtree")
+cmp = pt.compare_domain_trees(res["trees"])
+cmp["rf"]                    # how much the domain trees disagree overall
+cmp["explained_by_one"]      # ... and whether ONE lineage accounts for it
+cmp["worst_taxon"]           # which one -- the recombination candidate
+
+# --- many marker genes: species tree, then per-gene conflict ---
+sp = pt.species_tree(markers, min_occupancy=0.7,        # markers = {name: Alignment}
+                     method="ml", ml_engine="iqtree")
+sp["occupancy"]              # read this BEFORE the tree
+gt = pt.gene_trees(markers, method="ml", ml_engine="iqtree")
+pt.gene_tree_conflict(gt["trees"], sp["tree"])   # ranked HGT candidates
+
+pt.rogue_taxon(tree_a, tree_b)   # the underlying leave-one-out test
+```
+
+Why `explained_by_one` and not just a distance: on a simulated set where one
+gene was genuinely transferred and another was saturated to noise, **the
+signal-free gene had 2.5× the Robinson-Foulds distance of the real transfer**.
+Ranking by total conflict puts the useless gene on top. Asking instead "would
+dropping one lineage explain this?" separates them completely — 1.00 for the
+transfer, naming the right taxon, against 0.25 for the noise.
+
+Two things these will not do for you. They pass `method=`/`ml_engine=` straight
+to `build_tree`, and for proteins at real divergence you want an external engine:
+the site-heterogeneous profile mixtures that matter (LG+C60, or LG+PMSF on large
+matrices) are implemented by IQ-TREE and not by phytreon's own likelihood, which
+offers only the site-homogeneous LG/WAG/JTT. A site-homogeneous model on a deep
+protein matrix does not just lose resolution — it produces long-branch attraction
+*with high support*, which is worse than an unresolved answer. And neither
+workflow aligns for you: below ~25% identity the alignment, not the tree search,
+is what decides the answer, so use a structure-aware aligner. If the alignment
+itself is not trustworthy, a tree is the wrong output entirely — see
+`SequenceNetwork` for the honest alternative.
 </details>
 
 <details>
@@ -679,7 +734,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 499 tests
+pytest -q                             # 524 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```
