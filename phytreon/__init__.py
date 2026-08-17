@@ -39,6 +39,7 @@ from .infer import (
     rogue_taxon, compare_domain_trees,
     concatenate, species_tree, gene_trees, gene_tree_conflict, astrid_tree,
     biallelic_recode, four_gamete_scan,
+    codon_frequencies, fit_m0, fit_free_ratio, branch_site_test,
 )
 from .comparative import (
     ace_parsimony, ace_ml, ace_continuous, stochastic_map,
@@ -76,6 +77,7 @@ __all__ = [
     "taxon_displacement", "rogue_taxon", "compare_domain_trees",
     "concatenate", "species_tree", "gene_trees", "gene_tree_conflict",
     "astrid_tree", "biallelic_recode", "four_gamete_scan",
+    "codon_frequencies", "fit_m0", "fit_free_ratio", "branch_site_test",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
     "reconstruct_ancestral_sequences", "ancestral_alignment",
     "faiths_pd", "faiths_pd_table", "unweighted_unifrac", "weighted_unifrac",

@@ -39,7 +39,7 @@ not F61 or F1x4.
 """
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..core.tree import Node, Tree
 from .matrix import Alignment
@@ -158,12 +158,37 @@ class _CodonModel:
         self._decompose()
 
     def _decompose(self):
+        # Q is reversible (pi_i * Q_ij == pi_j * Q_ji: the GY94 rate between
+        # two codons depends only on their unordered relationship --
+        # transition/transversion, synonymous/nonsynonymous -- never on
+        # direction), so it is similar to a SYMMETRIC matrix via
+        # S = diag(sqrt(pi)) @ Q @ diag(1/sqrt(pi)). Decomposing S with eigh
+        # rather than Q with the general eig is not just faster: eigh always
+        # returns an orthogonal eigenbasis, so it stays exact even when
+        # eigenvalues coincide, whereas eig's eigenvector matrix can become
+        # ill-conditioned or fail outright at a true degeneracy.
+        #
+        # That degeneracy is not a corner case here -- it is guaranteed at
+        # omega=1, which every branch-site fit (:func:`branch_site_test`)
+        # visits unconditionally (site class 1 always; class 2 as well under
+        # the null it tests against). At omega=1 the model stops
+        # distinguishing synonymous from nonsynonymous changes, so with
+        # near-uniform codon frequencies it reduces to three i.i.d. copies of
+        # the same per-position nucleotide process -- found via a validation
+        # run whose omega2 estimate collapsed to its own starting value no
+        # matter the data: the old eig-based P(t) was silently returning
+        # transition "probabilities" as negative as -1.96 there (confirmed by
+        # direct inspection, kappa=3.101, uniform pi), which propagated to
+        # NaN log-likelihoods and corrupted the optimizer's every step.
         import numpy as np
         Q = _build_Q_codon(self.kappa, self.omega, self.pi)
-        vals, vecs = np.linalg.eig(Q)
-        self.vals = vals.real
-        self.vecs = vecs.real
-        self.vinv = np.linalg.inv(self.vecs)
+        sqrt_pi = np.sqrt(self.pi)
+        S = (sqrt_pi[:, None] * Q) / sqrt_pi[None, :]
+        S = (S + S.T) / 2.0   # exact symmetry, clearing float round-off
+        vals, U = np.linalg.eigh(S)
+        self.vals = vals
+        self.vecs = U / sqrt_pi[:, None]
+        self.vinv = U.T * sqrt_pi[None, :]
 
     def set_params(self, kappa: float, omega: float):
         self.kappa = kappa
@@ -244,7 +269,13 @@ def _foreground_edges(tree: Tree, foreground: Sequence[str]) -> set:
     selection act on the branch where this lineage originates.
     """
     mrca = tree.get_mrca(list(foreground))
-    if mrca is None:
+    # get_mrca returns the graph-theoretic common ancestor regardless of
+    # whether OTHER leaves also descend from it, so "mrca is None" alone
+    # does not catch a non-clade foreground (e.g. two taxa from a 3-leaf
+    # clade) -- found via a test that named such a pair and got a silent,
+    # wrong stem edge back instead of the documented error. The exact-leaf-
+    # set check below is what actually enforces "forms a clade".
+    if mrca is None or set(mrca.leaf_names()) != set(foreground):
         raise ValueError(
             f"codon model: {list(foreground)} do not form a clade in this tree "
             f"(no single node has exactly this leaf set)"
@@ -269,3 +300,386 @@ def _validate_codon_inputs(tree: Tree, aln: Alignment) -> List[str]:
             f"but not the tree: {only_aln[:10]}"
         )
     return tree.leaf_names()
+
+
+# --------------------------------------------------------------------------
+# M0: one omega for the whole tree
+# --------------------------------------------------------------------------
+def _optimize_branches_codon(tree: Tree, branch_model: Dict[Node, "_CodonModel"],  # noqa: F821
+                             names, states, pi, rounds: int = 3) -> float:
+    from scipy.optimize import minimize_scalar
+    edges = [n for n in tree.traverse() if not n.is_root]
+    best = float(_site_logliks_codon(tree, names, states, branch_model, pi).sum())
+    for _ in range(rounds):
+        improved = False
+        for node in edges:
+            old = node.length or 0.1
+
+            def neg(t, _node=node):
+                _node.length = float(t)
+                return -float(_site_logliks_codon(tree, names, states, branch_model, pi).sum())
+
+            res = minimize_scalar(neg, bounds=(1e-6, 10.0), method="bounded")
+            if -res.fun > best + 1e-6:
+                node.length = float(res.x)
+                best = -res.fun
+                improved = True
+            else:
+                node.length = old
+        if not improved:
+            break
+    return best
+
+
+def fit_m0(tree: Tree, aln: Alignment, kappa: Optional[float] = None,
+          omega: Optional[float] = None, fit_model: bool = True,
+          rounds: int = 6) -> Dict[str, object]:
+    """M0: a single kappa and omega shared by the whole tree.
+
+    The baseline codon model -- is this gene under selection *on average*,
+    with no attempt to localise it to particular branches or sites. Fits
+    branch lengths, kappa and omega jointly by ML on a **copy** of ``tree``
+    (the input is never mutated), unless ``kappa``/``omega`` are given, in
+    which case that one is held fixed rather than estimated (branch lengths
+    are still fit either way when ``fit_model=True``).
+
+    Equilibrium codon frequencies are F3x4, estimated once from ``aln`` and
+    not re-optimised. Returns the fitted tree, ``kappa``, ``omega``,
+    ``logLik``, and ``codon_frequencies``.
+    """
+    from scipy.optimize import minimize
+
+    _validate_codon_inputs(tree, aln)
+    work = Tree.from_newick(tree.write())
+    work_names = work.leaf_names()
+    states = _encode_codons(aln, work_names)
+    pi = codon_frequencies(aln)
+
+    k0 = kappa if kappa is not None else 2.0
+    w0 = omega if omega is not None else 0.4
+    model = _CodonModel(k0, w0, pi)
+    branch_model = {n: model for n in work.traverse() if not n.is_root}
+
+    fit_kappa = kappa is None
+    fit_omega = omega is None
+    ll = float(_site_logliks_codon(work, work_names, states, branch_model, pi).sum())
+    if fit_model:
+        prev = -1e18
+        for _ in range(rounds):
+            ll = _optimize_branches_codon(work, branch_model, work_names, states, pi, rounds=2)
+            if fit_kappa or fit_omega:
+                x0 = ([model.kappa] if fit_kappa else []) + ([model.omega] if fit_omega else [])
+
+                def neg(x):
+                    xi = iter(x)
+                    k = next(xi) if fit_kappa else model.kappa
+                    w = next(xi) if fit_omega else model.omega
+                    if k <= 0 or w <= 0:
+                        return 1e18
+                    model.set_params(k, w)
+                    return -float(_site_logliks_codon(work, work_names, states,
+                                                       branch_model, pi).sum())
+
+                res = minimize(neg, x0, method="Nelder-Mead",
+                              options={"xatol": 1e-4, "fatol": 1e-4, "maxiter": 200})
+                xi = iter(res.x)
+                model.set_params(next(xi) if fit_kappa else model.kappa,
+                                 next(xi) if fit_omega else model.omega)
+                ll = -float(res.fun)
+            if ll - prev < 1e-3:
+                break
+            prev = ll
+        ll = float(_site_logliks_codon(work, work_names, states, branch_model, pi).sum())
+
+    return {"tree": work, "kappa": model.kappa, "omega": model.omega,
+            "logLik": ll, "codon_frequencies": pi, "n_codons": states.shape[1]}
+
+
+# --------------------------------------------------------------------------
+# Free-ratio: a second omega for a labelled set of foreground branches
+# --------------------------------------------------------------------------
+def fit_free_ratio(tree: Tree, aln: Alignment, foreground: Sequence[str],
+                   rounds: int = 6) -> Dict[str, object]:
+    """Two omegas -- one for the branches leading to ``foreground``'s MRCA,
+    one for the rest of the tree -- tested against :func:`fit_m0` by a
+    likelihood-ratio test (1 df, an ordinary chi-square: unlike the
+    branch-site test below, omega is not on a boundary here, so no mixture
+    correction is needed).
+
+    ``foreground`` is a set of taxon names; the single branch immediately
+    ancestral to their MRCA is what gets the second omega (the standard,
+    simplest labelling -- does selection differ on the branch where this
+    lineage originates). kappa and branch lengths are shared across both
+    omega classes.
+
+    Returns the two-omega fit (``tree``, ``kappa``, ``omega_foreground``,
+    ``omega_background``, ``logLik``) plus the comparison against M0:
+    ``m0`` (that fit's own result dict), ``LR``, ``p``.
+    """
+    from scipy.optimize import minimize
+
+    _validate_codon_inputs(tree, aln)
+    m0 = fit_m0(tree, aln, rounds=rounds)
+
+    work = Tree.from_newick(tree.write())
+    work_names = work.leaf_names()
+    states = _encode_codons(aln, work_names)
+    pi = m0["codon_frequencies"]
+    fg_stem = _foreground_edges(work, foreground)
+
+    kappa = m0["kappa"]
+    model_bg = _CodonModel(kappa, m0["omega"], pi)
+    model_fg = _CodonModel(kappa, m0["omega"], pi)
+    branch_model = {n: (model_fg if n in fg_stem else model_bg)
+                    for n in work.traverse() if not n.is_root}
+    # start from M0's own FITTED branch lengths, not the caller's original
+    # (possibly NJ, unoptimised) ones -- already a good starting point
+    for n, m0n in zip(work.traverse(), m0["tree"].traverse()):
+        if not n.is_root:
+            n.length = m0n.length
+
+    def total_ll():
+        return float(_site_logliks_codon(work, work_names, states, branch_model, pi).sum())
+
+    prev = -1e18
+    ll = total_ll()
+    for _ in range(rounds):
+        ll = _optimize_branches_codon(work, branch_model, work_names, states, pi, rounds=2)
+
+        def neg(x):
+            k, w_bg, w_fg = x
+            if k <= 0 or w_bg <= 0 or w_fg <= 0:
+                return 1e18
+            model_bg.set_params(k, w_bg)
+            model_fg.set_params(k, w_fg)
+            return -total_ll()
+
+        res = minimize(neg, [model_bg.kappa, model_bg.omega, model_fg.omega],
+                       method="Nelder-Mead",
+                       options={"xatol": 1e-4, "fatol": 1e-4, "maxiter": 300})
+        model_bg.set_params(res.x[0], res.x[1])
+        model_fg.set_params(res.x[0], res.x[2])
+        ll = -float(res.fun)
+        if ll - prev < 1e-3:
+            break
+        prev = ll
+
+    from scipy.stats import chi2
+    lr = max(2.0 * (ll - m0["logLik"]), 0.0)
+    p = float(chi2.sf(lr, df=1))
+    return {"tree": work, "kappa": model_bg.kappa,
+            "omega_background": model_bg.omega, "omega_foreground": model_fg.omega,
+            "logLik": ll, "m0": m0, "LR": lr, "p": p}
+
+
+# --------------------------------------------------------------------------
+# Branch-site test (Zhang, Nielsen & Yang 2005's corrected Model A)
+# --------------------------------------------------------------------------
+def _mixture_logliks(tree: Tree, names, states, pi,
+                     class_weights: Sequence[float],
+                     class_branch_models: Sequence[Dict[Node, "_CodonModel"]]  # noqa: F821
+                     ) -> "np.ndarray":  # noqa: F821
+    """Per-codon log-likelihood under a mixture of site classes, each with
+    its own (possibly per-branch-varying) model -- one down-pass per class,
+    combined by log-sum-exp so a class with negligible weight cannot
+    numerically swamp one that fits far better."""
+    import numpy as np
+    from scipy.special import logsumexp
+    per_class = np.stack([
+        _site_logliks_codon(tree, names, states, bm, pi) + np.log(max(w, 1e-300))
+        for w, bm in zip(class_weights, class_branch_models)
+    ])
+    return logsumexp(per_class, axis=0)
+
+
+def _class_weights(p0: float, p1: float) -> Tuple[float, float, float, float]:
+    """The four site-class proportions from Zhang, Nielsen & Yang's own
+    parametrisation: class 2's total mass (1 - p0 - p1) split between the
+    2a/2b sub-classes in the same ratio as p0:p1 themselves."""
+    p2 = max(1.0 - p0 - p1, 0.0)
+    denom = p0 + p1
+    if denom <= 0:
+        return p0, p1, p2 / 2, p2 / 2
+    return p0, p1, p2 * p0 / denom, p2 * p1 / denom
+
+
+def _fit_branch_site_model(tree: Tree, names, states, pi, fg_stem,
+                           fix_omega2: bool, rounds: int) -> Dict[str, object]:
+    from scipy.optimize import minimize
+
+    import numpy as np
+
+    kappa = 2.0
+    omega0 = 0.3
+    omega2_raw = 0.0             # omega2 = 1 + exp(omega2_raw), see below
+    p0_raw, p1_raw = 0.5, 0.5    # stick-breaking: see props() below
+
+    def props(p0_raw, p1_raw):
+        p0 = 1.0 / (1.0 + np.exp(-p0_raw))
+        p1 = (1.0 - p0) / (1.0 + np.exp(-p1_raw))
+        return _class_weights(p0, p1)
+
+    OMEGA2_MAX = 100.0   # generous: no biologically real dN/dS ratio approaches this
+
+    def omega2_of(raw):
+        # Mapped smoothly into (1, OMEGA2_MAX) via a logistic squeeze rather
+        # than a hard omega2 >= 1 rejection wall OR an unbounded 1 + exp(raw):
+        #
+        # - a hard wall at 1 traps Nelder-Mead exactly there with nowhere
+        #   feasible to step towards (found first: simulated genuine positive
+        #   selection, got back exactly omega2 = 1.0, LR = 0.0 -- not noise,
+        #   identical every replicate);
+        # - removing the wall entirely (1 + exp(raw), unbounded above) traps
+        #   it differently: when the data barely identify omega2 (few sites in
+        #   the omega2-using classes, short foreground branch, or -- found
+        #   second -- a joint ridge where several parameters move together and
+        #   omega2 stops mattering to the likelihood at all), Nelder-Mead can
+        #   drift along that flat direction to a nonsensical omega2 in the
+        #   billions with no convergence check ever flagging it, since the
+        #   likelihood is not improving, just failing to get worse.
+        #
+        # A finite upper bound closes off that drift while keeping the same
+        # smooth, wall-free landscape near 1 -- and 100 costs nothing on
+        # genuine signal: a likelihood surface that actually wants omega2 = 20
+        # is not going to prefer 100 to get there, it is only the *directionless*
+        # drift on already-flat data this stops.
+        return 1.0 + (OMEGA2_MAX - 1.0) / (1.0 + np.exp(-raw))
+
+    model0 = _CodonModel(kappa, omega0, pi)               # class 0's uniform model
+    model1 = _CodonModel(kappa, 1.0, pi)                  # class 1's uniform model (omega=1)
+    model2 = _CodonModel(kappa, omega2_of(omega2_raw), pi)  # foreground-only, 2a/2b
+
+    def branch_models():
+        all_bg = {n: model0 for n in tree.traverse() if not n.is_root}
+        all_bg1 = {n: model1 for n in tree.traverse() if not n.is_root}
+        mix2a = {n: (model2 if n in fg_stem else model0)
+                for n in tree.traverse() if not n.is_root}
+        mix2b = {n: (model2 if n in fg_stem else model1)
+                for n in tree.traverse() if not n.is_root}
+        return [all_bg, all_bg1, mix2a, mix2b]
+
+    def total_ll(p0_raw, p1_raw):
+        w0, w1, w2a, w2b = props(p0_raw, p1_raw)
+        return float(_mixture_logliks(tree, names, states, pi,
+                                      [w0, w1, w2a, w2b], branch_models()).sum())
+
+    prev = -1e18
+    ll = total_ll(p0_raw, p1_raw)
+    for _ in range(rounds):
+        # branch lengths: optimise against the CURRENT mixture, one edge at a
+        # time, exactly as _optimize_branches_codon does for a single model
+        from scipy.optimize import minimize_scalar
+        edges = [n for n in tree.traverse() if not n.is_root]
+        best = total_ll(p0_raw, p1_raw)
+        for node in edges:
+            old = node.length or 0.1
+
+            def neg(t, _node=node):
+                _node.length = float(t)
+                return -total_ll(p0_raw, p1_raw)
+
+            res = minimize_scalar(neg, bounds=(1e-6, 10.0), method="bounded")
+            if -res.fun > best + 1e-6:
+                node.length = float(res.x)
+                best = -res.fun
+            else:
+                node.length = old
+        ll = best
+
+        # model parameters: kappa, omega0, p0_raw, p1_raw always; omega2_raw too
+        # unless omega2 is fixed at 1 (the null model) -- omega0 and kappa keep
+        # a hard rejection wall rather than their own reparametrisation since,
+        # unlike omega2, neither ever needed to move away from its own starting
+        # boundary in validation (the true values sat in the interior)
+        x0 = [kappa, omega0, p0_raw, p1_raw] + ([] if fix_omega2 else [omega2_raw])
+
+        def neg(x):
+            k, w0_, pr0, pr1 = x[:4]
+            w2 = omega2_of(x[4]) if not fix_omega2 else 1.0
+            if k <= 0 or w0_ <= 0 or w0_ > 1.0:
+                return 1e18
+            model0.set_params(k, w0_)
+            model1.set_params(k, 1.0)
+            model2.set_params(k, w2)
+            return -total_ll(pr0, pr1)
+
+        # Explicit initial simplex: scipy's default step for a coordinate
+        # starting at exactly 0.0 (omega2_raw) is tiny, and validation showed
+        # it left that axis unexplored -- two very different simulated
+        # datasets (one with an enormous p2=0.5, omega2=15 signal) both
+        # converged to omega2 ~= 50.5, exactly omega2_of(raw=0), i.e. the
+        # untouched starting point, not a fitted value. A deliberately
+        # generous per-parameter step replaces scipy's own collapsing default.
+        step = np.array([1.0, 0.3, 1.5, 1.5, 3.0][:len(x0)])
+        simplex = np.vstack([x0] + [np.array(x0) + step * np.eye(len(x0))[i]
+                                    for i in range(len(x0))])
+        res = minimize(neg, x0, method="Nelder-Mead",
+                       options={"xatol": 1e-4, "fatol": 1e-4, "maxiter": 800,
+                               "initial_simplex": simplex})
+        kappa, omega0, p0_raw, p1_raw = res.x[:4]
+        omega2_raw = res.x[4] if not fix_omega2 else 0.0
+        omega2 = omega2_of(omega2_raw) if not fix_omega2 else 1.0
+        model0.set_params(kappa, omega0)
+        model1.set_params(kappa, 1.0)
+        model2.set_params(kappa, omega2)
+        ll = -float(res.fun)
+        if ll - prev < 1e-3:
+            break
+        prev = ll
+
+    w0, w1, w2a, w2b = props(p0_raw, p1_raw)
+    return {"kappa": kappa, "omega0": omega0, "omega2": omega2,
+            "p0": w0, "p1": w1, "p2a": w2a, "p2b": w2b, "logLik": ll}
+
+
+def branch_site_test(tree: Tree, aln: Alignment, foreground: Sequence[str],
+                     rounds: int = 6) -> Dict[str, object]:
+    """The corrected branch-site test for positive selection on specific
+    codons along specific branches (Zhang, Nielsen & Yang 2005's Model A,
+    fixing the excess false positives of Yang & Nielsen (2002)'s original).
+
+    Four site classes, mixed: class 0 (proportion ``p0``) has ``0 < omega0 <
+    1`` on every branch; class 1 (``p1``) has ``omega=1`` fixed on every
+    branch; classes 2a/2b (splitting the remaining ``1 - p0 - p1`` in the
+    same ratio as ``p0:p1``) share ``omega0``/``1`` respectively on
+    background branches but switch to a single shared ``omega2`` on the
+    foreground branches -- so evidence for positive selection is evidence
+    that *some sites*, not necessarily most of them, shifted to ``omega2``
+    specifically on the labelled lineage.
+
+    ``foreground`` labels the single stem branch to its taxa's MRCA, as in
+    :func:`fit_free_ratio`. The null model fixes ``omega2 = 1``; the
+    likelihood-ratio test against it uses a 50:50 mixture of a point mass at
+    0 and a chi-square(1 df) null distribution rather than a plain
+    chi-square, because omega2 = 1 sits on the *boundary* of the alternative
+    model's parameter space (omega2 >= 1) rather than in its interior --
+    the same boundary-mixture logic used for
+    :func:`~phytreon.comparative.pagels_lambda`'s test elsewhere in this
+    package, here in the direction that matters: the plain chi-square this
+    replaces would be anti-conservative, not merely imprecise, because it
+    demands a smaller LR than the true null requires.
+
+    Returns the full model's fit, the null model's fit, ``LR``, and ``p``.
+    """
+    _validate_codon_inputs(tree, aln)
+    work = Tree.from_newick(tree.write())
+    work_names = work.leaf_names()
+    states = _encode_codons(aln, work_names)
+    pi = codon_frequencies(aln)
+    fg_stem = _foreground_edges(work, foreground)
+
+    full = _fit_branch_site_model(work, work_names, states, pi, fg_stem,
+                                  fix_omega2=False, rounds=rounds)
+
+    work_null = Tree.from_newick(tree.write())
+    for n, wn in zip(work_null.traverse(), work.traverse()):
+        if not n.is_root:
+            n.length = wn.length
+    fg_stem_null = _foreground_edges(work_null, foreground)
+    null = _fit_branch_site_model(work_null, work_names, states, pi, fg_stem_null,
+                                  fix_omega2=True, rounds=rounds)
+
+    from scipy.stats import chi2
+    lr = max(2.0 * (full["logLik"] - null["logLik"]), 0.0)
+    p = float(0.5 * chi2.sf(lr, df=1))
+    return {"full": full, "null": null, "LR": lr, "p": p, "tree": work}

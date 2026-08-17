@@ -6,6 +6,106 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`fit_m0`, `fit_free_ratio`, `branch_site_test`: codon-based selection
+  tests (dN/dS), on the Goldman & Yang (1994, *MBE* 17(1):32-43) GY94 codon
+  substitution model.** Every other model in the package treats an alignment
+  as letters evolving independently of what they encode; these three read DNA
+  as *codons* and ask whether nonsynonymous change is more or less common
+  than synonymous -- omega -- than neutral, and specifically whether it
+  exceeds 1: `fit_m0` (one omega, whole tree), `fit_free_ratio` (a second
+  omega on one labelled lineage's stem branch, LRT against `fit_m0`), and
+  `branch_site_test` (the corrected branch-site test, Zhang, Nielsen & Yang
+  2005, *MBE* 22(12):2472-2479 -- the published fix for Yang & Nielsen
+  (2002)'s original test, which that later paper showed gives excessive false
+  positives: does *some* codons on the foreground branch, not the whole gene,
+  show episodic positive selection). F3x4 frequencies only; M0/free-ratio/
+  corrected-branch-site only, not the full PAML suite (no M1a/M2a/M7/M8, no
+  Bayes empirical Bayes site posteriors, no clade models).
+
+  **Two real optimiser bugs found and fixed during validation of
+  `branch_site_test`, both in how `omega2` -- the parameter the whole test
+  exists to estimate -- is fit, not in the likelihood itself.**
+  1. `omega2` is constrained to `>= 1`; the first implementation enforced
+     that with a hard rejection wall and started optimisation exactly at the
+     boundary. Nelder-Mead had nowhere feasible to step toward and stayed
+     there permanently -- simulated genuine positive selection came back as
+     `omega2 = 1.000, LR = 0.00` on every replicate, not noise, the same
+     wrong answer every time. Fixed by reparametrising to a smooth,
+     unconstrained `omega2 = 1 + 99 / (1 + exp(-raw))` (bounded to (1, 100),
+     a generous ceiling matching standard PAML/HyPhy practice for the same
+     numerical reason).
+  2. That alone traded one failure for another: `omega2_raw` starts at
+     exactly `0.0`, and scipy's default Nelder-Mead initial simplex perturbs
+     a zero-valued coordinate by a tiny absolute step -- too small to move it
+     against the other four parameters' stronger initial gradients. Two
+     unrelated simulated datasets, including one with an enormous, obvious
+     `p2=0.5, omega2=15` signal, both converged to `omega2 ~= 50.5` --
+     *exactly* the untouched starting value, to three significant figures,
+     regardless of what the data said. Diagnosed by evaluating the
+     likelihood directly as a function of `omega2` alone, bypassing the
+     optimiser entirely, which confirmed the surface itself was smooth and
+     sensibly shaped -- the bug was in the search, not the likelihood. Fixed
+     with an explicit, deliberately generous initial simplex instead of
+     scipy's default.
+
+  **A third bug, found chasing what first looked like a leftover of the
+  above, turned out to be upstream of both: `_CodonModel`'s matrix
+  exponential was numerically unsafe at `omega=1` -- which every
+  branch-site fit visits unconditionally (site class 1 always; class 2 as
+  well under the null it is tested against).** At `omega=1` the model stops
+  distinguishing synonymous from nonsynonymous change, so with near-uniform
+  codon frequencies the process reduces to three independent, identical
+  per-position nucleotide processes -- and the rate matrix's eigenvalues
+  become genuinely, not just numerically, repeated (measured directly: up to
+  33 of 60 eigenvalue gaps under 1e-6 apart, uniform frequencies). The
+  general, non-symmetric `numpy.linalg.eig` this used has no guarantee of a
+  well-conditioned eigenvector basis at a true degeneracy, and in practice
+  returned transition "probabilities" as negative as **-1.96** for some
+  kappa values (confirmed by direct inspection) and clean output for others
+  -- an unpredictable, threshold-like failure rather than graceful
+  degradation, which is itself a hallmark of exactly this kind of
+  conditioning problem. Fixed by exploiting reversibility instead of fighting
+  it: the GY94 rate depends only on the *unordered* codon pair, so
+  `pi_i * Q_ij == pi_j * Q_ji` always holds, meaning `Q` is similar to the
+  symmetric matrix `S = diag(sqrt(pi)) @ Q @ diag(1/sqrt(pi))`. Diagonalising
+  `S` with `eigh` instead of `Q` with `eig` returns an orthogonal eigenbasis
+  regardless of eigenvalue multiplicity -- confirmed clean (no negative or
+  non-finite entries) across the same kappa/frequency grid that broke the old
+  code, and confirmed to change nothing for already-working `fit_m0`/
+  `fit_free_ratio` results (neither visits `omega=1` by construction).
+
+  With both `branch_site_test` bugs fixed, its behaviour was re-validated
+  from scratch rather than assumed fixed: Type-I error at 0/20 replicates
+  with no true foreground selection (nominal 5%); a strong planted signal
+  (half of all sites at `omega2=15` on the foreground branch) detected at
+  `p = 6.8e-7`; a moderate signal (30% of sites, `omega2=6`) detected in 6/6
+  independent replicates in one batch, though **not** in every single
+  replicate tried during debugging -- one individual dataset's likelihood
+  surface, checked directly, genuinely peaked near the null rather than the
+  true value, which is ordinary finite-sample variance at a moderate effect
+  size and not a defect, but is exactly the kind of single-replicate result
+  that would have been easy to misdiagnose as still-broken without checking
+  the likelihood surface directly. Separately, once both optimiser bugs were
+  fixed, the likelihood was found to genuinely *flatten* for `omega2` beyond
+  roughly 30-50 on long-enough foreground branches (checked by direct
+  evaluation, not inferred) -- the LRT stays correctly informative in that
+  regime (it only needs evidence that `omega2 > 1`), but the point estimate
+  itself is only weakly identified there and can land anywhere up to the
+  method's own upper bound with little likelihood cost either way. Documented
+  as an expected property of the test, matching what PAML/HyPhy users report
+  seeing in practice, not something this implementation could or should
+  paper over.
+
+  **A fourth, smaller bug, found while writing the test suite: `foreground`'s
+  "must form a clade" validation was not actually checking that.**
+  `_foreground_edges` computed `tree.get_mrca(foreground)` and only rejected a
+  `None` result, but `get_mrca` returns the ordinary graph-theoretic common
+  ancestor regardless of whether *other* leaves also descend from it -- so a
+  `foreground` of two taxa whose real common ancestor's clade also contained a
+  third, unlisted taxon returned that three-leaf clade's stem silently and
+  wrongly, instead of raising the documented "do not form a clade" error.
+  Fixed by additionally checking that the MRCA's own leaf set exactly equals
+  `foreground`.
 - **`four_gamete_scan`, `biallelic_recode`: within-gene recombination signal --
   NOT the published PHI test, and why.** `gene_tree_conflict`/
   `compare_domain_trees` detect exchange between whole genes or domains; this

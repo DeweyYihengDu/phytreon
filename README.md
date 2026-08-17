@@ -685,6 +685,60 @@ needs R, and the verification does not either.
 </details>
 
 <details>
+<summary><b>Codon-based selection tests (dN/dS)</b></summary>
+
+Every other model in the package reads a DNA or protein alignment as letters
+evolving independently of what they encode. These three read DNA as
+**codons**, on the Goldman & Yang (1994) GY94 substitution model (F3x4
+frequencies, its own default), and ask whether nonsynonymous change is more
+or less common than synonymous -- omega, dN/dS -- than the neutral
+expectation, and specifically whether it exceeds 1 anywhere, the signature of
+positive selection:
+
+```python
+# one omega for the whole tree -- is the gene under selection on average
+m0 = pt.fit_m0(tree, codon_aln)
+m0["omega"], m0["kappa"]
+
+# a second omega for one lineage's stem branch, LRT against fit_m0
+fr = pt.fit_free_ratio(tree, codon_aln, foreground=["taxon_a", "taxon_b"])
+fr["omega_foreground"], fr["omega_background"], fr["p"]
+
+# the corrected branch-site test (Zhang, Nielsen & Yang 2005 -- the fix for
+# Yang & Nielsen (2002)'s original, which that later paper showed gives
+# excessive false positives): do SOME codons on the foreground branch, not
+# necessarily the whole gene, show episodic positive selection
+bs = pt.branch_site_test(tree, codon_aln, foreground=["taxon_a", "taxon_b"])
+bs["p"], bs["full"]["omega2"]
+```
+
+**Scope, stated plainly.** M0 / free-ratio / the corrected branch-site test
+only -- not the full PAML suite (no site models M1a/M2a/M7/M8, no Bayes
+empirical Bayes site-posterior identification, no clade models). F3x4
+frequencies only, not F61 or F1x4. `foreground` labels a single stem branch
+(the MRCA of the given taxa); it must actually form a clade in `tree`.
+
+All three are validated by simulation (from-scratch forward simulation on
+the model's own transition probabilities, not a shortcut): `fit_m0` and
+`fit_free_ratio` recover their simulating kappa/omega closely; `branch_site_test`
+correctly rejects the null under no true selection (Type-I error at or below
+the nominal 5%) and detects a strong planted signal decisively (p < 1e-6 for
+half of all sites under omega2=15 on the foreground branch). On a *weaker*
+signal (30% of sites, omega2=6) it still has real power across independent
+replicates, but not on every one -- this test is well known in its own
+literature to have limited power outside strong/obvious cases, and that
+matches what was measured here rather than something this implementation
+avoids. Relatedly, `omega2`'s own point estimate is often imprecise (it can
+run up toward the method's internal upper bound of 100) once the foreground
+branch is long enough for the likelihood to genuinely flatten out there --
+checked directly by evaluating the likelihood surface itself, not assumed.
+The likelihood-ratio test stays correctly calibrated and informative
+regardless: what it needs is evidence that omega2 is well above 1, not a
+precise value for it.
+
+</details>
+
+<details>
 <summary><b>Circular tree with metadata rings</b></summary>
 
 ```python
