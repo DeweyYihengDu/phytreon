@@ -41,6 +41,7 @@ from .infer import (
 )
 from .comparative import (
     ace_parsimony, ace_ml, ace_continuous, stochastic_map,
+    reconstruct_ancestral_sequences, ancestral_alignment,
     faiths_pd, faiths_pd_table, unweighted_unifrac, weighted_unifrac,
     unifrac_matrix, patristic_distances, mpd, mntd, ses_mpd, ses_mntd,
     beta_mntd, beta_nti, permanova, mantel,
@@ -74,6 +75,7 @@ __all__ = [
     "taxon_displacement", "rogue_taxon", "compare_domain_trees",
     "concatenate", "species_tree", "gene_trees", "gene_tree_conflict",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
+    "reconstruct_ancestral_sequences", "ancestral_alignment",
     "faiths_pd", "faiths_pd_table", "unweighted_unifrac", "weighted_unifrac",
     "unifrac_matrix", "patristic_distances", "mpd", "mntd", "ses_mpd",
     "ses_mntd", "beta_mntd", "beta_nti", "permanova", "mantel",

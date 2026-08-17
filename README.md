@@ -395,7 +395,7 @@ writing one translator — nothing in the phylogenetic logic changes.
 | `scene` | `Path` / `Marker` / `Label` / `Polygon` primitives |
 | `plot` | `TreeFigure` builder + matplotlib / plotly backends |
 | `infer` | alignment / trimming / NJ / ML / parsimony / bootstrap + per-domain and marker-gene workflows |
-| `comparative` | ancestral states + stochastic mapping + diversity/signal/PGLS + community phylogenetics + trait-evolution models (BM/OU/EB) + phylogenetic PCA |
+| `comparative` | ancestral states/sequences + stochastic mapping + diversity/signal/PGLS + community phylogenetics + trait-evolution models (BM/OU/EB) + phylogenetic PCA |
 
 ---
 
@@ -502,6 +502,19 @@ gt = pt.gene_trees(markers, method="ml", ml_engine="iqtree")
 pt.gene_tree_conflict(gt["trees"], sp["tree"])   # ranked HGT candidates
 
 pt.rogue_taxon(tree_a, tree_b)   # the underlying leave-one-out test
+
+# --- once you have a node worth asking about: reconstruct its sequence ---
+# the payoff of all of the above -- pick an ancestor (the root, or the MRCA
+# compare_domain_trees/gene_tree_conflict just flagged) and get a sequence a
+# wet lab can actually synthesize and test, with a per-site confidence next to
+# every residue rather than one number for the whole reconstruction
+asr = pt.reconstruct_ancestral_sequences(tree, aln, model="LG", gamma=4)
+asr["tree"]                          # branch lengths refit under LG+G by default
+asr["sequences"]["anc0"]             # the reconstructed sequence, one AA per column
+asr["confidence"]["anc0"]            # per-site posterior for the residue called
+asr["mean_confidence"]               # per node -- screen candidates before synthesis
+
+pt.ancestral_alignment(asr, nodes=["anc0"]).to_fasta("ancestor.fasta")  # hand it off
 ```
 
 Why `explained_by_one` and not just a distance: on a simulated set where one
@@ -511,17 +524,22 @@ Ranking by total conflict puts the useless gene on top. Asking instead "would
 dropping one lineage explain this?" separates them completely — 1.00 for the
 transfer, naming the right taxon, against 0.25 for the noise.
 
-Two things these will not do for you. They pass `method=`/`ml_engine=` straight
-to `build_tree`, and for proteins at real divergence you want an external engine:
-the site-heterogeneous profile mixtures that matter (LG+C60, or LG+PMSF on large
-matrices) are implemented by IQ-TREE and not by phytreon's own likelihood, which
-offers only the site-homogeneous LG/WAG/JTT. A site-homogeneous model on a deep
-protein matrix does not just lose resolution — it produces long-branch attraction
-*with high support*, which is worse than an unresolved answer. And neither
-workflow aligns for you: below ~25% identity the alignment, not the tree search,
-is what decides the answer, so use a structure-aware aligner. If the alignment
-itself is not trustworthy, a tree is the wrong output entirely — see
-`SequenceNetwork` for the honest alternative.
+Three things these will not do for you. `domain_trees`/`gene_trees` pass
+`method=`/`ml_engine=` straight to `build_tree`, and for proteins at real
+divergence you want an external engine: the site-heterogeneous profile mixtures
+that matter (LG+C60, or LG+PMSF on large matrices) are implemented by IQ-TREE and
+not by phytreon's own likelihood, which offers only the site-homogeneous
+LG/WAG/JTT (`reconstruct_ancestral_sequences` inherits the same limit). A
+site-homogeneous model on a deep protein matrix does not just lose resolution —
+it produces long-branch attraction *with high support*, which is worse than an
+unresolved answer. Neither `domain_trees`/`gene_trees` aligns for you: below
+~25% identity the alignment, not the tree search, decides the answer, so use a
+structure-aware aligner — if the alignment itself is not trustworthy, a tree is
+the wrong output entirely; see `SequenceNetwork` for the honest alternative. And
+`reconstruct_ancestral_sequences` reconstructs the residue at each *existing*
+alignment column only — it does not reconstruct insertion/deletion history
+(whether a column existed at all in a given ancestor), which needs a separate
+gap model this does not implement.
 </details>
 
 <details>
@@ -734,7 +752,7 @@ python examples/dense_circular_demo.py # the layered style journals use for big 
 python examples/ml_demo.py            # native pure-Python ML tree (HKY85)
 python validation/validate.py         # pure-Python correctness checks
 python benchmark/benchmark.py         # timings + validated-core guidance
-pytest -q                             # 524 tests
+pytest -q                             # 539 tests
 
 # docs: pip install mkdocs-material mkdocstrings[python]; mkdocs serve
 ```

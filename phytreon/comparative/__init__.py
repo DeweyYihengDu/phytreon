@@ -2,6 +2,7 @@
 phylogenetic diversity, community phylogenetics, and phylogenetic signal /
 PGLS."""
 from .ace import ace_parsimony, ace_ml, ace_continuous
+from .ancestral_sequences import reconstruct_ancestral_sequences, ancestral_alignment
 from .stochastic_mapping import stochastic_map
 from .diversity import (
     faiths_pd, faiths_pd_table,
@@ -17,6 +18,7 @@ from .models import (fit_continuous, compare_continuous_models, phylo_pca,
 
 __all__ = [
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
+    "reconstruct_ancestral_sequences", "ancestral_alignment",
     "faiths_pd", "faiths_pd_table",
     "unweighted_unifrac", "weighted_unifrac", "unifrac_matrix",
     "patristic_distances", "mpd", "mntd", "ses_mpd", "ses_mntd",
