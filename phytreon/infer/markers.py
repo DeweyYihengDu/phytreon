@@ -165,6 +165,87 @@ def gene_trees(alignments: Mapping[str, Alignment], min_taxa: int = 4,
     return {"trees": trees, "skipped": skipped}
 
 
+def astrid_tree(gene_trees: Mapping[str, Tree]) -> Dict[str, object]:
+    """A coalescent-aware species tree from many gene trees (ASTRID/NJst:
+    Liu & Yu 2011; Vachaspati & Warnow 2015, *BMC Genomics* 16(Suppl 10):S3).
+
+    :func:`species_tree` concatenates markers and infers one tree from the
+    supermatrix, which implicitly assumes every gene shares one true tree --
+    a real assumption, not a formality, and one that incomplete lineage
+    sorting (ILS) breaks: under the multispecies coalescent, individual gene
+    trees routinely disagree with the species tree and with each other even
+    with no error or recombination involved, purely from how lineages happen
+    to coalesce. Concatenation under strong ILS is not merely less accurate;
+    it can be a statistically *inconsistent* estimator (Degnan & Rosenberg
+    2006's "anomaly zone") -- more data does not fix it, because it is
+    converging on the wrong answer.
+
+    This instead builds, for every pair of taxa, the *topological* distance
+    between them (edges on the path, not branch length -- see
+    :func:`~phytreon.comparative.taxon_displacement` for the same reasoning
+    applied elsewhere) on every gene tree that contains both, and averages
+    those distances over all such gene trees. Liu & Yu showed this "average
+    internode distance" matrix converges to one that is additive for the true
+    species tree as the number of genes grows, so running neighbour-joining
+    on it is a statistically consistent species-tree estimator under the
+    coalescent -- unlike concatenation, and unlike trusting any single gene
+    tree, or even a majority vote among them.
+
+    This is *not* full ASTRAL (Mirarab et al. 2014), which solves a
+    constrained quartet-optimisation problem by dynamic programming; NJst/
+    ASTRID is a simpler, separately published, still actively used method
+    with the same core consistency guarantee, reached by neighbour-joining on
+    a well-chosen distance matrix instead.
+
+    Returns ``{"tree": Tree, "distance_matrix": DataFrame, "gene_trees_per_pair":
+    DataFrame}`` -- the last one says how many gene trees each pairwise
+    distance was actually averaged over, since a pair covered by only one or
+    two genes is a much weaker estimate than one averaged over hundreds.
+    """
+    import numpy as np
+    import pandas as pd
+    from .distance import neighbor_joining
+    from ..comparative.community import patristic_distances
+
+    if not gene_trees:
+        raise ValueError("astrid_tree: no gene trees given")
+    all_taxa = sorted({t for tree in gene_trees.values() for t in tree.leaf_names()})
+    n = len(all_taxa)
+    idx = {t: i for i, t in enumerate(all_taxa)}
+    dist_sum = np.zeros((n, n))
+    count = np.zeros((n, n))
+
+    for tree in gene_trees.values():
+        taxa = tree.leaf_names()
+        if len(taxa) < 2:
+            continue
+        unit = Tree.from_newick(tree.write())
+        for node in unit.traverse("postorder"):
+            if node.parent is not None:
+                node.length = 1.0
+        names, D = patristic_distances(unit, taxa)
+        gidx = np.array([idx[t] for t in names])
+        dist_sum[np.ix_(gidx, gidx)] += D
+        count[np.ix_(gidx, gidx)] += 1.0
+
+    never = [(all_taxa[i], all_taxa[j]) for i in range(n) for j in range(i + 1, n)
+            if count[i, j] == 0]
+    if never:
+        raise ValueError(
+            f"astrid_tree: these taxon pairs never co-occur in any gene tree, "
+            f"so no distance between them can be estimated: {never[:10]}"
+            f"{' ...' if len(never) > 10 else ''}"
+        )
+    avg = np.divide(dist_sum, count, out=np.zeros_like(dist_sum), where=count > 0)
+    tree = neighbor_joining(all_taxa, avg)
+    return {
+        "tree": tree,
+        "distance_matrix": pd.DataFrame(avg, index=all_taxa, columns=all_taxa),
+        "gene_trees_per_pair": pd.DataFrame(count.astype(int), index=all_taxa,
+                                            columns=all_taxa),
+    }
+
+
 def gene_tree_conflict(trees: Mapping[str, Tree], reference: Tree,
                        k: int = 3) -> "pd.DataFrame":  # noqa: F821
     """Rank each gene tree's disagreement with a species tree, and say what kind.

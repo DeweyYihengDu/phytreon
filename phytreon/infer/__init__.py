@@ -22,7 +22,9 @@ from .expression import expression_distance_matrix, expression_dendrogram
 from .pipeline import build_tree
 from .domains import (residue_to_column, split_domains, domain_trees,
                       taxon_displacement, rogue_taxon, compare_domain_trees)
-from .markers import concatenate, species_tree, gene_trees, gene_tree_conflict
+from .markers import (concatenate, species_tree, gene_trees, gene_tree_conflict,
+                      astrid_tree)
+from .recombination import biallelic_recode, four_gamete_scan
 
 __all__ = [
     "Alignment", "align", "align_external", "read_fasta", "read_character_matrix",
@@ -42,4 +44,6 @@ __all__ = [
     "residue_to_column", "split_domains", "domain_trees",
     "taxon_displacement", "rogue_taxon", "compare_domain_trees",
     "concatenate", "species_tree", "gene_trees", "gene_tree_conflict",
+    "astrid_tree",
+    "biallelic_recode", "four_gamete_scan",
 ]

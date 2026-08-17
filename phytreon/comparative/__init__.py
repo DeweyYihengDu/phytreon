@@ -12,6 +12,8 @@ from .community import (
     patristic_distances, mpd, mntd, ses_mpd, ses_mntd,
     beta_mntd, beta_nti, permanova, mantel,
 )
+from .cophylogeny import paco
+from .phylofactor import phylofactor
 from .signal import phylo_vcv, blomberg_k, pagels_lambda, pgls, fritz_purvis_d
 from .models import (fit_continuous, compare_continuous_models, phylo_pca,
                      MODELS as CONTINUOUS_MODELS)
@@ -22,7 +24,7 @@ __all__ = [
     "faiths_pd", "faiths_pd_table",
     "unweighted_unifrac", "weighted_unifrac", "unifrac_matrix",
     "patristic_distances", "mpd", "mntd", "ses_mpd", "ses_mntd",
-    "beta_mntd", "beta_nti", "permanova", "mantel",
+    "beta_mntd", "beta_nti", "permanova", "mantel", "paco", "phylofactor",
     "phylo_vcv", "blomberg_k", "pagels_lambda", "pgls", "fritz_purvis_d",
     "fit_continuous", "compare_continuous_models", "phylo_pca",
     "CONTINUOUS_MODELS",

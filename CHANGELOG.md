@@ -6,6 +6,166 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`four_gamete_scan`, `biallelic_recode`: within-gene recombination signal --
+  NOT the published PHI test, and why.** `gene_tree_conflict`/
+  `compare_domain_trees` detect exchange between whole genes or domains; this
+  looks for the same kind of signal *inside one gene's own alignment*, at
+  finer resolution -- do nearby sites disagree with each other more than a
+  single, non-recombining tree can produce.
+
+  The literature calls this the PHI test (Bruen, Poss & Bryant 2006,
+  *Genetics* 172:2665-2681), built on a "refined incompatibility" statistic
+  between site pairs that is a real number, not just compatible-or-not. That
+  is genuinely not implemented here. After reading the primary paper, a
+  worked special case was attempted to verify independently: whether refined
+  incompatibility reduces to the plain binary four-gamete test for biallelic
+  sites, checked the way this session checks everything novel -- brute force
+  over every possible tree topology (correctness confirmed against known
+  topology counts: 3, 15, 105 for 4, 5, 6 taxa) computing the true minimum
+  joint parsimony score for pairs showing all four gametes. It came back
+  genuinely ambiguous (sometimes 2, sometimes 3, depending on the specific
+  pattern, not simply on whether all four gametes appear), which is either a
+  real subtlety of the published statistic or a misreading of a definition
+  this session could not pin down with confidence from secondary sources
+  alone -- and either way, not something to ship under a well-known method's
+  name while unsure which. What is implemented instead is the same overall
+  *framework* (a windowed pairwise-compatibility scan, tested by permuting
+  site order) built on the classical, unambiguous Hudson & Kaplan (1985)
+  four-gamete test, described accurately as that rather than as PHI.
+
+  **Two real findings from validating it, not just "it runs":**
+  - The naive first implementation looped over site pairs in Python: 20
+    seconds for one call on a 270-site alignment with 199 permutations. The
+    pairwise incompatibility matrix is computable for every pair at once via
+    matrix products (`M0.T @ M1 > 0` at entry `(i,j)` is exactly "some
+    sequence carries state 0 at site i and state 1 at site j", the same
+    relation for every pair simultaneously rather than one Python-level call
+    per pair) -- verified to match the original loop exactly before
+    replacing it, cutting the same call to well under a hundredth of a
+    second (a measured 100-127x on two test sizes).
+  - `window=None` (score every pair, no window) turned out to be completely
+    degenerate for this test: with no window, which pairs get scored does not
+    depend on site order at all, so permuting sites changes nothing and every
+    permutation gives the *exactly identical* statistic (checked directly,
+    not just "usually similar") -- the "permutation test" would silently
+    compare the observed value against copies of itself. `window` is now a
+    required argument, and passing `None` explicitly raises rather than
+    returning a number that looks like a real p-value but is not.
+
+  **Power is narrow and genuinely sensitive to the window, measured rather
+  than assumed.** The first validation attempt used two large, roughly equal
+  recombinant blocks and found essentially zero power at every window size
+  tried -- diagnosed, not papered over: with two similarly-sized blocks,
+  cross-block pairs are almost as numerous as within-block pairs, so a
+  full-alignment permutation's baseline lands close to (here, even above) the
+  true local signal, and the "detect recombination" direction the test was
+  built for barely applies to that scenario. A more realistic construction --
+  a short (30-base) foreign tract in an otherwise clonal 300-base
+  background -- was detected in over 40% of replicates with a window matched
+  to the tract's scale, and under 30% with too small a window on the
+  identical simulated event. Both directions are permanent tests, and
+  Type-I error was checked separately and sits near nominal (well under 15%
+  over 60 replicates with no recombination at all) so the narrow power is a
+  power problem specifically, not a miscalibrated test dressed up as one.
+- **`phylofactor`: which edge of a tree best explains a covariate, found
+  automatically (Washburne et al. 2017, *PeerJ* 5:e2969; graph-partitioning
+  generalisation 2019, *Ecological Monographs* 89:e01353).** `ses_mpd`/
+  `ses_mntd` test whether a *pre-chosen* clade or sample is clustered;
+  phylofactorization instead searches every edge of the tree for the split
+  whose isometric log-ratio (ILR) balance best tracks a covariate, greedily
+  and recursively -- factor out the best edge, then search only within the
+  two resulting pieces for the next one, so each factor explains the
+  strongest *remaining* association. Supports a continuous covariate (linear
+  regression) or a categorical one (one-way ANOVA).
+
+  Validated by construction: simulating abundance so a single known 6-taxon
+  clade's response to a covariate is the only real signal, the winning edge
+  matched that exact clade (F=9962, p=1.4e-66, r2=0.994). With two
+  independent planted clades at different effect strengths, both were
+  recovered, strongest first, by the greedy residual-bin structure -- the
+  property the recursive design exists to guarantee, not just "finds
+  something". The categorical (ANOVA) path was checked the same way.
+
+  **Documented prominently rather than left for a reader to discover the hard
+  way: the reported p-value is not a calibrated significance test.** Each
+  factor is the single best-scoring edge out of every candidate in its bin
+  (up to roughly `2 x n_taxa` for the first factor), and reporting the winner
+  of many tests as if it were one inflates the false-positive rate sharply --
+  measured directly on data with no real association at all: the top
+  factor's p was below 0.05 in 62% of replicates, not 5%. Kept as its own
+  permanent test (not just a docstring claim) so that number cannot go stale
+  silently. The original paper's actual stopping rule (a Kolmogorov-Smirnov
+  test on the sequence of explained-variance values) is not implemented;
+  `n_factors` is given explicitly instead, the more transparent choice for a
+  first cut, and the miscalibration note is exactly why leaving that decision
+  to the caller rather than an automatic threshold is the safer default here.
+- **`paco`: cophylogeny congruence between two trees (Balbuena, Miguez-Lozano &
+  Blasco-Costa 2013, *PLoS ONE* 8(4):e61048).** `community`'s NRI/NTI/betaNTI
+  ask whether one community is clustered; this asks the different question of
+  whether *one tree's structure tracks another's*, given a table of which
+  lineage associates with which -- host-parasite, phage-bacterium, or any two
+  groups linked by a co-occurrence table. Each tree's patristic distances
+  become a PCoA point configuration, the link table expands both to one row
+  per observed association, and Procrustes superimposition (`m2`, lower is
+  more congruent) is tested by permuting which host each link is attributed
+  to. Per-link squared residuals -- simpler than the original paper's full
+  jackknife, but exact and summing to `m2` -- rank which specific associations
+  drive or resist the fit.
+
+  **Caught its own calibration bug in validation, and it was in the test, not
+  the algorithm -- worth recording since the mistake is easy to repeat.** The
+  first Type-I error check used each tree's own *default* distance-matrix row
+  order as a stand-in for "no particular host-symbiont correspondence" between
+  two independent trees, on the reasoning that an arbitrary fixed pairing
+  should be exchangeable with a random one. It was not: `random_tree`'s
+  default row order turned out to carry enough shared statistical structure
+  across independently-seeded trees that "row i paired with row i" fit
+  measurably better than a random permutation, 90% false positives against a
+  nominal 5%. The public `paco()` function itself never touches any such
+  default order -- links are always resolved by explicit name -- so this was
+  entirely an artifact of the validation script's shortcut, isolated by
+  narrowing the test down through three stages (plain Euclidean point clouds:
+  correctly calibrated; PCoA of a tree's own patristic distances at equalised,
+  unpadded dimensions: still miscalibrated; explicit, independently randomised
+  name-based correspondence instead of default row order: correctly
+  calibrated at 4%) until the actual variable was pinned down. Every test in
+  the shipped suite builds its link tables by explicit name for this reason.
+
+  Also validated: 100% power to detect true cospeciation (identical host/
+  symbiont topology) over 25 replicates; classical PCoA verified to recover a
+  genuinely Euclidean configuration's exact pairwise distances (not merely
+  "runs without error"); per-link residuals correctly flag a deliberately
+  swapped host-symbiont pair.
+
+  Not implemented, stated rather than left implicit: the Cailliez/Lingoes
+  corrections for negative PCoA eigenvalues the original R package offers
+  (`correction="none"`, that package's own default, is used instead -- drop
+  non-positive-eigenvalue axes); and the full jackknife-with-confidence-
+  interval treatment of individual links, in favour of the simpler exact
+  squared-residual breakdown.
+- **`astrid_tree`: a coalescent-aware species tree from gene trees (ASTRID/NJst;
+  Liu & Yu 2011, Vachaspati & Warnow 2015).** `species_tree`'s concatenation
+  assumes every marker shares one true tree, which incomplete lineage sorting
+  (ILS) breaks outright -- under strong ILS concatenation is not just less
+  accurate, it can be a statistically *inconsistent* estimator that more data
+  does not fix (Degnan & Rosenberg 2006's "anomaly zone"). This averages the
+  topological (edge-count) distance between every pair of taxa across all gene
+  trees containing both, then runs neighbour-joining on the result -- Liu & Yu
+  showed that average converges to an additive matrix for the true species
+  tree, making NJ on it a consistent estimator under the coalescent. Not full
+  ASTRAL (Mirarab et al. 2014, which solves a constrained quartet-optimisation
+  problem by dynamic programming) but a simpler, separately published method
+  with the same consistency guarantee.
+
+  Validated on a real (if simplified) Kingman multispecies-coalescent
+  simulation on a 5-taxon caterpillar species tree with short internal
+  branches: only 14.2% of 400 simulated gene trees matched the true species
+  tree topology, yet `astrid_tree` recovered it exactly. The sharper result:
+  the single *most common* gene-tree topology among those 400 was itself
+  **wrong** -- so this is not "does about as well as the obvious naive
+  baseline", it is "succeeds where that baseline fails". A second check with
+  gene trees that vary only in branch length (no topological discordance at
+  all) confirms the floor case: exact recovery there too.
 - **`reconstruct_ancestral_sequences`, `ancestral_alignment`: marginal ML
   reconstruction of ancestral protein sequences.** The step that turns a tree
   into something a wet lab can act on -- pick a node (the root, or an MRCA

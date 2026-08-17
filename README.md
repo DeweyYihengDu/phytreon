@@ -501,7 +501,30 @@ sp["occupancy"]              # read this BEFORE the tree
 gt = pt.gene_trees(markers, method="ml", ml_engine="iqtree")
 pt.gene_tree_conflict(gt["trees"], sp["tree"])   # ranked HGT candidates
 
+# concatenation assumes every gene shares one true tree -- incomplete lineage
+# sorting breaks that assumption outright, and can make concatenation converge
+# on the WRONG tree no matter how much data you add (Degnan & Rosenberg 2006's
+# "anomaly zone"). astrid_tree instead averages topological distance across gene
+# trees (Liu & Yu 2011 / Vachaspati & Warnow 2015), which stays consistent under
+# that regime -- worth running alongside species_tree() and comparing when the
+# marker set is large and divergence is deep enough for ILS to matter
+pt.astrid_tree(gt["trees"])["tree"]
+
 pt.rogue_taxon(tree_a, tree_b)   # the underlying leave-one-out test
+
+# --- inside ONE gene's own alignment: a finer-grained recombination scan ---
+# domain/gene-level conflict above compares whole trees; this looks for the
+# same kind of signal within a single alignment, via classical four-gamete
+# site incompatibility (Hudson & Kaplan 1985) in a sliding window, tested by
+# permuting site order. NOT the published PHI test (Bruen et al. 2006) -- its
+# own "refined incompatibility" statistic could not be verified with
+# confidence here, so this is the same window+permutation framework built on
+# the plain, unambiguous compatibility test instead
+pt.four_gamete_scan(aln, window=20, n_perm=999)
+# power is narrow and genuinely sensitive to window: pick it relative to how
+# long a recombination tract would plausibly be, not a default -- there isn't
+# one that works well across cases (see the function's own docstring for the
+# measured numbers)
 
 # --- once you have a node worth asking about: reconstruct its sequence ---
 # the payoff of all of the above -- pick an ancestor (the root, or the MRCA
@@ -571,6 +594,22 @@ pt.beta_nti(tree, samples_by_taxa_table)    # is turnover between samples more
 # the hypothesis tests that come after a distance matrix
 pt.permanova(unifrac, groups)               # do these groups differ in composition?
 pt.mantel(unifrac, environmental_distance)   # does dissimilarity track environment?
+
+# cophylogeny: does ONE tree's structure track ANOTHER tree's, given which
+# lineages are observed together (host-symbiont, phage-bacterium, or any two
+# groups linked by a co-occurrence table)?
+pt.paco(host_tree, symbiont_tree, links)    # links: a host x symbiont DataFrame
+                                            # m2 (lower = more congruent) + a
+                                            # permutation p + per-link residuals
+
+# phylogenetic factorization: which EDGE of the tree best explains a covariate,
+# found automatically rather than checked one pre-chosen clade at a time
+pt.phylofactor(tree, samples_by_taxa_table, environmental_covariate, n_factors=3)
+# -> factors ranked by F-statistic, each with the winning split's two sides and
+# its ILR balance (ready to plot against the covariate directly); read the
+# p-values as "how strong", not as calibrated tests -- each is the best of many
+# candidate edges, and on data with no real signal the top one was "significant"
+# 62% of the time, not 5%
 
 # phylogenetic signal: does a continuous trait track the tree more, less, or
 # exactly as much as Brownian motion on it would predict?
