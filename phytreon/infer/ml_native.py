@@ -224,12 +224,37 @@ class _Model:
         self.shape = max(shape, 1e-3)
 
     def _decompose(self):
+        # Q is reversible for every model here -- R (the exchangeability
+        # matrix _build_Q's caller passes in) is always constructed
+        # symmetric (JC69: all-ones; K80/HKY85: one shared kappa off the
+        # two transition pairs; GTR: written out symmetric explicitly), so
+        # pi_i*Q_ij == pi_j*Q_ji always holds and Q is similar to the
+        # symmetric S = diag(sqrt(pi)) @ Q @ diag(1/sqrt(pi)). Diagonalising
+        # S with eigh rather than Q with the general eig is not just
+        # tidier: eigh always returns an orthogonal eigenbasis, exact even
+        # at repeated eigenvalues, where eig's eigenvector matrix can become
+        # severely ill-conditioned.
+        #
+        # That is not a theoretical worry -- caught directly from ordinary
+        # ml_tree() use on a small alignment: HKY85 at kappa=0.075 with an
+        # empirical pi gave eig two eigenvalues as a near-exact complex
+        # pair (-1.03934 +/- 2e-17j), silently truncated to .real, and
+        # np.linalg.inv(vecs) on the resulting near-singular eigenvector
+        # matrix returned P(t) entries up to -6.3e13 -- which produced
+        # site log-likelihoods as large as +124.8 (impossible: a
+        # log-probability can never be positive). Silent, not an
+        # exception, so nothing in _optimize_model's own
+        # LinAlgError guard catches it, and a wrong-but-larger "likelihood"
+        # is exactly the kind of value Nelder-Mead would climb toward.
         import numpy as np
         Q = _build_Q(self.name, self.params, self.pi)
-        vals, vecs = np.linalg.eig(Q)
-        self.vals = vals.real
-        self.vecs = vecs.real
-        self.vinv = np.linalg.inv(self.vecs)
+        sqrt_pi = np.sqrt(self.pi)
+        S = (sqrt_pi[:, None] * Q) / sqrt_pi[None, :]
+        S = (S + S.T) / 2.0   # exact symmetry, clearing float round-off
+        vals, U = np.linalg.eigh(S)
+        self.vals = vals
+        self.vecs = U / sqrt_pi[:, None]
+        self.vinv = U.T * sqrt_pi[None, :]
 
     def set_params(self, params):
         self.params = list(params)
@@ -252,12 +277,23 @@ class _ModelAA(_Model):
     inherited unchanged."""
 
     def _decompose(self):
+        # Same reversibility argument as _Model._decompose: JTT/WAG/LG's
+        # published exchangeability matrices are symmetric by convention,
+        # so the same eigh-via-symmetrisation approach applies -- kept
+        # identical for consistency even though a direct check across all
+        # three found no near-degenerate eigenvalues with their own
+        # (fixed, non-uniform) published frequencies, unlike the nucleotide
+        # models above, whose pi is always alignment-dependent and whose
+        # rate parameters are always actively optimised.
         import numpy as np
         Q = _build_Q_aa(self.name, self.pi)
-        vals, vecs = np.linalg.eig(Q)
-        self.vals = vals.real
-        self.vecs = vecs.real
-        self.vinv = np.linalg.inv(self.vecs)
+        sqrt_pi = np.sqrt(self.pi)
+        S = (sqrt_pi[:, None] * Q) / sqrt_pi[None, :]
+        S = (S + S.T) / 2.0
+        vals, U = np.linalg.eigh(S)
+        self.vals = vals
+        self.vecs = U / sqrt_pi[:, None]
+        self.vinv = U.T * sqrt_pi[None, :]
 
     @property
     def nparams(self):

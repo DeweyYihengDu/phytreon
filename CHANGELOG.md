@@ -551,6 +551,44 @@ All notable changes to phytreon are documented here. Format loosely follows
   scaling had flattened; it had not, and the test was wrong rather than the code.
 
 ### Fixed
+- **The native ML engine's substitution models could silently return
+  impossible, mathematically-invalid likelihoods.** `_Model`/`_ModelAA`
+  (`phytreon.infer.ml_native`, used by `ml_tree` for every nucleotide
+  JC69/K80/HKY85/GTR and protein JTT/WAG/LG fit) diagonalised their rate
+  matrix with the general, non-symmetric `numpy.linalg.eig`. Found by
+  chance during unrelated review, then reproduced from a single ordinary
+  `ml_tree()` call on a small alignment (default HKY85, no unusual
+  settings): mid-search, at `kappa=0.075` with the alignment's own
+  empirical base frequencies, `eig` returned two eigenvalues as a
+  near-exact complex-conjugate pair (`-1.03934 +/- 2e-17j`), silently
+  truncated to `.real` as always -- and inverting the resulting
+  near-singular eigenvector matrix (`np.linalg.inv`) produced transition
+  "probabilities" up to **-6.3e13**, which in turn produced *positive*
+  site log-likelihoods as large as +124.8. A log-probability can never be
+  positive, so this was not a subtle accuracy loss; the reported
+  likelihood was simply wrong, silently, with no exception raised --
+  `_optimize_model`'s existing `except np.linalg.LinAlgError` guard does
+  not catch it, since nothing is raised, and a numerically *larger*
+  "likelihood" is exactly the kind of value Nelder-Mead would climb
+  toward rather than reject.
+
+  Same root cause and same fix as this release's codon branch-site test
+  eigendecomposition bug, found first there and re-checked here once the
+  pattern was recognised: every model here is reversible
+  (`pi_i * Q_ij == pi_j * Q_ji`, true because JC69/K80/HKY85/GTR's
+  exchangeability matrix and JTT/WAG/LG's published exchangeabilities are
+  all constructed symmetric), so `Q` is similar to the symmetric
+  `S = diag(sqrt(pi)) @ Q @ diag(1/sqrt(pi))`. Diagonalising `S` with
+  `eigh` instead of `Q` with `eig` returns an orthogonal eigenbasis
+  regardless of eigenvalue multiplicity, and cannot produce this failure.
+  Re-verified afterward that this was not a systemic problem across the
+  small state spaces here the way it was for the 61-state codon model: a
+  direct sweep confirmed JC69 (an exact triple-repeated eigenvalue, the
+  most degenerate case a 4-state model can have) and WAG/JTT/LG (their own
+  published, non-uniform frequencies) were already numerically clean
+  before the fix -- HKY85/GTR's empirical, alignment-dependent, actively-
+  optimised frequencies and rate parameters are what made this reachable
+  from ordinary use, not a property of small state spaces in general.
 - **The singular-tree guard did not cover the functions added after it.**
   `blomberg_k`, `pagels_lambda` and `pgls` were given a check that names the tips
   responsible when a tree's covariance matrix cannot be inverted; `fit_continuous`,
