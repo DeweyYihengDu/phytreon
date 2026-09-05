@@ -417,6 +417,72 @@ def test_alignment_track_raster(tmp_path):
     assert (tmp_path / "aln.png").exists()
 
 
+def test_signal_track_raster_shape_and_colorbar(tmp_path):
+    import pandas as pd
+    tr = pt.datasets.primates()
+    names = tr.leaf_names()
+    data = pd.DataFrame({
+        "tip": [n for n in names for _ in range(3)],
+        "start": [0, 10, 20] * len(names),
+        "end": [10, 20, 30] * len(names),
+        "gc": [0.3, 0.6, 0.9] * len(names),
+    })
+    p = pt.TreeFigure(tr).tip_labels().signal_track(data, title="GC%")
+    ctx = p._build()
+    assert len(ctx.scene.rasters) == 1                 # one raster, not one per tip
+    r = ctx.scene.rasters[0]
+    assert r.codes.shape == (tr.n_leaves, 30)
+    assert ctx.scene.colorbars and ctx.scene.colorbars[0][0] == "GC%"
+    assert not any(t == "GC%" for t, _ in ctx.scene.legends)   # colourbar, not a legend
+    p.save(str(tmp_path / "signal.png"))
+    assert (tmp_path / "signal.png").exists()
+
+
+def test_signal_track_accepts_dict_of_arrays():
+    import numpy as np
+    tr = pt.datasets.primates()
+    data = {name: np.linspace(0, 1, 20) for name in tr.leaf_names()}
+    ctx = pt.TreeFigure(tr).signal_track(data)._build()
+    r = ctx.scene.rasters[0]
+    assert r.codes.shape == (tr.n_leaves, 20)
+    assert (r.codes > 0).all()          # every base has a real value, no background code
+
+
+def test_signal_track_blank_tip_gets_a_background_row_not_dropped():
+    # a tip named in `lengths` but absent from the data must still occupy
+    # its own row -- dropping it would misalign every OTHER tip's row
+    # against the tree's actual y-positions, not just leave a gap
+    import pandas as pd
+    tr = pt.Tree.from_newick("((A:.1,B:.1):.1,C:.2);")
+    data = pd.DataFrame({"tip": ["A", "C"], "start": [0, 0], "end": [10, 10],
+                        "gc": [0.5, 0.5]})
+    ctx = pt.TreeFigure(tr).signal_track(data, lengths={"A": 10, "B": 10, "C": 10})._build()
+    r = ctx.scene.rasters[0]
+    assert r.codes.shape[0] == 3
+    assert (r.codes[1] == 0).all()      # B's row: all background code (no data)
+
+
+def test_signal_track_value_column_auto_detect_and_ambiguity_error():
+    import pandas as pd
+    tr = pt.Tree.from_newick("(A:.1,B:.1);")
+    ok = pd.DataFrame({"tip": ["A"], "start": [0], "end": [5], "coverage": [3.0]})
+    pt.TreeFigure(tr).signal_track(ok)._build()   # auto-detects 'coverage', no error
+
+    ambiguous = pd.DataFrame({"tip": ["A"], "start": [0], "end": [5],
+                              "gc": [0.5], "coverage": [3.0]})
+    with pytest.raises(ValueError, match="could not auto-detect"):
+        pt.TreeFigure(tr).signal_track(ambiguous)._build()
+    pt.TreeFigure(tr).signal_track(ambiguous, value_column="gc")._build()   # explicit -> fine
+
+
+def test_signal_track_rejects_a_circular_layout():
+    import pandas as pd
+    tr = pt.Tree.from_newick("(A:.1,B:.1);")
+    data = pd.DataFrame({"tip": ["A"], "start": [0], "end": [5], "gc": [0.5]})
+    with pytest.raises(NotImplementedError, match="rectangular"):
+        pt.TreeFigure(tr, layout="circular").signal_track(data)._build()
+
+
 def test_plotly_shifts_aligned_paths():
     # clade_label() emits an aligned Path (the bracket bar) that must be
     # pushed past the tip labels in the plotly backend, exactly like the

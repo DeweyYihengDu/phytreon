@@ -198,6 +198,105 @@ def test_domains_reject_a_circular_layout():
 
 
 # --------------------------------------------------------------------------
+# sparse per-tip sequence features (CpG islands, tandem repeats, TSS, ...)
+# --------------------------------------------------------------------------
+def _feature_tree():
+    import pandas as pd
+    tr = pt.Tree.from_newick("((P1:.1,P2:.1):.1,P3:.2);")
+    data = pd.DataFrame({
+        "tip": ["P1", "P1", "P2", "P3"],
+        "start": [100, 500, 200, 50],
+        "end": [200, 600, 300, 150],
+        "label": ["island", "island", "island", "repeat"],
+    })
+    lengths = {"P1": 1000, "P2": 1000, "P3": 800}
+    return tr, data, lengths
+
+
+def test_sequence_features_draws_one_baseline_and_one_block_per_feature():
+    tr, data, lengths = _feature_tree()
+    ctx = pt.TreeFigure(tr).sequence_features(data, lengths=lengths)._build()
+    labeled = [p for p in ctx.scene.polygons if p.label]
+    assert len(labeled) == 4                          # 2 + 1 + 1 feature rows
+    # one baseline strip per tip that has ANY data, unlabeled, drawn first
+    baselines = [p for p in ctx.scene.polygons if not p.label]
+    assert len(baselines) == 3
+    assert [t for t, _ in ctx.scene.legends] == ["label"]
+
+
+def test_sequence_features_to_scale_makes_a_longer_sequence_draw_wider():
+    # measure each tip's own BASELINE width, the direct encoding of
+    # length*scale_w -- mirrors _DomainTrack's own to_scale test, which
+    # compares each protein's total architecture span the same way
+    import pandas as pd
+    tr = pt.Tree.from_newick("((P1:.1,P2:.1):.1,P3:.2);")
+    data = pd.DataFrame({"tip": ["P1"], "start": [0], "end": [10]})
+    lengths = {"P1": 1000, "P2": 1000, "P3": 200}
+
+    def baseline_width(tip, to_scale):
+        ctx = pt.TreeFigure(tr).sequence_features(
+            data, lengths=lengths, to_scale=to_scale)._build()
+        y_of = {leaf.name: leaf.y for leaf in ctx.tree.leaves()}
+        for p in ctx.scene.polygons:
+            if p.label:
+                continue
+            ys = [y for _, y in p.points]
+            if pytest.approx((min(ys) + max(ys)) / 2) == y_of[tip]:
+                xs = [x for x, _ in p.points]
+                return max(xs) - min(xs)
+        raise AssertionError(f"no baseline found for {tip}")
+
+    # to_scale=True: one shared ruler (P1/P2's 1000bp), so the 200bp P3
+    # draws a proportionally narrower baseline than the 1000bp P1
+    assert baseline_width("P1", True) > baseline_width("P3", True)
+    # to_scale=False: every tip's own length fills the track regardless
+    assert baseline_width("P1", False) == pytest.approx(
+        baseline_width("P3", False), rel=0.05)
+
+
+def test_sequence_features_zero_width_row_draws_a_tick_not_a_block():
+    import pandas as pd
+    tr = pt.Tree.from_newick("(X:.1,Y:.1);")
+    tss = pd.DataFrame({"tip": ["X"], "start": [50], "end": [50]})
+    ctx = pt.TreeFigure(tr).sequence_features(tss, kind="TSS")._build()
+    assert not any(p.label for p in ctx.scene.polygons)   # no feature block
+    ticks = [p for p in ctx.scene.paths if p.align]
+    assert len(ticks) == 1
+    (x0, _), (x1, _) = ticks[0].points
+    assert x0 == pytest.approx(x1)                        # a vertical tick
+
+
+def test_sequence_features_blank_tip_still_gets_a_correctly_sized_baseline():
+    # a tip in `lengths` but absent from `data` draws a blank strip of the
+    # RIGHT length, not nothing -- the whole reason sequence_lengths()
+    # exists (see phytreon.infer.seqfeatures.sequence_lengths's docstring)
+    import pandas as pd
+    tr = pt.Tree.from_newick("((P1:.1,P2:.1):.1,P3:.2);")
+    data = pd.DataFrame({"tip": ["P1"], "start": [10], "end": [20]})
+    lengths = {"P1": 100, "P2": 100, "P3": 100}
+    ctx = pt.TreeFigure(tr).sequence_features(data, lengths=lengths)._build()
+    baselines = {p.points[1][0] - p.points[0][0]
+                 for p in ctx.scene.polygons if not p.label}
+    # both P1 (has a feature) and P2 (blank) share the same-length baseline
+    assert len(baselines) == 1
+
+
+def test_sequence_features_reject_names_that_match_no_tip():
+    import pandas as pd
+    tr, _, _ = _feature_tree()
+    data = pd.DataFrame({"tip": ["nobody"], "start": [0], "end": [10]})
+    with pytest.raises(ValueError, match="no tip name matches"):
+        pt.TreeFigure(tr).sequence_features(data)._build()
+
+
+def test_sequence_features_reject_a_circular_layout():
+    tr, data, lengths = _feature_tree()
+    with pytest.raises(NotImplementedError, match="rectangular"):
+        pt.TreeFigure(tr, layout="circular").sequence_features(
+            data, lengths=lengths)._build()
+
+
+# --------------------------------------------------------------------------
 # stacked support values
 # --------------------------------------------------------------------------
 def test_support_values_can_stack_with_prefixes():

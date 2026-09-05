@@ -452,6 +452,20 @@ class TreeFigure(_Renderable):
         from .elements import _DomainTrack
         return self.add(_DomainTrack(data, **kwargs))
 
+    def sequence_features(self, data, **kwargs) -> "TreeFigure":
+        """Sparse per-tip sequence features (CpG islands, tandem repeats,
+        TSS, or any custom interval/point annotation), each at its own
+        absolute position -- unlike ``domains()``, which places adjacent
+        blocks with no coordinate of their own."""
+        from .elements import _SequenceFeatureTrack
+        return self.add(_SequenceFeatureTrack(data, **kwargs))
+
+    def signal_track(self, data, **kwargs) -> "TreeFigure":
+        """A continuous per-position value along each tip's own sequence
+        (GC content, or any other windowed/per-base numeric signal)."""
+        from .elements import _SignalTrack
+        return self.add(_SignalTrack(data, **kwargs))
+
     def scale_bar(self, **kwargs) -> "TreeFigure":
         """A compact branch-length scale bar."""
         from .elements import _ScaleBar

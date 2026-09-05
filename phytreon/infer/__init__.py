@@ -26,6 +26,7 @@ from .markers import (concatenate, species_tree, gene_trees, gene_tree_conflict,
                       astrid_tree)
 from .recombination import biallelic_recode, four_gamete_scan
 from .codon import codon_frequencies, fit_m0, fit_free_ratio, branch_site_test
+from .seqfeatures import gc_content, cpg_islands, tandem_repeats, sequence_lengths
 
 __all__ = [
     "Alignment", "align", "align_external", "read_fasta", "read_character_matrix",
@@ -48,4 +49,5 @@ __all__ = [
     "astrid_tree",
     "biallelic_recode", "four_gamete_scan",
     "codon_frequencies", "fit_m0", "fit_free_ratio", "branch_site_test",
+    "gc_content", "cpg_islands", "tandem_repeats", "sequence_lengths",
 ]

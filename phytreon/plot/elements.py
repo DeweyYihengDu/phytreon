@@ -2162,3 +2162,256 @@ class _DomainTrack(_Element):
                 cursor += abs(ln) * scale_w
         ctx.track_cursor = x0 + total_w
         ctx.add_scale(scale)
+
+
+# --------------------------------------------------------------------------
+# sparse per-tip sequence features (CpG islands, tandem repeats, TSS, ...)
+# --------------------------------------------------------------------------
+_FEATURE_BASELINE = "#e8e8e8"
+
+
+class _SequenceFeatureTrack(_Element):
+    """Sparse, absolutely-positioned features along each tip's own sequence.
+
+    Unlike :class:`_DomainTrack` (which walks a cursor forward by each
+    part's own *length* -- adjacent blocks, no absolute coordinate) this
+    places every feature at its own ``start``/``end`` on a shared per-tip
+    coordinate axis, so features can be sparse: a CpG island at [800, 1050)
+    with nothing annotated before or after it. A tip present in ``lengths``
+    (or ``sequence_lengths()``'s own output) but absent from ``data`` still
+    draws its own correctly-sized blank strip, rather than nothing at all.
+
+    ``data`` is a DataFrame with columns ``tip, start, end`` (required) and
+    optionally a label column (``label`` by default, or name one with
+    ``label_column``) used to colour each row categorically; rows with no
+    label column present all share the single ``kind`` string instead. A
+    zero-width row (``start == end``, e.g. a TSS position) draws as a short
+    tick rather than an invisible zero-width block.
+    """
+
+    def __init__(self, data, lengths=None, kind: Optional[str] = None,
+                 label_column: Optional[str] = None, width: float = 0.5,
+                 offset: float = 0.04, height: float = 0.7,
+                 to_scale: bool = True, palette: str = "curated",
+                 edgecolor: Optional[str] = "white",
+                 title: Optional[str] = None):
+        self.data = data
+        self.lengths = lengths
+        self.kind = kind
+        self.label_column = label_column
+        self.width = width
+        self.offset = offset
+        self.height = height
+        self.to_scale = to_scale
+        self.palette = palette
+        self.edgecolor = edgecolor
+        #: legend title -- defaults to label_column or kind so that
+        #: stacking several .sequence_features() calls (the expected way
+        #: to show multiple feature types) gets a distinct legend per call
+        #: rather than every call colliding on one generic "feature" title
+        self.title = title
+
+    def reserved_extent(self, layout) -> float:
+        return 0.0
+
+    def apply(self, ctx: RenderContext) -> None:
+        lay = ctx.layout
+        if lay.is_polar:
+            raise NotImplementedError(
+                "sequence_features() is for rectangular layouts (features "
+                "run along x beside each tip).")
+
+        by_tip = {}
+        for row in self.data.itertuples(index=False):
+            by_tip.setdefault(row.tip, []).append(row)
+
+        # a tip named in `lengths` draws its own correctly-sized blank
+        # baseline even with zero feature rows -- that IS the point of
+        # sequence_lengths() existing (see its docstring): a tip with
+        # nothing detected should show as a blank strip of the right
+        # length, not be silently dropped from the track entirely.
+        known_lengths = set(self.lengths) if self.lengths is not None else set()
+        tips = [t for t in ctx.tree.leaves()
+               if t.name in by_tip or t.name in known_lengths]
+        if not tips:
+            keys = sorted(by_tip)[:3]
+            raise ValueError(
+                f"sequence_features(): no tip name matches the data (it has "
+                f"{keys}{' ...' if len(by_tip) > 3 else ''})")
+
+        label_col = self.label_column or (
+            "label" if "label" in self.data.columns else None)
+        if label_col:
+            names = sorted({str(getattr(r, label_col)) for rows in by_tip.values()
+                            for r in rows})
+        else:
+            names = [self.kind or "feature"]
+        title = self.title or label_col or self.kind or "feature"
+        scale = build_color_scale(title, names, palette=self.palette,
+                                  swatch="patch")
+
+        lengths = dict(self.lengths.items()) if self.lengths is not None else {}
+
+        def tip_length(name):
+            if name in lengths:
+                return lengths[name]
+            return max((r.end for r in by_tip[name]), default=1)
+
+        longest = max((tip_length(t.name) for t in tips), default=1) or 1
+        total_w = self.width * lay.max_x
+        x0 = ctx.track_cursor + (self.offset + 0.02) * lay.max_x
+        half = self.height / 2
+
+        for tip in tips:
+            length = tip_length(tip.name) or 1
+            scale_w = (total_w / longest) if self.to_scale else (total_w / length)
+            y0, y1 = tip.y - half, tip.y + half
+            baseline_end = x0 + length * scale_w
+            ctx.scene.add(Polygon([(x0, y0), (baseline_end, y0),
+                                   (baseline_end, y1), (x0, y1)],
+                                  facecolor=_FEATURE_BASELINE, edgecolor=None,
+                                  alpha=1.0, zorder=1, align=True))
+            for r in by_tip.get(tip.name, []):
+                name = str(getattr(r, label_col)) if label_col else (self.kind or "feature")
+                color = scale.color(name)
+                xs, xe = x0 + r.start * scale_w, x0 + r.end * scale_w
+                if xe > xs:
+                    ctx.scene.add(Polygon([(xs, y0), (xe, y0), (xe, y1), (xs, y1)],
+                                          facecolor=color, edgecolor=self.edgecolor,
+                                          width=0.4 if self.edgecolor else 0.0,
+                                          alpha=1.0, zorder=2, align=True,
+                                          label=f"{tip.name} | {name}"))
+                else:
+                    ctx.scene.add(Path([(xs, y0), (xs, y1)], color=color,
+                                       width=1.5, zorder=3, align=True))
+        ctx.track_cursor = x0 + total_w
+        ctx.add_scale(scale)
+
+
+# --------------------------------------------------------------------------
+# continuous per-position signal along each tip's own sequence (GC content, ...)
+# --------------------------------------------------------------------------
+class _SignalTrack(_Element):
+    """A continuous value varying along each tip's own sequence position.
+
+    ``_Heatmap`` is one solid cell per (tip, column); this is genuinely
+    different -- a value that varies continuously along ONE linear position
+    axis per tip, GC content's actual shape. Follows ``_Alignment``'s
+    one-raster-for-the-whole-block pattern (a single ``Raster`` per
+    ``apply()``, not one per tip row) rather than inventing a line chart,
+    since ``scene.Raster`` is fast at any column count and both backends
+    already know how to draw it; the continuous colour is achieved by
+    quantising into a 64-step gradient sampled from a real ``ColorScale``
+    (the registered colourbar stays smooth even though the raster itself
+    is stepped, which is not visually distinguishable at 64 steps).
+
+    ``data`` is either a DataFrame with columns ``tip, start, end`` plus one
+    more numeric column holding the signal itself (a windowed/binned
+    signal -- what :func:`~phytreon.gc_content` returns, whose value
+    column is named ``gc``, not ``value``: the value column is
+    auto-detected as whichever column is not ``tip``/``start``/``end``,
+    or named explicitly with ``value_column`` if more than one remains),
+    or ``{tip: array}`` (one value per base; becomes width-1 windows
+    through the same rasterisation). These are genuinely different
+    granularities, not two notations for the same thing, so both are
+    accepted rather than picking one.
+    """
+
+    def __init__(self, data, lengths=None, cmap=None, width: float = 1.0,
+                 offset: float = 0.05, to_scale: bool = True,
+                 title: str = "signal", value_column: Optional[str] = None):
+        self.data = data
+        self.lengths = lengths
+        self.cmap = cmap
+        self.width = width
+        self.offset = offset
+        self.to_scale = to_scale
+        self.title = title
+        self.value_column = value_column
+
+    def reserved_extent(self, layout) -> float:
+        return 0.0
+
+    def _value_column(self):
+        if self.value_column:
+            return self.value_column
+        rest = [c for c in self.data.columns if c not in ("tip", "start", "end")]
+        if len(rest) != 1:
+            raise ValueError(
+                f"signal_track(): could not auto-detect the value column "
+                f"among {list(self.data.columns)} -- pass value_column= "
+                f"explicitly"
+            )
+        return rest[0]
+
+    def _windows_by_tip(self):
+        by_tip: dict = {}
+        if hasattr(self.data, "columns"):        # DataFrame: tip,start,end,<value>
+            value_col = self._value_column()
+            for r in self.data.itertuples(index=False):
+                by_tip.setdefault(r.tip, []).append(
+                    (r.start, r.end, float(getattr(r, value_col))))
+        else:                                     # {tip: array}, one value per base
+            for tip, arr in self.data.items():
+                by_tip[tip] = [(i, i + 1, float(v)) for i, v in enumerate(arr)]
+        return by_tip
+
+    def apply(self, ctx: RenderContext) -> None:
+        import numpy as np
+        lay = ctx.layout
+        if lay.is_polar:
+            raise NotImplementedError("signal_track() is for rectangular layouts.")
+
+        by_tip = self._windows_by_tip()
+        # same reasoning as _SequenceFeatureTrack: a tip named in `lengths`
+        # draws its own all-background row even with no signal data, rather
+        # than being dropped from the raster entirely -- dropping a row
+        # would also misalign every OTHER tip's row against the tree's own
+        # y-positions, since the raster spans min(ys)..max(ys) regardless.
+        known_lengths = set(self.lengths) if self.lengths is not None else set()
+        tips = [t for t in ctx.tree.leaves()
+               if t.name in by_tip or t.name in known_lengths]
+        if not tips:
+            keys = sorted(by_tip)[:3]
+            raise ValueError(
+                f"signal_track(): no tip name matches the data (it has "
+                f"{keys}{' ...' if len(by_tip) > 3 else ''})")
+
+        flat_values = [v for windows in by_tip.values() for _, _, v in windows]
+        scale = build_color_scale(self.title, flat_values, cmap=self.cmap)
+        n_bins = 64
+        palette = ["#f2f2f2"] + scale.gradient(n_bins)   # index 0 = no data
+        vmin, vmax = scale.vmin, scale.vmax
+        span = (vmax - vmin) or 1.0
+
+        lengths = dict(self.lengths.items()) if self.lengths is not None else {}
+
+        def tip_length(name):
+            if name in lengths:
+                return lengths[name]
+            return max((e for _, e, _ in by_tip.get(name, [])), default=1)
+
+        longest = max((tip_length(t.name) for t in tips), default=1) or 1
+        W = max(int(round(longest)), 1)
+        codes = np.zeros((len(tips), W), dtype=np.int16)
+        for i, t in enumerate(tips):
+            length = tip_length(t.name) or 1
+            for start, end, value in by_tip.get(t.name, []):
+                idx = 1 + int(round((value - vmin) / span * (n_bins - 1)))
+                idx = max(1, min(n_bins, idx))
+                if self.to_scale:
+                    cs, ce = start, end
+                else:
+                    cs, ce = start / length * W, end / length * W
+                cs = max(0, int(round(cs)))
+                ce = min(W, int(round(ce)))
+                if ce > cs:
+                    codes[i, cs:ce] = idx
+
+        total_w = self.width * lay.max_x
+        x0 = ctx.track_cursor + (self.offset + 0.02) * lay.max_x
+        ys = [t.y for t in tips]
+        ctx.scene.add(Raster(codes, palette, x0, x0 + total_w,
+                             min(ys) - 0.5, max(ys) + 0.5, zorder=2, align=True))
+        ctx.track_cursor = x0 + total_w
+        ctx.add_scale(scale)

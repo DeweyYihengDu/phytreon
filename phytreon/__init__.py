@@ -40,6 +40,7 @@ from .infer import (
     concatenate, species_tree, gene_trees, gene_tree_conflict, astrid_tree,
     biallelic_recode, four_gamete_scan,
     codon_frequencies, fit_m0, fit_free_ratio, branch_site_test,
+    gc_content, cpg_islands, tandem_repeats, sequence_lengths,
 )
 from .comparative import (
     ace_parsimony, ace_ml, ace_continuous, stochastic_map,
@@ -78,6 +79,7 @@ __all__ = [
     "concatenate", "species_tree", "gene_trees", "gene_tree_conflict",
     "astrid_tree", "biallelic_recode", "four_gamete_scan",
     "codon_frequencies", "fit_m0", "fit_free_ratio", "branch_site_test",
+    "gc_content", "cpg_islands", "tandem_repeats", "sequence_lengths",
     "ace_parsimony", "ace_ml", "ace_continuous", "stochastic_map",
     "reconstruct_ancestral_sequences", "ancestral_alignment",
     "faiths_pd", "faiths_pd_table", "unweighted_unifrac", "weighted_unifrac",

@@ -6,6 +6,77 @@ All notable changes to phytreon are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`gc_content`, `cpg_islands`, `tandem_repeats`, `sequence_lengths`, and
+  two new tracks (`TreeFigure.sequence_features`/`.signal_track`): per-tip
+  DNA sequence features, computed and drawn.** Every other model in this
+  package compares trees or whole alignments to each other; these read
+  each tip's own raw sequence and look for a feature that lives *within*
+  it, drawn as its own track beside that tip -- the same "one tree, tracks
+  by tip" shape `.domains()` already has, extended to features that are
+  sparse and absolutely positioned (a CpG island at [800, 1050) with
+  nothing before or after it) rather than adjacent blocks.
+
+  `cpg_islands` uses the standard Gardiner-Garden & Frommer (1987,
+  *J. Mol. Biol.* 196(2):261-282) criteria (GC% and observed/expected CpG
+  ratio over a sliding window, merged and length-filtered), the same
+  defaults EMBOSS's `newcpgreport` uses. `tandem_repeats` finds exact (or,
+  with `max_mismatch_frac`, near-exact) periodic runs by direct sequence
+  comparison -- explicitly not a reimplementation of Tandem Repeats
+  Finder's statistical scoring model.
+
+  **A real calibration trap, found writing the tests for this, kept as the
+  actual negative-control tests rather than smoothed over.** The first
+  `cpg_islands` negative control used plain i.i.d. random ACGT sequence
+  and got a 30/30 false-positive rate, which looked like a broken
+  implementation but was the wrong test: uniform random sequence has an
+  observed/expected CpG ratio close to 1.0 by construction (nothing is
+  suppressing CpG), so it clears both thresholds by design. Real genomic
+  bulk sequence is nothing like that -- methylation-driven mutation
+  suppresses CpG well below random expectation (typically ~0.2-0.3
+  observed/expected), and a CpG island is meaningful precisely because it
+  is a region where that suppression is absent. Re-tested against a
+  CpG-*suppressed* synthetic background (reject any generated "CG"
+  dinucleotide) as the actual negative control: 0/30 false positives, and
+  15/15 detection of a planted island. `tandem_repeats` had a related
+  finding: short repeats are common by chance at lenient settings (real
+  genomes are full of them too, not a bug), and even a fairly demanding
+  `min_copies` alone does not make chance hits rare, since scanning every
+  candidate period at every position is itself a multiple-comparisons
+  search (`min_copies=6` still hit 13/20 random 1000bp replicates;
+  `min_copies=9` was needed to drop below 1/20) -- both findings are
+  stated in the functions' own docstrings, not just in this entry.
+
+  **TSS is deliberately not predicted.** Calling a transcription start
+  site from raw sequence alone, with no other evidence (CAGE-seq, RNA-seq,
+  an annotated gene model), is not reliable enough to ship as an
+  algorithm here -- the same reasoning `four_gamete_scan` already applied
+  to decline the published PHI test's own statistic. TSS coordinates from
+  other evidence go straight to `sequence_features()` as zero-width rows,
+  which the track draws as a tick rather than an invisible zero-width
+  block.
+
+  **Two real implementation bugs found while writing the tests, both
+  fixed before landing.** `_SequenceFeatureTrack`/`_SignalTrack` (the two
+  new plot elements) originally only drew a row for a tip that appeared in
+  the data at all -- a tip named in `lengths` but with zero detected
+  features was silently dropped from the track entirely, exactly
+  contradicting the point of `sequence_lengths()` existing (a tip with
+  nothing found should show a blank strip of the *right* length, not
+  vanish). For `signal_track()` this was worse than a cosmetic gap: since
+  the underlying raster spans every tip's y-position regardless, dropping
+  one tip's row would have silently misaligned every *other* tip's row
+  against the tree. Both elements now include any tip named in `lengths`
+  even with no data rows.
+
+  Design notes for anyone extending these two tracks: `_DomainTrack`
+  (`domains()`'s element) was tempting to generalise directly but turned
+  out to be the wrong model -- it places blocks by walking a cursor
+  forward by each part's own *length*, with no absolute-coordinate concept
+  at all, so it cannot represent a sparse, gapped feature. And a
+  zero-width row's tick is drawn as an aligned `Path`, not a `scene.Marker`
+  -- `Marker` has no `align` field, unlike `Path`/`Polygon`/`Raster`, so it
+  would render to the left of wherever the rest of the (tip-label-shifted)
+  track actually lands.
 - **`fit_m0`, `fit_free_ratio`, `branch_site_test`: codon-based selection
   tests (dN/dS), on the Goldman & Yang (1994, *MBE* 17(1):32-43) GY94 codon
   substitution model.** Every other model in the package treats an alignment

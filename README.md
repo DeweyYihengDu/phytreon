@@ -739,6 +739,67 @@ precise value for it.
 </details>
 
 <details>
+<summary><b>Per-tip sequence features (GC content, CpG islands, tandem repeats, TSS)</b></summary>
+
+Everything above reads a tree or a whole alignment; these look *within*
+each tip's own raw sequence for a feature that lives there, and draw it as
+its own track next to that tip -- the same "one tree + tracks by tip"
+shape as `.domains()`, extended to features that are sparse and
+absolutely positioned rather than adjacent blocks.
+
+```python
+lengths = pt.sequence_lengths(aln)   # every tip's own ungapped length --
+                                      # pass this so a tip with nothing
+                                      # detected still draws a correctly
+                                      # sized blank strip, not nothing
+
+(pt.TreeFigure(tree)
+    .tip_labels()
+    .signal_track(pt.gc_content(aln, window=100), lengths=lengths, title="GC%")
+    .sequence_features(pt.cpg_islands(aln), kind="CpG island", lengths=lengths)
+    .sequence_features(pt.tandem_repeats(aln), label_column="unit", lengths=lengths)
+    # TSS is never predicted (see below) -- hand it coordinates from other
+    # evidence as zero-width rows, which draw as a tick rather than a block
+    .sequence_features(tss_positions, kind="TSS", lengths=lengths)
+).save("features.png")
+```
+
+`gc_content` is a plain sliding-window fraction. `cpg_islands` uses the
+standard Gardiner-Garden & Frommer (1987) criteria (GC% and observed/
+expected CpG ratio over a window, merged and length-filtered) -- the same
+defaults EMBOSS's `newcpgreport` uses. **What "expected" means here, worth
+knowing before trusting a result**: it is expectation under statistical
+independence of G and C, not against real genomic background. Actual
+vertebrate genomes suppress CpG well below that (methylation-driven,
+typically ~0.2-0.3 observed/expected in bulk sequence), which is *why* a
+real island's ~1.0 stands out; on already CpG-neutral sequence -- uniform-
+random test data being the clearest case, checked directly: plain random
+ACGT clears both thresholds almost everywhere -- there is no suppressed
+baseline to stand out against, and large stretches can get flagged.
+Validated against a CpG-*suppressed* synthetic background instead (the
+meaningful negative control), where it stays correctly calibrated.
+
+`tandem_repeats` finds exact (or, with `max_mismatch_frac`, near-exact)
+periodic runs by direct comparison -- not a reimplementation of Tandem
+Repeats Finder's statistical scoring model, stated plainly rather than
+implied. Short repeats at lenient settings are common by chance (real
+genomes are full of them too, not a calibration problem); checked directly
+that even a fairly demanding `min_copies` does not make chance hits rare
+on its own, since scanning every period at every position is itself a
+multiple-comparisons search -- treat one call as suggestive, not
+significant, unless `min_copies` is set well above a single period's own
+chance rate.
+
+**TSS is never predicted, on purpose.** Calling a transcription start site
+from raw sequence alone, with no other evidence (CAGE-seq, RNA-seq, an
+annotated gene model), is not reliable enough to ship as an algorithm here
+-- the same reasoning that kept the published PHI test's own statistic out
+of `four_gamete_scan` above. If you have TSS coordinates from elsewhere,
+`.sequence_features()` draws them directly as zero-width rows.
+
+</details>
+
+<details>
 <summary><b>Circular tree with metadata rings</b></summary>
 
 ```python
