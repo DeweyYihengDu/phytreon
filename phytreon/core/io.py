@@ -98,7 +98,10 @@ def parse_newick(newick: str) -> Tree:
 
     Supports branch lengths (``name:0.1``), internal labels / support
     values, and quoted names.  Square-bracket comments (e.g. NHX) are
-    captured verbatim onto ``node.comment``.
+    captured verbatim onto ``node.comment``.  Whitespace and line breaks
+    between tokens are ignored, so a pretty-printed multi-line tree parses
+    the same as a one-line one.  Unbalanced parentheses raise
+    ``ValueError`` rather than returning a silently different tree.
     """
     s = newick.strip()
     if not s.endswith(";"):
@@ -107,19 +110,32 @@ def parse_newick(newick: str) -> Tree:
     pos = 0
     n = len(s)
 
+    def skip_ws() -> None:
+        nonlocal pos
+        while pos < n and s[pos].isspace():
+            pos += 1
+
     def parse_clade() -> Node:
         nonlocal pos
         node = Node()
-        if s[pos] == "(":
+        skip_ws()
+        if pos < n and s[pos] == "(":
             pos += 1  # consume '('
             while True:
                 node.add_child(parse_clade())
-                if s[pos] == ",":
+                skip_ws()
+                # an unclosed '(' runs into the terminating ';' (or off the
+                # end); looping on it would add empty children forever
+                if pos < n and s[pos] == ",":
                     pos += 1
                     continue
-                if s[pos] == ")":
+                if pos < n and s[pos] == ")":
                     pos += 1
                     break
+                raise ValueError(
+                    f"malformed Newick: expected ',' or ')' at position {pos}, "
+                    f"found {s[pos]!r}" if pos < n else
+                    "malformed Newick: unexpected end of input (unbalanced '(')")
         _parse_label(node)
         return node
 
@@ -193,6 +209,11 @@ def parse_newick(newick: str) -> Tree:
             pos += 1
 
     root = parse_clade()
+    skip_ws()
+    if pos < n and s[pos] != ";":
+        # e.g. a stray ')' -- everything after it would otherwise be dropped
+        raise ValueError(f"malformed Newick: unexpected {s[pos]!r} at "
+                         f"position {pos} (unbalanced ')'?)")
     return Tree(root=root)
 
 

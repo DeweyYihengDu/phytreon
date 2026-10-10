@@ -19,6 +19,7 @@ Design notes
 """
 from __future__ import annotations
 
+from collections import deque
 from typing import Dict, Iterable, Iterator, List, Optional
 
 
@@ -71,19 +72,30 @@ class Node:
 
         ``order`` is one of ``"preorder"``, ``"postorder"`` or
         ``"levelorder"``.
+
+        Iterative rather than recursive: a chain of nested generators costs
+        O(depth) per node yielded and hits Python's recursion limit on a
+        deep, unbalanced tree (a ladder-like tree of a few thousand tips).
         """
         if order == "preorder":
-            yield self
-            for c in self.children:
-                yield from c.traverse(order)
+            stack = [self]
+            while stack:
+                node = stack.pop()
+                yield node
+                stack.extend(reversed(node.children))
         elif order == "postorder":
-            for c in self.children:
-                yield from c.traverse(order)
-            yield self
+            stack = [(self, False)]
+            while stack:
+                node, expanded = stack.pop()
+                if expanded or not node.children:
+                    yield node
+                else:
+                    stack.append((node, True))
+                    stack.extend((c, False) for c in reversed(node.children))
         elif order == "levelorder":
-            queue = [self]
+            queue = deque([self])
             while queue:
-                node = queue.pop(0)
+                node = queue.popleft()
                 yield node
                 queue.extend(node.children)
         else:
