@@ -8,7 +8,8 @@ tested are very welcome.
 
 ```bash
 pip install -e .[dev]      # installs pytest
-pytest -q                  # run the test suite
+pytest -q                  # run the test suite (~20 min)
+pytest -q -m "not slow"    # skip the long statistical tests (~3 min)
 ```
 
 ## Architecture (where things live)

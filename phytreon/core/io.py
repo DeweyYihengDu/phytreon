@@ -181,10 +181,16 @@ def parse_newick(newick: str) -> Tree:
             start = pos
             while pos < n and s[pos] not in "():,;[":
                 pos += 1
-            try:
-                node.length = float(s[start:pos])
-            except ValueError:
-                pass
+            text = s[start:pos].strip()
+            if text:        # a bare ':' with nothing after it means no length
+                try:
+                    node.length = float(text)
+                except ValueError:
+                    # dropping it silently would hand back a tree with one
+                    # branch quietly missing its length
+                    raise ValueError(
+                        f"malformed Newick: branch length {text!r} at "
+                        f"position {start} is not a number") from None
         # a second comment may follow the branch length -- BEAST writes
         # per-branch rates there. Left unconsumed it derails the whole parse.
         _maybe_comment(node)

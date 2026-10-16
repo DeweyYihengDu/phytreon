@@ -97,6 +97,7 @@ def test_down_pass_matches_the_iqtree_validated_pruning_exactly():
 # --------------------------------------------------------------------------
 # The full pipeline's log-likelihood, two ways
 # --------------------------------------------------------------------------
+@pytest.mark.slow
 def test_reported_loglik_matches_the_branch_length_optimiser():
     # fitted_logLik comes from the pattern-compressed optimiser that fit the
     # branch lengths; logLik comes from this module's own full per-column
@@ -112,6 +113,7 @@ def test_reported_loglik_matches_the_branch_length_optimiser():
 # --------------------------------------------------------------------------
 # Recovery and calibration on simulated data with a known ancestor
 # --------------------------------------------------------------------------
+@pytest.mark.slow
 def test_root_recovery_is_high_at_low_divergence_and_confidence_tracks_it():
     true_root, seqs = _evolve(BALANCED_TREE, 200, 3.0, 0)
     names = sorted(seqs)
@@ -129,6 +131,7 @@ def test_root_recovery_is_high_at_low_divergence_and_confidence_tracks_it():
     assert abs(float(conf.mean()) - identity) < 0.1
 
 
+@pytest.mark.slow
 def test_confidence_is_calibrated_high_confidence_sites_are_more_often_right():
     true_root, seqs = _evolve(BALANCED_TREE, 250, 4.0, 3)
     names = sorted(seqs)
@@ -146,6 +149,7 @@ def test_confidence_is_calibrated_high_confidence_sites_are_more_often_right():
     assert correct[high].mean() > correct[low].mean()
 
 
+@pytest.mark.slow
 def test_recovery_degrades_towards_equilibrium_as_divergence_saturates():
     low_root, low_seqs = _evolve(BALANCED_TREE, 200, 3.0, 0)
     high_root, high_seqs = _evolve(BALANCED_TREE, 200, 60.0, 1)
@@ -191,6 +195,7 @@ def test_no_gap_columns_reports_an_empty_list():
     assert res["all_gap_columns"] == []
 
 
+@pytest.mark.slow
 def test_mask_below_replaces_uncertain_calls_with_x():
     root, seqs = _evolve(BALANCED_TREE, 200, 3.0, 0)
     names = sorted(seqs)
