@@ -55,3 +55,9 @@ target-version = "py39"
 # the latest release; a newer ruff that widens its defaults would otherwise
 # turn a green build red without a line of this project changing.
 select = ["E4", "E7", "E9", "F"]
+
+[tool.pytest.ini_options]
+# The full suite takes ~20 minutes, almost all of it in a dozen statistical
+# tests (dN/dS fits, ancestral-sequence calibration). CI runs everything;
+# `pytest -m "not slow"` skips those for a quick local loop.
+markers = ["slow: statistical tests that each take 15 s or more"]

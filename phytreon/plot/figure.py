@@ -17,7 +17,8 @@ Layout computation and rendering are fully decoupled (see
 """
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Tuple
+import os
+from typing import Callable, List, Optional, Tuple, Union
 
 from ..core.tree import Tree
 from ..layout import get_layout, Layout
@@ -284,7 +285,7 @@ class _Renderable:
             return render_plotly(ctx, title=self.title, **kwargs)
         raise ValueError(f"unknown backend {backend!r}")
 
-    def save(self, path: str, dpi: int = 300, **kwargs) -> str:
+    def save(self, path: Union[str, os.PathLike], dpi: int = 300, **kwargs) -> str:
         """Save to ``path``; backend chosen from the file extension.
 
         Supports ``.png`` / ``.jpg`` (raster), ``.pdf`` / ``.svg`` (vector),
@@ -298,6 +299,7 @@ class _Renderable:
         Convert to Shape), Illustrator, Inkscape, etc. -- you can recolour,
         move, and re-type the text.
         """
+        path = os.fspath(path)          # accept pathlib.Path as well as str
         ext = path.lower().rsplit(".", 1)[-1]
         if ext == "html":
             self.draw(backend="plotly", **kwargs).write_html(path)
@@ -309,14 +311,18 @@ class _Renderable:
             # for SVG, emit editable <text> (not glyph outlines) so labels
             # remain real, re-typeable text in PowerPoint / vector editors
             rc = {"svg.fonttype": "none"} if ext == "svg" else {}
-            with mpl.rc_context(rc):
-                fig.savefig(path, bbox_inches="tight", dpi=dpi,
-                            bbox_extra_artists=extra)
-            # save() hands back only the path, never this figure, so nothing
-            # else can ever close it -- left open, a script that saves one
-            # figure per sample (exactly what most of examples/ does) leaks
-            # one matplotlib Figure, with every artist on it, per call.
-            plt.close(fig)
+            try:
+                with mpl.rc_context(rc):
+                    fig.savefig(path, bbox_inches="tight", dpi=dpi,
+                                bbox_extra_artists=extra)
+            finally:
+                # save() hands back only the path, never this figure, so
+                # nothing else can ever close it -- left open, a script that
+                # saves one figure per sample (exactly what most of examples/
+                # does) leaks one matplotlib Figure, with every artist on it,
+                # per call; a savefig that raises (a bad extension, a missing
+                # directory) would leak it too.
+                plt.close(fig)
         return path
 
     def show(self, backend: str = "mpl", **kwargs):

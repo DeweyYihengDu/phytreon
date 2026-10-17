@@ -201,6 +201,7 @@ def test_transition_matrix_valid_across_a_kappa_omega_grid():
 # --------------------------------------------------------------------------
 # M0: recovers the simulating kappa/omega
 # --------------------------------------------------------------------------
+@pytest.mark.slow
 def test_fit_m0_recovers_simulating_parameters():
     kappa_true, omega_true = 3.0, 0.25
     errs_k, errs_w = [], []
@@ -219,6 +220,7 @@ def test_fit_m0_recovers_simulating_parameters():
 # --------------------------------------------------------------------------
 # Free-ratio: recovers two different omegas and flags the difference
 # --------------------------------------------------------------------------
+@pytest.mark.slow
 def test_fit_free_ratio_recovers_two_omegas_and_detects_the_difference():
     for seed in range(3):
         tree = Tree.from_newick(NEWICK)
@@ -230,6 +232,7 @@ def test_fit_free_ratio_recovers_two_omegas_and_detects_the_difference():
         assert res["p"] < 0.01
 
 
+@pytest.mark.slow
 def test_fit_free_ratio_null_case_no_false_positive():
     # same omega on both -- the LRT should not manufacture a difference
     tree = Tree.from_newick(NEWICK)
@@ -253,6 +256,7 @@ def test_fit_free_ratio_null_case_no_false_positive():
 # at every round count -- the fit already converges (its own
 # ll-improvement-below-tolerance early exit) well before round 3, so extra
 # rounds cost real time for zero change in the answer.
+@pytest.mark.slow
 def test_branch_site_test_detects_a_strong_planted_signal():
     tree = Tree.from_newick(NEWICK)
     aln = _simulate_branch_site(tree, kappa=3.0, omega0=0.08, omega2=15.0,
@@ -262,6 +266,7 @@ def test_branch_site_test_detects_a_strong_planted_signal():
     assert res["full"]["omega2"] > 5.0     # not stuck near the null
 
 
+@pytest.mark.slow
 def test_branch_site_test_has_power_on_a_moderate_signal():
     # n_codons=600 was tried here first and cut power for real (1/3
     # detected, not noise) -- n=1000 is the setting with actual track record
@@ -277,6 +282,7 @@ def test_branch_site_test_has_power_on_a_moderate_signal():
     assert hits >= 2, f"only {hits}/{n_reps} detected"
 
 
+@pytest.mark.slow
 def test_branch_site_test_type_i_error_near_nominal():
     from phytreon.infer.codon import _CodonModel as _CM
     n_reps, hits = 6, 0
@@ -304,6 +310,7 @@ def test_branch_site_test_type_i_error_near_nominal():
     assert hits / n_reps < 0.34, f"false-positive rate {hits}/{n_reps} too high"
 
 
+@pytest.mark.slow
 def test_branch_site_omega2_tracks_data_not_its_own_starting_point():
     # regression guard for the initial-simplex bug: two datasets with very
     # different true omega2 both used to converge to omega2 ~= 50.5 --

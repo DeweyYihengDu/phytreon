@@ -9,13 +9,14 @@ actionable error rather than failing obscurely.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ..core.tree import Tree
-from ..core.io import parse_newick
+from ..core.io import parse_newick, to_newick
 from .align import Alignment
 
 
@@ -51,6 +52,54 @@ def _run(cmd: List[str]) -> subprocess.CompletedProcess:
     return proc
 
 
+# Characters every engine accepts in a sequence name. IQ-TREE rewrites
+# anything else to '_' (so the tree it hands back no longer matches the input
+# names or the metadata keyed on them), and Newick punctuation such as ':' or
+# ',' in a name breaks parsing the tree that comes back.
+_SAFE_NAME = re.compile(r"[A-Za-z0-9_.\-]+")
+
+
+def _safe_names(aln: Alignment) -> Tuple[Alignment, Optional[Dict[str, str]]]:
+    """Return ``aln`` unchanged if every name is engine-safe; otherwise a copy
+    with placeholder names plus the ``{placeholder: original}`` map that
+    :func:`_restore_names` uses to put the real names back on the tree."""
+    if all(_SAFE_NAME.fullmatch(name) for name in aln.names):
+        return aln, None
+    placeholders = [f"phytreon_t{i}" for i in range(len(aln.names))]
+    return (Alignment(placeholders, list(aln.seqs)),
+            dict(zip(placeholders, aln.names)))
+
+
+def _restore_names(tree: Tree, mapping: Optional[Dict[str, str]]) -> Tree:
+    if mapping:
+        for leaf in tree.leaves():
+            leaf.name = mapping.get(leaf.name, leaf.name)
+    return tree
+
+
+def _constraint_file(constraint, tmp: str,
+                     mapping: Optional[Dict[str, str]]) -> str:
+    """Path of a constraint tree for the engine, renamed to match the
+    alignment's placeholders when :func:`_safe_names` had to rename it."""
+    if mapping is None and isinstance(constraint, str):
+        return constraint
+    gfile = os.path.join(tmp, "constraint.tre")
+    if mapping is None:
+        constraint.write(gfile)
+        return gfile
+    if isinstance(constraint, str):
+        with open(constraint) as f:
+            tree = parse_newick(f.read())
+    else:
+        tree = parse_newick(to_newick(constraint))  # a copy: leave the caller's
+    to_placeholder = {orig: ph for ph, orig in mapping.items()}
+    for leaf in tree.leaves():
+        leaf.name = to_placeholder.get(leaf.name, leaf.name)
+    with open(gfile, "w") as f:
+        f.write(to_newick(tree))
+    return gfile
+
+
 def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
                  seed: Optional[int] = None, path: Optional[str] = None,
                  extra_args: Optional[List[str]] = None,
@@ -68,6 +117,7 @@ def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
     (``-seed``); left unset, IQ-TREE picks its own, and two calls differ.
     """
     exe = _require("iqtree2", path) if (path or shutil.which("iqtree2")) else _require("iqtree", path)
+    aln, names = _safe_names(aln)
     with tempfile.TemporaryDirectory() as tmp:
         infile = os.path.join(tmp, "aln.fasta")
         aln.to_fasta(infile)
@@ -77,16 +127,11 @@ def infer_iqtree(aln: Alignment, model: str = "MFP", bootstrap: int = 0,
         if seed is not None:
             cmd += ["-seed", str(seed)]
         if constraint is not None:
-            if isinstance(constraint, str):
-                gfile = constraint
-            else:
-                gfile = os.path.join(tmp, "constraint.tre")
-                constraint.write(gfile)
-            cmd += ["-g", gfile]
+            cmd += ["-g", _constraint_file(constraint, tmp, names)]
         cmd += extra_args or []
         _run(cmd)
         with open(infile + ".treefile") as f:
-            return parse_newick(f.read())
+            return _restore_names(parse_newick(f.read()), names)
 
 
 def infer_fasttree(aln: Alignment, nucleotide: Optional[bool] = None,
@@ -96,12 +141,13 @@ def infer_fasttree(aln: Alignment, nucleotide: Optional[bool] = None,
     if nucleotide is None:
         from .align import guess_type
         nucleotide = guess_type(aln.seqs) == "nucleotide"
+    aln, names = _safe_names(aln)
     with tempfile.TemporaryDirectory() as tmp:
         infile = os.path.join(tmp, "aln.fasta")
         aln.to_fasta(infile)
         cmd = [exe] + (["-nt"] if nucleotide else []) + [infile]
         out = _run(cmd).stdout
-        return parse_newick(out)
+        return _restore_names(parse_newick(out), names)
 
 
 def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
@@ -131,6 +177,7 @@ def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
     version probe here to tell which is running.
     """
     exe = _require("raxml-ng", path)
+    aln, names = _safe_names(aln)
     with tempfile.TemporaryDirectory() as tmp:
         infile = os.path.join(tmp, "aln.fasta")
         aln.to_fasta(infile)
@@ -141,12 +188,7 @@ def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
         if bootstrap:
             cmd += ["--bs-trees", str(bootstrap)]
         if constraint is not None:
-            if isinstance(constraint, str):
-                gfile = constraint
-            else:
-                gfile = os.path.join(tmp, "constraint.tre")
-                constraint.write(gfile)
-            cmd += ["--tree-constraint", gfile]
+            cmd += ["--tree-constraint", _constraint_file(constraint, tmp, names)]
         cmd += extra_args or []
         _run(cmd)
         # --all additionally writes <prefix>.raxml.support (the best tree
@@ -154,7 +196,7 @@ def infer_raxmlng(aln: Alignment, model: str = "GTR+G", bootstrap: int = 0,
         # produces that file, so bestTree is the one that always exists.
         result = prefix + (".raxml.support" if bootstrap else ".raxml.bestTree")
         with open(result) as f:
-            return parse_newick(f.read())
+            return _restore_names(parse_newick(f.read()), names)
 
 
 def infer_rapidnj(aln: Alignment, evolution_model: str = "kim",
@@ -180,6 +222,7 @@ def infer_rapidnj(aln: Alignment, evolution_model: str = "kim",
     reason :func:`infer_iqtree` reaches for its own ``-bb`` instead.
     """
     exe = _require("rapidnj", path)
+    aln, names = _safe_names(aln)
     with tempfile.TemporaryDirectory() as tmp:
         infile = os.path.join(tmp, "aln.fasta")
         # rapidnj's FASTA reader wants one line per sequence; to_fasta()
@@ -192,7 +235,7 @@ def infer_rapidnj(aln: Alignment, evolution_model: str = "kim",
             cmd += ["-b", str(bootstrap)]
         cmd += extra_args or []
         out = _run(cmd).stdout
-        return parse_newick(out)
+        return _restore_names(parse_newick(out), names)
 
 
 def infer_ml(aln: Alignment, tool: str = "iqtree", **kw) -> Tree:

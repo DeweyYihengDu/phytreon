@@ -164,9 +164,12 @@ def continuous_mapper(vmin: float, vmax: float, cmap=None):
     elif isinstance(cmap, (tuple, list)) and len(cmap) == 2:
         lo, hi = cmap
     else:
-        import matplotlib.cm as cm
+        import matplotlib
         import matplotlib.colors as mcolors
-        colormap = cm.get_cmap(cmap)
+        # matplotlib.cm.get_cmap was removed in matplotlib 3.9; the colormaps
+        # registry it pointed to has existed since 3.5, the oldest supported
+        colormap = (cmap if isinstance(cmap, mcolors.Colormap)
+                    else matplotlib.colormaps[cmap])
 
         def mp(v, _lo=vmin, _span=span, _cm=colormap):
             if v is None:
