@@ -1024,3 +1024,16 @@ def test_a_filled_scale_may_still_fade_to_near_white():
     # area and an edge, and pale legitimately reads as "low" there
     from phytreon.plot.palettes import _SEQ_LOW, continuous_mapper
     assert continuous_mapper(0.0, 1.0)(0.0) == _SEQ_LOW
+
+
+def test_continuous_colour_accepts_a_named_matplotlib_colormap(tmp_path):
+    # cmap="viridis" went through matplotlib.cm.get_cmap, removed in 3.9
+    import matplotlib
+    from phytreon.plot.palettes import continuous_mapper
+    for cmap in ("viridis", matplotlib.colormaps["magma"]):
+        mp = continuous_mapper(0.0, 1.0, cmap)
+        assert mp(0.0) != mp(1.0) and mp(None) == "#cccccc"
+    tr = pt.datasets.primates()
+    tr.join_data(pt.datasets.primates_metadata().reset_index(), on="name")
+    pt.TreeFigure(tr).tip_points(color="body_mass_kg", cmap="viridis") \
+        .save(tmp_path / "viridis.png")
