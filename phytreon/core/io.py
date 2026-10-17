@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io as _io
 import re
-from typing import Optional
+from typing import List, Optional
 
 from .tree import Node, Tree
 
@@ -115,29 +115,41 @@ def parse_newick(newick: str) -> Tree:
         while pos < n and s[pos].isspace():
             pos += 1
 
-    def parse_clade() -> Node:
+    def parse_tree() -> Node:
+        """Walk the string with an explicit stack of open clades rather than
+        recursing once per nesting level, so a deep ladder-like tree (a few
+        thousand tips) parses instead of hitting the recursion limit."""
         nonlocal pos
-        node = Node()
-        skip_ws()
-        if pos < n and s[pos] == "(":
-            pos += 1  # consume '('
+        root = node = Node()
+        open_clades: List[Node] = []    # nodes whose ')' is still to come
+        while True:
+            skip_ws()
+            if pos < n and s[pos] == "(":
+                pos += 1  # consume '(' and descend into its first child
+                open_clades.append(node)
+                node = node.add_child(Node())
+                continue
+            _parse_label(node)
+            # climb out of every clade this node closes
             while True:
-                node.add_child(parse_clade())
+                if not open_clades:
+                    return root
                 skip_ws()
                 # an unclosed '(' runs into the terminating ';' (or off the
                 # end); looping on it would add empty children forever
                 if pos < n and s[pos] == ",":
                     pos += 1
-                    continue
+                    node = open_clades[-1].add_child(Node())
+                    break
                 if pos < n and s[pos] == ")":
                     pos += 1
-                    break
+                    node = open_clades.pop()
+                    _parse_label(node)
+                    continue
                 raise ValueError(
                     f"malformed Newick: expected ',' or ')' at position {pos}, "
                     f"found {s[pos]!r}" if pos < n else
                     "malformed Newick: unexpected end of input (unbalanced '(')")
-        _parse_label(node)
-        return node
 
     def _parse_label(node: Node) -> None:
         nonlocal pos
@@ -214,7 +226,7 @@ def parse_newick(newick: str) -> Tree:
                     return
             pos += 1
 
-    root = parse_clade()
+    root = parse_tree()
     skip_ws()
     if pos < n and s[pos] != ";":
         # e.g. a stray ')' -- everything after it would otherwise be dropped
@@ -225,11 +237,14 @@ def parse_newick(newick: str) -> Tree:
 
 def to_newick(tree: Tree, with_support: bool = True) -> str:
     """Serialise a :class:`Tree` back to a Newick string."""
-    def fmt(node: Node) -> str:
+    # built bottom-up from a postorder walk, not by recursion, so a tree too
+    # deep for the recursion limit can be written as well as read
+    text = {}
+    for node in tree.root.traverse("postorder"):
         if node.is_leaf:
             label = _quote_label(node.name) if node.name else ""
         else:
-            inner = ",".join(fmt(c) for c in node.children)
+            inner = ",".join(text.pop(id(c)) for c in node.children)
             sup = ""
             if with_support and node.support is not None:
                 sup = _num(node.support)
@@ -238,9 +253,8 @@ def to_newick(tree: Tree, with_support: bool = True) -> str:
             label = f"({inner}){sup}"
         if node.length is not None:
             label += f":{_num(node.length)}"
-        return label
-
-    return fmt(tree.root) + ";"
+        text[id(node)] = label
+    return text[id(tree.root)] + ";"
 
 
 def _num(x: float) -> str:

@@ -5,6 +5,26 @@ All notable changes to phytreon are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- `parse_newick` no longer hangs on an unclosed `(` (it looped forever, adding
+  empty children until memory ran out), no longer drops the rest of a tree
+  after a stray `)`, no longer adds a phantom unnamed tip when whitespace or a
+  line break comes before `(`, and no longer silently drops a non-numeric
+  branch length. Each of these now raises `ValueError` or parses correctly.
+- `parse_newick`, `to_newick` and `Node.traverse` no longer recurse once per
+  nesting level, so ladder-like trees deeper than Python's recursion limit
+  can be read, walked and written.
+- IQ-TREE, FastTree, RAxML-NG and RapidNJ are given placeholder tip names when
+  a sequence name has characters outside `[A-Za-z0-9_.-]`, and the real names
+  are put back on the returned tree. IQ-TREE used to rewrite such names to
+  `_` (so tips no longer matched their metadata), and Newick punctuation
+  such as `:` or `,` in a name broke parsing the tree that came back.
+- `TreeFigure.save()`, `PanelFigure.save()` and `read_fasta()` accept
+  `pathlib.Path`; `save()` closes its figure even when saving fails.
+- A continuous colour mapped through a named matplotlib colormap
+  (`cmap="viridis"`) crashed with `AttributeError` on matplotlib 3.9 and
+  later, which removed `matplotlib.cm.get_cmap`.
+
 ### Added
 - **`gc_content`, `cpg_islands`, `tandem_repeats`, `sequence_lengths`, and
   two new tracks (`TreeFigure.sequence_features`/`.signal_track`): per-tip
@@ -1391,7 +1411,7 @@ All notable changes to phytreon are documented here. Format loosely follows
   The renderer now measures the actual rendered extent of every label and
   expands the axes limits to contain it before placing the title.
 
-
+## [0.3.1] — 2026-07-18
 
 ### Added
 - **Annotated NEXUS input** (`Tree.read(path, fmt="beast")`, also `"mrbayes"`,

@@ -82,3 +82,15 @@ def test_save_accepts_pathlib_path_and_closes_figure_on_failure(tmp_path):
     with pytest.raises(Exception):
         fig.save(tmp_path / "no_such_dir" / "tree.png")
     assert len(plt.get_fignums()) == before
+
+
+def test_deep_ladder_tree_parses_and_writes_back():
+    import sys
+    n = sys.getrecursionlimit() + 500
+    text = "t0"
+    for i in range(1, n):
+        text = f"({text},t{i}:1)"
+    text += ";"
+    tr = parse_newick(text)
+    assert tr.n_leaves == n
+    assert to_newick(tr) == text
