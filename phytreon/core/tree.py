@@ -153,6 +153,25 @@ class Tree:
         from .io import read as _read
         return _read(path, fmt)
 
+    def copy(self) -> "Tree":
+        """An independent copy: same topology, names, lengths, supports,
+        comments and ``data`` (each node's ``data`` dict is copied, its values
+        are shared). Useful before an in-place operation such as
+        ``ladderize`` or ``collapse_low_support``."""
+        root = Node(self.root.name, self.root.length, self.root.support,
+                    self.root.comment)
+        root.data = dict(self.root.data)
+        stack = [(self.root, root)]
+        while stack:
+            src, dst = stack.pop()
+            for c in src.children:
+                new = dst.add_child(Node(c.name, c.length, c.support, c.comment))
+                new.data = dict(c.data)
+                stack.append((c, new))
+        out = Tree(root=root, name=self.name)
+        out.data = dict(self.data)
+        return out
+
     @classmethod
     def from_biopython(cls, bp_tree) -> "Tree":
         from .io import from_biopython as _fb
@@ -261,17 +280,38 @@ class Tree:
         """Attach a :class:`pandas.DataFrame` of metadata to nodes.
 
         Each row is matched to a node by ``on`` (a column name; ``"name"``
-        matches against ``node.name``).  Every other column becomes an
-        entry in ``node.data``.  Returns ``self`` for chaining.
+        matches against ``node.name``).  ``on`` may also be the name of the
+        DataFrame's index -- a table indexed by tip name, as ``.ring()`` and
+        ``pt.datasets.primates_metadata()`` use, joins without a
+        ``reset_index()`` first.  Every other column becomes an entry in
+        ``node.data``.  Warns if no node matched (usually a misspelt key or
+        names that differ in case/underscores).  Returns ``self`` for
+        chaining.
         """
+        if on not in df.columns:
+            if df.index.name == on:
+                df = df.reset_index()
+            else:
+                raise KeyError(
+                    f"join_data: no column {on!r} to match on, and the index "
+                    f"is named {df.index.name!r}; columns are {list(df.columns)}")
         cols = [c for c in df.columns if c != on]
         index = {str(row[on]): row for _, row in df.iterrows()}
+        matched = 0
         for node in self.traverse():
             key = str(node.name) if on == "name" else str(node.data.get(on))
             row = index.get(key)
             if row is not None:
+                matched += 1
                 for c in cols:
                     node.data[c] = row[c]
+        if index and not matched:
+            import warnings
+            warnings.warn(
+                f"join_data: none of the {len(index)} rows matched a node by "
+                f"{on!r} (tips look like {self.leaf_names()[:3]}, rows like "
+                f"{list(index)[:3]}); no metadata was attached",
+                stacklevel=2)
         return self
 
     def __repr__(self) -> str:

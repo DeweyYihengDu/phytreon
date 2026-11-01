@@ -24,6 +24,35 @@ All notable changes to phytreon are documented here. Format loosely follows
 - A continuous colour mapped through a named matplotlib colormap
   (`cmap="viridis"`) crashed with `AttributeError` on matplotlib 3.9 and
   later, which removed `matplotlib.cm.get_cmap`.
+- `outgroup_root` and `midpoint_root` put support values on the wrong
+  clades: a support describes the branch above a node, and rerooting reverses
+  some branches, but the value stayed with the node instead of the branch.
+  Rerooting a rooted binary tree also left the old root behind as a node with
+  a single child. Every clade now keeps its own support, and the old root is
+  spliced out.
+- Distances (`build_tree(dist_model=...)`, NJ/UPGMA, bootstrap): one IUPAC
+  ambiguity code (`R`, `Y`, ...) near the start of a DNA alignment made it look
+  like protein and silently switched JC69/K2P off for every pair; ambiguity
+  codes and protein `X` were counted as mismatches instead of skipped; and a
+  saturated pair could come out *closer* than a slightly less divergent one.
+  The distance loop is also vectorised (about 16x faster on the bundled
+  106-sequence 16S alignment).
+- `read_fasta` / `build_tree` on a path that does not exist raised
+  `IndexError` (the path was parsed as FASTA text and gave no sequences); it
+  now raises `FileNotFoundError` naming the path.
+
+### Changed
+- `Tree.join_data` accepts a table indexed by tip name (as
+  `pt.datasets.primates_metadata()` and `.ring()` use) without
+  `reset_index()`, names the missing key when there is nothing to match on,
+  and warns when no row matched any node.
+- `pt.distance_matrix` accepts a phytreon `Alignment` and the same model
+  names as `build_tree` (`"raw"`, `"jc69"`, `"k2p"`, `"poisson"`) as well as
+  Biopython's.
+
+### Added
+- `Tree.copy()`, for working on a copy before an in-place operation such as
+  `ladderize` or `collapse_low_support`.
 
 ### Added
 - **`gc_content`, `cpg_islands`, `tandem_repeats`, `sequence_lengths`, and

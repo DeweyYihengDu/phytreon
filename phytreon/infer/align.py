@@ -84,11 +84,15 @@ class Alignment:
 def read_fasta(source: Union[str, os.PathLike]) -> List[Record]:
     """Read FASTA from a path (``str`` or ``pathlib.Path``) or a raw string.
 
-    A ``pathlib.Path`` is always read as a file, so a missing one raises
-    ``FileNotFoundError`` rather than being parsed as FASTA text."""
+    A missing file raises ``FileNotFoundError`` rather than being parsed as
+    FASTA text (which would quietly give no sequences at all)."""
     if isinstance(source, os.PathLike) or os.path.exists(source):
         with open(source) as f:
             text = f.read()
+    elif ">" not in source:
+        # raw FASTA always has a '>' header, so this is a path that does not
+        # exist -- parsing it as text would quietly return no sequences
+        raise FileNotFoundError(f"no such FASTA file: {source!r}")
     else:
         text = source
     recs, name, buf = [], None, []
