@@ -14,11 +14,6 @@ from ..core.tree import Tree
 from .align import Alignment
 
 
-# purine<->purine (A<->G) and pyrimidine<->pyrimidine (C<->T, or C<->U in RNA)
-# transitions; A<->U/A<->T etc. are purine<->pyrimidine transversions.
-_TRANSITION = {frozenset("AG"), frozenset("CT"), frozenset("CU")}
-
-
 def distance_matrix_model(aln: Alignment, model: str = "jc69"
                           ) -> Tuple[List[str], List[List[float]]]:
     """Pairwise evolutionary distances with a substitution-model correction.
@@ -32,43 +27,67 @@ def distance_matrix_model(aln: Alignment, model: str = "jc69"
 
     ``"jc69"``/``"k2p"`` need nucleotide data; on non-nucleotide alignments
     they fall back to raw p-distance (unchanged).  ``"poisson"`` is an
-    explicit opt-in for protein data and is applied as requested.  Gapped
-    positions are ignored pairwise.
+    explicit opt-in for protein data and is applied as requested.  Gaps,
+    missing data and ambiguity codes (IUPAC ``N``/``R``/``Y``... in DNA,
+    ``X``/``B``/``Z`` in protein) are ignored pairwise rather than counted as
+    differences.  Saturated pairs, where the correction diverges, get the
+    model's largest finite distance, so a more divergent pair never comes out
+    closer than a less divergent one.
     """
     import math
+
+    import numpy as np
+
+    from .align import guess_type
     n = aln.nseq
     seqs = [s.upper() for s in aln.seqs]
-    nucleotide = set("".join(seqs[:2])[:500]) <= set("ACGTUN-.")
+    # judged on the whole sample, not "every character is ACGTN": one IUPAC
+    # ambiguity code (R, Y, ...) used to flip a DNA alignment to protein and
+    # silently drop the JC69/K2P correction for every pair
+    nucleotide = guess_type(seqs) == "nucleotide"
+    if nucleotide:
+        seqs = [s.replace("U", "T") for s in seqs]
     if not nucleotide and model not in ("raw", "poisson"):
         model = "raw"
+    codes = np.array([np.frombuffer(s.encode("latin-1", "replace"), np.uint8)
+                      for s in seqs]) if n else np.zeros((0, 0), np.uint8)
+    if nucleotide:
+        # anything but ACGT is a gap, missing data or an ambiguity code
+        usable = np.isin(codes, np.frombuffer(b"ACGT", np.uint8))
+    else:
+        # protein, or a character matrix (0/1 traits, lineage alleles): any
+        # state counts except gaps, missing data and protein ambiguity codes
+        usable = ~np.isin(codes, np.frombuffer(b"-.?*XBZJ", np.uint8))
+    purine = np.isin(codes, np.frombuffer(b"AG", np.uint8))
+    # the log arguments are floored where the correction diverges, so a
+    # saturated pair gets the model's largest finite distance (~3.24 for
+    # JC69/K2P, ~9.2 for Poisson) and distances stay monotone in divergence
+    floor_jc = 1 - 4 * 0.74 / 3
+    floor_poisson = 1e-4
     D = [[0.0] * n for _ in range(n)]
-    for a in range(n):
-        for b in range(a + 1, n):
-            comp = ts = tv = diff = 0
-            for ca, cb in zip(seqs[a], seqs[b]):
-                if ca in "-.N" or cb in "-.N":
-                    continue
-                comp += 1
-                if ca != cb:
-                    diff += 1
-                    if frozenset((ca, cb)) in _TRANSITION:
-                        ts += 1
-                    else:
-                        tv += 1
+    for a in range(n - 1):
+        both = usable[a] & usable[a + 1:]               # (n-a-1, ncol)
+        differ = both & (codes[a] != codes[a + 1:])
+        comps = both.sum(axis=1)
+        diffs = differ.sum(axis=1)
+        # a transition keeps purine (A<->G) or pyrimidine (C<->T) status
+        tss = (differ & (purine[a] == purine[a + 1:])).sum(axis=1)
+        for k, b in enumerate(range(a + 1, n)):
+            comp, diff = int(comps[k]), int(diffs[k])
+            ts = int(tss[k])
+            tv = diff - ts
             if comp == 0:
                 d = 1.0
             elif model == "k2p":
                 P, Q = ts / comp, tv / comp
-                try:
-                    d = -0.5 * math.log((1 - 2 * P - Q) * math.sqrt(1 - 2 * Q))
-                except ValueError:
-                    d = 3.0                      # saturated
+                d = (-0.5 * math.log(max(1 - 2 * P - Q, floor_jc))
+                     - 0.25 * math.log(max(1 - 2 * Q, floor_jc)))
             elif model == "jc69":
                 p = diff / comp
-                d = -0.75 * math.log(1 - 4 * p / 3) if p < 0.74 else 3.0
+                d = -0.75 * math.log(max(1 - 4 * p / 3, floor_jc))
             elif model == "poisson":
                 p = diff / comp
-                d = -math.log(1 - p) if p < 0.9999 else 5.0     # saturated
+                d = -math.log(max(1 - p, floor_poisson))
             else:
                 d = diff / comp
             D[a][b] = D[b][a] = d

@@ -137,12 +137,33 @@ def constrained_nj(names: Sequence[str], matrix, groups: Dict[str, object],
     return backbone
 
 
-def distance_matrix(alignment, model: str = "identity"):
-    """Compute (names, matrix) from a Biopython ``MultipleSeqAlignment``.
+_MODEL_DISTANCES = ("raw", "jc69", "k2p", "poisson")
 
-    ``model`` is any name accepted by Biopython's ``DistanceCalculator``
-    (e.g. ``"identity"``, ``"blastn"``, ``"blosum62"``).
+
+def distance_matrix(alignment, model: str = "identity"):
+    """Compute ``(names, matrix)`` from an alignment.
+
+    ``alignment`` is a phytreon :class:`~phytreon.infer.align.Alignment` or a
+    Biopython ``MultipleSeqAlignment``. ``model`` is either one of phytreon's
+    substitution-model corrections -- ``"raw"``, ``"jc69"``, ``"k2p"``,
+    ``"poisson"``, the same ones ``build_tree(dist_model=...)`` uses -- or any
+    name Biopython's ``DistanceCalculator`` accepts (``"identity"``,
+    ``"blastn"``, ``"blosum62"``, ...).
     """
+    from .align import Alignment
+    if model in _MODEL_DISTANCES:
+        from .bootstrap import distance_matrix_model
+        if not isinstance(alignment, Alignment):
+            alignment = Alignment([r.id for r in alignment],
+                                  [str(r.seq) for r in alignment])
+        return distance_matrix_model(alignment, model)
+    if isinstance(alignment, Alignment):
+        from Bio.Align import MultipleSeqAlignment
+        from Bio.Seq import Seq
+        from Bio.SeqRecord import SeqRecord
+        alignment = MultipleSeqAlignment(
+            [SeqRecord(Seq(seq), id=name)
+             for name, seq in zip(alignment.names, alignment.seqs)])
     from Bio.Phylo.TreeConstruction import DistanceCalculator
     dm = DistanceCalculator(model).get_distance(alignment)
     names = list(dm.names)

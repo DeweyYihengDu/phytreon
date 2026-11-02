@@ -14,7 +14,8 @@ it is handed.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+import os
+from typing import List, Optional, Sequence, Tuple, Union
 
 
 class PanelFigure:
@@ -129,18 +130,21 @@ class PanelFigure:
             y -= 0.09 * (len(items) + 2)
         return out
 
-    def save(self, path: str, dpi: int = 300, **kwargs) -> str:
+    def save(self, path: Union[str, os.PathLike], dpi: int = 300, **kwargs) -> str:
         """Save the grid; SVG keeps editable text, as elsewhere in phytreon."""
         import matplotlib as mpl
         import matplotlib.pyplot as plt
+        path = os.fspath(path)
         ext = path.lower().rsplit(".", 1)[-1]
         fig = self.draw(**kwargs)
         extra = getattr(fig, "_phytreon_extra_artists", None)
         rc = {"svg.fonttype": "none"} if ext == "svg" else {}
-        with mpl.rc_context(rc):
-            fig.savefig(path, bbox_inches="tight", dpi=dpi,
-                        bbox_extra_artists=extra)
-        plt.close(fig)          # save() never hands the figure back -- see
+        try:
+            with mpl.rc_context(rc):
+                fig.savefig(path, bbox_inches="tight", dpi=dpi,
+                            bbox_extra_artists=extra)
+        finally:
+            plt.close(fig)      # save() never hands the figure back -- see
         return path              # the same fix and note in plot/figure.py
 
     def show(self, **kwargs):

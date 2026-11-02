@@ -554,18 +554,52 @@ def _far_leaf(adj, src, leaves):
     return far, dist, prev
 
 
+def _edge_support(a: Node, b: Node):
+    """Support of the original edge a--b. A support value describes the
+    branch *above* a node, so it lives on whichever end was the child --
+    after rerooting reverses that edge it must stay with the edge, not with
+    the node that used to hold it."""
+    return b.support if b.parent is a else a.support
+
+
 def _rebuild_rooted(tree, adj, u, v, du, dv) -> Tree:
-    def build(cur, excl, length):
-        node = Node(name=cur.name, length=length, support=cur.support)
-        node.data = dict(cur.data)
-        for nb, w in adj[cur]:
-            if nb is excl:
-                continue
-            node.add_child(build(nb, cur, w))
-        return node
+    # an explicit stack, like the rest of core/: a deep ladder tree must not
+    # hit the recursion limit just by being rerooted
+    copies = {}                         # id(original node) -> its copy
+
+    def build(top, excl, length):
+        out = Node(name=top.name, length=length, support=_edge_support(top, excl))
+        out.data = dict(top.data)
+        copies[id(top)] = out
+        stack = [(top, excl, out)]
+        while stack:
+            cur, parent, node = stack.pop()
+            for nb, w in adj[cur]:
+                if nb is parent:
+                    continue
+                child = Node(name=nb.name, length=w, support=_edge_support(nb, cur))
+                child.data = dict(nb.data)
+                copies[id(nb)] = child
+                node.add_child(child)
+                stack.append((nb, cur, child))
+        return out
+
     root = Node()
     root.add_child(build(u, v, du))
     root.add_child(build(v, u, dv))
+    # the old root, if it had two children, is now a pass-through node with a
+    # single child; splice it out so its two edges become the one edge they
+    # always were (one split, so either end's support describes it)
+    old_root = copies.get(id(tree.root))
+    if old_root is not None and old_root is not root and len(old_root.children) == 1:
+        child = old_root.children[0]
+        if old_root.length is not None or child.length is not None:
+            child.length = (old_root.length or 0.0) + (child.length or 0.0)
+        if child.support is None:
+            child.support = old_root.support
+        parent = old_root.parent
+        parent.children[parent.children.index(old_root)] = child
+        child.parent = parent
     return Tree(root=root, name=tree.name)
 
 

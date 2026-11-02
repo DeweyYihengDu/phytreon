@@ -12,9 +12,10 @@ inputs; for large alignments plug in MAFFT/MUSCLE via :func:`align_external`.
 """
 from __future__ import annotations
 
+import os
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 Record = Tuple[str, str]
 
@@ -80,10 +81,20 @@ class Alignment:
         return f"<Alignment nseq={self.nseq} ncol={self.ncol}>"
 
 
-def read_fasta(source: str) -> List[Record]:
-    """Read FASTA from a path or a raw string."""
-    import os
-    text = open(source).read() if os.path.exists(source) else source
+def read_fasta(source: Union[str, os.PathLike]) -> List[Record]:
+    """Read FASTA from a path (``str`` or ``pathlib.Path``) or a raw string.
+
+    A missing file raises ``FileNotFoundError`` rather than being parsed as
+    FASTA text (which would quietly give no sequences at all)."""
+    if isinstance(source, os.PathLike) or os.path.exists(source):
+        with open(source) as f:
+            text = f.read()
+    elif ">" not in source:
+        # raw FASTA always has a '>' header, so this is a path that does not
+        # exist -- parsing it as text would quietly return no sequences
+        raise FileNotFoundError(f"no such FASTA file: {source!r}")
+    else:
+        text = source
     recs, name, buf = [], None, []
     for line in text.splitlines():
         if line.startswith(">"):
